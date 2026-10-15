@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import "./App.css";
 import { FlagsPanel } from "./components/FlagsPanel";
+import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
 import { Picker } from "./components/Picker";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -158,39 +159,35 @@ export default function App() {
         {view && (
           <nav className="tabs">
             <button className={tab === "label" ? "on" : ""} onClick={() => setTab("label")}>
-              Label
+              <Icon name="label" /> Label
             </button>
             <button className={tab === "phase" ? "on" : ""} onClick={() => setTab("phase")}>
-              Phase{view.flag_count > 0 && <span className="count">{view.flag_count}</span>}
+              <Icon name="chart" /> Phase{view.flag_count > 0 && <span className="count">{view.flag_count}</span>}
             </button>
           </nav>
         )}
         <div className="top-actions">
-          <button onClick={() => void chooseVideo()} disabled={ws.opening}>
-            {ws.opening ? "importing…" : "Open video…"}
-          </button>
+          <IconButton icon="folder" label={ws.opening ? "Opening video…" : "Open video"} onClick={() => void chooseVideo()} disabled={ws.opening} />
           {view && (
             <>
-              <button onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Ctrl+S · labels also autosave after every edit">
-                Save
-              </button>
-              <span className="tag" role="status" title="Labels save after every edit; the last video and frame reopen next launch">
-                {backend.mock ? "Preview only" : ws.saveStatus}
+              <IconButton icon="save" label="Save labels" onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Save labels · Ctrl+S · autosave is also on" />
+              <span className={`save-status${view.save_error ? " failed" : ""}`} role="status" title={backend.mock ? "Preview only" : ws.saveStatus}>
+                <Icon name={view.save_error ? "alert" : "check"} /><span className="sr-only">{backend.mock ? "Preview only" : ws.saveStatus}</span>
               </span>
-              <button disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("export"); }} title="Save all labels to a portable JSON file">Export labels…</button>
-              <button disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("import"); }} title="Merge a label export into this video; matching frames are replaced. Undo restores the import.">Import labels…</button>
-              <button onClick={() => void act({ type: "undo" })} title="Ctrl+Z">
-                Undo
-              </button>
-              <button
-                className={playback.dir !== 0 ? "on" : ""}
+              <IconButton icon="export" label="Export labels" disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("export"); }} title="Export labels to a JSON file" />
+              <IconButton icon="import" label="Import labels" disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("import"); }} title="Import labels · replaces matching frames · Undo restores the import" />
+              <span className="toolbar-divider" />
+              <IconButton icon="undo" label="Undo" onClick={() => void act({ type: "undo" })} title="Undo · Ctrl+Z" />
+              <IconButton icon={playback.dir === 0 ? "play" : "pause"} label={playback.dir === 0 ? "Play video" : "Pause video"}
+                className={`play-button${playback.dir !== 0 ? " on" : ""}`}
                 onClick={() => setPlayback((p) => nextPlayback(p, { type: "playPause" }, maxSpeed))}
-                title="Space"
+                title={`${playback.dir === 0 ? "Play" : "Pause"} · Space`}
               >
-                {playback.dir === 0 ? "▶ Play" : `⏸ ${playback.dir < 0 ? "◀" : "▶"} ${playback.speed}×`}
-              </button>
-              <button onClick={() => setShowKeys((s) => !s)}>Keys</button>
-              <button onClick={() => setShowSettings(true)}>Settings</button>
+                {playback.dir !== 0 && <span>{playback.dir < 0 ? "−" : ""}{playback.speed}×</span>}
+              </IconButton>
+              <span className="toolbar-divider" />
+              <IconButton icon="keyboard" label="Keyboard shortcuts" aria-pressed={showKeys} onClick={() => setShowKeys((s) => !s)} />
+              <IconButton icon="settings" label="Settings" onClick={() => setShowSettings(true)} />
             </>
           )}
         </div>
@@ -290,21 +287,15 @@ export default function App() {
           />
           <aside className="right">
             <div className="pick-state">
-              <button className={view.pick.sheet === 1 ? "on" : ""} onClick={() => void act({ type: "toggleSheet" })} title="S">
-                sheet {view.pick.sheet}
-              </button>
-              <button className={view.pick.mirrored ? "on" : ""} onClick={() => void act({ type: "toggleMirror" })} title="M">
+              <IconButton icon="layers" label={`Toggle sprite sheet · current sheet ${view.pick.sheet}`} className={view.pick.sheet === 1 ? "on" : ""} onClick={() => void act({ type: "toggleSheet" })} title="Toggle sheet · S">
+                {view.pick.sheet}
+              </IconButton>
+              <IconButton icon="mirror" label="Mirror sprite" aria-pressed={view.pick.mirrored} className={view.pick.mirrored ? "on" : ""} onClick={() => void act({ type: "toggleMirror" })} title="Toggle mirror · M">
                 {view.pick.mirrored ? "mirrored" : "normal"}
-              </button>
-              <button onClick={() => void act({ type: "noFire" })} title="X">
-                no fire
-              </button>
-              <button onClick={() => void act({ type: "skip" })} title="Shift+X">
-                skip
-              </button>
-              <button onClick={() => void act({ type: "clear" })} title="Backspace">
-                clear
-              </button>
+              </IconButton>
+              <IconButton icon="noFire" label="Label no fire" onClick={() => void act({ type: "noFire" })} title="No fire · X" />
+              <IconButton icon="skip" label="Skip frame" onClick={() => void act({ type: "skip" })} title="Skip frame · Shift+X" />
+              <IconButton icon="erase" label="Clear label" onClick={() => void act({ type: "clear" })} title="Clear label · Backspace" />
             </div>
             <div className="picker-box" ref={pickerBoxRef} onDoubleClick={(e) => e.ctrlKey && resetZoom("picker")}>
               <Picker

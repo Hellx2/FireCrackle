@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { IconButton } from "./Icon";
 import type { Backend, View } from "../lib/api";
 import {
   flagSpans,
@@ -214,9 +215,9 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
   };
 
   const controls = (name: string) => <div className="timeline-controls" aria-label={`${name} timeline zoom`}>
-    <button aria-label={`Zoom out ${name} timeline`} onClick={() => zoomChart(1 / 1.5)}>−</button>
-    <button aria-label={`Zoom in ${name} timeline`} onClick={() => zoomChart(1.5)}>+</button>
-    <button onClick={() => setViewport(fitViewport(total, logicalWidth))}>Fit all</button>
+    <IconButton icon="zoomOut" label={`Zoom out ${name} timeline`} onClick={() => zoomChart(1 / 1.5)} />
+    <IconButton icon="zoomIn" label={`Zoom in ${name} timeline`} onClick={() => zoomChart(1.5)} />
+    <IconButton icon="fit" label={`Fit entire ${name} timeline`} onClick={() => setViewport(fitViewport(total, logicalWidth))} />
     <span>{formatTime(t0, 0.01)} – {formatTime(t1, 0.01)} · wheel to zoom · drag to pan · linked charts</span>
   </div>;
 

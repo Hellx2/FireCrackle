@@ -7,6 +7,7 @@ import { formatTime } from "../lib/timeline";
 import { HudOverlay } from "./HudOverlay";
 import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 import { FireQuadMask } from "./FireQuadMask";
+import { IconButton } from "./Icon";
 import { DEFAULT_QUAD, type ManualQuad } from "../lib/quadMask";
 import { framePreview, previewSprite, type PreviewSprite } from "../lib/firePreview";
 import { compressionGeometry } from "../lib/compressionPreview";
@@ -184,10 +185,10 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
       <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
         <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); } }} /> First-person fire</label>
         {hudEnabled && <>
-          <button aria-label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))}>◀</button>
+          <IconButton icon="left" label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))} />
           <label>Row <input aria-label="HUD animation index" type="number" min={0} max={31} value={hudRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setHudRow(n); }} /></label>
-          <button aria-label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))}>▶</button>
-          <button disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} title="Copies this frame's animation row into the preview">Use frame label</button>
+          <IconButton icon="right" label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))} />
+          <IconButton icon="copy" label="Use frame label for first-person preview" disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} />
           <label>FOV <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>70° · normal</option><option value={60}>60° · submerged</option></select></label>
           <span className="hud-hint">Ctrl+click atlas to preview · follows the next frame's guess</span>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
@@ -197,13 +198,13 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
         <label><input type="checkbox" checked={manualEnabled} onChange={(e) => { setManualEnabled(e.target.checked); if (e.target.checked) { setHudEnabled(false); const next = framePreview(view); if (next) { setManualSheet(next.sheet); setManualRow(next.row); setManualMirrored(next.mirrored); } } }} /> Manual fire quad mask</label>
         {manualEnabled && <>
           <label>Sheet <select aria-label="Manual mask sheet" value={manualSheet} onChange={(e) => setManualSheet(Number(e.target.value) as 0 | 1)}><option value={0}>0</option><option value={1}>1</option></select></label>
-          <button aria-label="Previous manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, -1))}>◀</button>
+          <IconButton icon="left" label="Previous manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, -1))} />
           <label>Row <input aria-label="Manual mask row" type="number" min={0} max={31} value={manualRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setManualRow(n); }} /></label>
-          <button aria-label="Next manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, 1))}>▶</button>
+          <IconButton icon="right" label="Next manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, 1))} />
           <label><input type="checkbox" checked={manualMirrored} onChange={(e) => setManualMirrored(e.target.checked)} /> Mirrored</label>
           <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
-          <button onClick={() => setManualQuad(DEFAULT_QUAD)}>Reset corners</button>
+          <IconButton icon="reset" label="Reset quad corners" onClick={() => setManualQuad(DEFAULT_QUAD)} />
           <label title="Single-frame approximation: render at video-relative size, reduce colour detail, then apply JPEG block compression. No motion artifacts or exact YouTube bitrate model."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> YouTube-style compression</label>
           {compressionEnabled && <>
             <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
@@ -215,7 +216,7 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
             {delivery && <span className="hud-hint">{delivery.width}×{delivery.height} frame · quad ≈{delivery.quadWidth.toFixed(1)}×{delivery.quadHeight.toFixed(1)} px · capped at decoded frame size · zoom only magnifies</span>}
             <span className="hud-hint">Approximation: colour bleed + JPEG blocks, single frame</span>
           </>}
-          <button disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }}>Use frame label</button>
+          <IconButton icon="copy" label="Use frame label for manual mask" disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }} />
           <span className="hud-hint">Ctrl+atlas: preview · Ctrl+drag: move all · select corner + Alt+click: place · Esc: deselect</span>
         </>}
       </div>

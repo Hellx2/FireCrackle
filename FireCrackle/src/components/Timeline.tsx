@@ -16,6 +16,7 @@ import {
 } from "../lib/timeline";
 import { thumbSlots, uniqueFrames, type ThumbStatus } from "../lib/thumbs";
 import { useWheel } from "../hooks/useWheel";
+import { IconButton } from "./Icon";
 import "./TimelineControls.css";
 
 const RULER_H = 26;
@@ -297,9 +298,9 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
   return (
     <div className="timeline" ref={wrapRef}>
       <div className="timeline-controls" aria-label="Video timeline zoom">
-        <button aria-label="Zoom out video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, 1 / zoomFactor, maxPx, width, total))}>−</button>
-        <button aria-label="Zoom in video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, zoomFactor, maxPx, width, total))}>+</button>
-        <button onClick={() => setVp(fitViewport(total, width))}>Fit all</button>
+        <IconButton icon="zoomOut" label="Zoom out video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, 1 / zoomFactor, maxPx, width, total))} />
+        <IconButton icon="zoomIn" label="Zoom in video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, zoomFactor, maxPx, width, total))} />
+        <IconButton icon="fit" label="Fit entire video timeline" onClick={() => setVp(fitViewport(total, width))} />
         <span>{(vp.pxPerFrame / fitViewport(total, width).pxPerFrame).toFixed(1)}×</span>
       </div>
       <canvas
