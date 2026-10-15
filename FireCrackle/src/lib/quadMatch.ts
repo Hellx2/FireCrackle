@@ -9,7 +9,7 @@ export interface QuadMatch {
   candidates:QuadCandidate[]; margin:number; searched:number;
 }
 interface Samples {rgb:Float64Array;fire:Uint8Array;valid:Uint8Array;count:number}
-interface Template extends PreviewSprite {rgb:Float64Array;alpha:Uint8Array}
+interface Template extends PreviewSprite {rgb:Float64Array;alpha:Uint8Array; bounds:[number,number,number,number]}
 
 function sampleFrame(image:MatchImage,quad:ManualQuad,mask:Uint8Array):Samples {
   const rgb=new Float64Array(768),fire=new Uint8Array(256),valid=new Uint8Array(256);
@@ -36,7 +36,12 @@ function templates(sheets:[Uint8ClampedArray,Uint8ClampedArray]):Template[] {
       for(let c=0;c<3;c++)rgb[i*3+c]=sheets[sheet][source+c];
       alpha[i]=sheets[sheet][source+3];
     }
-    result.push({sheet,row,mirrored,rgb,alpha});
+    const opaque=Array.from(alpha.keys()).filter(i=>alpha[i]>127);
+    const bounds:[number,number,number,number]=opaque.length?[
+      Math.min(...opaque.map(i=>i%16))/16,Math.min(...opaque.map(i=>Math.floor(i/16)))/16,
+      (Math.max(...opaque.map(i=>i%16))+1)/16,(Math.max(...opaque.map(i=>Math.floor(i/16)))+1)/16,
+    ]:[0,0,1,1];
+    result.push({sheet,row,mirrored,rgb,alpha,bounds});
   }
   return result;
 }
@@ -68,6 +73,18 @@ function similarity(observed:Samples,model:Template):{score:number;support:numbe
  * No clock prediction or UI overlay is an input; only the original frame pixels.
  */
 export function matchFireQuad(image:MatchImage,sheets:[Uint8ClampedArray,Uint8ClampedArray],quad:ManualQuad):QuadMatch {
+  return match(image,sheets,quad,false);
+}
+
+/** Oracle-box evaluation adapter: labels bound visible opacity, not the full
+ * texture. Expand each candidate using ITS OWN alpha hull, never the truth row.
+ * A rectangle cannot recover perspective or hidden texture from a clipped box.
+ */
+export function matchFireBox(image:MatchImage,sheets:[Uint8ClampedArray,Uint8ClampedArray],box:ManualQuad,options={stretch:true}):QuadMatch {
+  return match(image,sheets,box,true,options.stretch);
+}
+
+function match(image:MatchImage,sheets:[Uint8ClampedArray,Uint8ClampedArray],quad:ManualQuad,opaqueBox:boolean,stretch=true):QuadMatch {
   const insufficient:QuadMatch={status:"insufficient",candidates:[],margin:0,searched:0};
   if(!validQuad(quad)||image.width<=0||image.height<=0||image.data.length!==image.width*image.height*4||sheets.some(s=>s.length!==16*512*4))return insufficient;
   const w=Math.hypot((quad[1][0]-quad[0][0])*image.width,(quad[1][1]-quad[0][1])*image.height);
@@ -77,15 +94,27 @@ export function matchFireQuad(image:MatchImage,sheets:[Uint8ClampedArray,Uint8Cl
   const models=templates(sheets);
   const best:QuadCandidate[]=models.map(({sheet,row,mirrored})=>({sheet,row,mirrored,score:0,quad}));
   let enoughVisible=false;
-  for(const scale of [1,0.92,1.08])for(const dx of [0,-0.05,0.05])for(const dy of [0,-0.05,0.05]) {
-    const fit=[[0,0],[1,0],[1,1],[0,1]].map(([u,v])=>projectQuad(quad,(u-0.5)*scale+0.5+dx,(v-0.5)*scale+0.5+dy)) as ManualQuad;
+  const scales=stretch?[1,0.8,1.2].flatMap(x=>[1,0.8,1.2].map(y=>[x,y])):[[1,1],[0.92,0.92],[1.08,1.08]];
+  for(const [scaleX,scaleY] of scales)for(const dx of [0,-0.05,0.05])for(const dy of [0,-0.05,0.05]) {
+    const fit=[[0,0],[1,0],[1,1],[0,1]].map(([u,v])=>projectQuad(quad,(u-0.5)*scaleX+0.5+dx,(v-0.5)*scaleY+0.5+dy)) as ManualQuad;
     if(!validQuad(fit))continue;
-    const observed=sampleFrame(image,fit,mask);
-    if(observed.count<64)continue;
-    enoughVisible=true;
+    const shared=opaqueBox?null:sampleFrame(image,fit,mask);
+    const cache=new Map<string,{observed:Samples;expanded:ManualQuad}>();
     for(let i=0;i<models.length;i++) {
+      let observed=shared,expanded=fit;
+      if(opaqueBox){
+        const [x0,y0,x1,y1]=models[i].bounds,key=models[i].bounds.join(",");
+        let entry=cache.get(key);
+        if(!entry){
+          expanded=[[0,0],[1,0],[1,1],[0,1]].map(([u,v])=>projectQuad(fit,(u-x0)/(x1-x0),(v-y0)/(y1-y0))) as ManualQuad;
+          entry={observed:sampleFrame(image,expanded,mask),expanded};cache.set(key,entry);
+        }
+        ({observed,expanded}=entry);
+      }
+      if(!observed||observed.count<64)continue;
+      enoughVisible=true;
       const evidence=similarity(observed,models[i]);
-      if(evidence.score>best[i].score)best[i]={...best[i],...evidence,quad:fit};
+      if(evidence.score>best[i].score)best[i]={...best[i],...evidence,quad:expanded};
     }
   }
   if(!enoughVisible)return insufficient;

@@ -60,12 +60,12 @@ export function QuadMatchControls({frameUrl,quad,disabled,onPreview}:Props) {
     onPreview(candidate);
   }
   return <>
-    <button disabled={disabled||busy===key} onClick={()=>void find()} title="Build a fire-colour mask, then compare positive colour support for all 128 sheet/row/mirror combinations. Unknown areas add no votes. Refines position/size slightly; previews only, never saves a label.">
+    <button disabled={disabled||busy===key} onClick={()=>void find()} title="Build a fire-colour mask, then compare positive colour support for all 128 sheet/row/mirror combinations. Unknown areas add no votes. Tries width and height independently at 80%, 100% and 120%, plus small position changes; previews only, never saves a label.">
       <Icon name="zoomIn" /> {busy===key?"Matching…":"Find best match"}
     </button>
     {current?.error&&<span className="warn" role="alert">Match failed: {current.error}</span>}
     {current?.data&&<>
-      <span className="hud-hint" role="status">{current.selected?`Preview: ${name(current.selected)} · confirm separately`
+      <span className="hud-hint" role="status">{current.selected?`Colour guess: ${name(current.selected)} · verify sheet/mirror before confirming`
         :current.data.status==="insufficient"?"Too few visible pixels—adjust the quad or use a larger fire"
         :current.data.status==="weak"?"Too little matching colour evidence—adjust the quad; closest candidates below"
         :"Close matches—pick a candidate to preview"}</span>

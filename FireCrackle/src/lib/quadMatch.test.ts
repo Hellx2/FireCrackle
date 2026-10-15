@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { matchFireQuad } from "./quadMatch";
+import { matchFireBox, matchFireQuad } from "./quadMatch";
 import { rasterizeFire } from "./quadRaster";
 import type { ManualQuad } from "./quadMask";
 
@@ -85,4 +85,24 @@ it("adds positive evidence without diluting existing votes with masked colour mi
   expect(extra).toBeDefined();expect(extra.score).toBeGreaterThanOrEqual(partial.score);
   const full=matchFireQuad(frame(atlas[1],23,true),atlas,q).candidates[0];
   expect(full.score).toBeGreaterThan(partial.score);
+});
+
+it("uses each candidate's opaque hull for old bbox labels, without knowing the truth row",()=> {
+  const atlas=sheets();
+  for(const sheet of atlas)for(let row=0;row<32;row++)for(let y=0;y<5;y++)for(let x=0;x<16;x++)sheet[((row*16+y)*16+x)*4+3]=0;
+  const image=frame(atlas[1],23,true);
+  const box:ManualQuad=[[0.2,0.35],[0.8,0.35],[0.8,0.9],[0.2,0.9]];
+  const result=matchFireBox(image,atlas,box);
+  expect(result.candidates[0]).toMatchObject({sheet:1,row:23,mirrored:true});
+  expect(result.status).toBe("clear");
+});
+
+it("searches independent width and height stretches for a misproportioned outline",()=> {
+  const atlas=sheets();
+  const rough:ManualQuad=[[0.125,0.18],[0.875,0.18],[0.875,0.82],[0.125,0.82]];
+  // The true fire needs narrower width and taller height than the rough quad.
+  const result=matchFireQuad(frame(atlas[1],23,true),atlas,rough);
+  expect(result.candidates[0]).toMatchObject({sheet:1,row:23,mirrored:true});
+  expect(result.candidates[0].quad[1][0]-result.candidates[0].quad[0][0]).toBeLessThan(0.75);
+  expect(result.candidates[0].quad[3][1]-result.candidates[0].quad[0][1]).toBeGreaterThan(0.64);
 });
