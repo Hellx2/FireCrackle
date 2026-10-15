@@ -1,0 +1,17 @@
+.picker.picker-adaptive {
+  scrollbar-gutter: stable;
+}
+.picker-blocks {
+  display: grid;
+  grid-template-columns: repeat(var(--blocks), max-content);
+  gap: 12px;
+  align-items: start;
+  width: max-content;
+}
+.picker-adaptive .picker-head {
+  height: 15px;
+  line-height: 15px;
+}
+.picker-adaptive .picker-row {
+  height: calc(var(--cell) + 4px);
+}

@@ -1,0 +1,29 @@
+import { ROWS } from "./grid";
+
+export const PICKER_GUTTER = 22;
+export const PICKER_GAP = 12;
+export const PICKER_HEADER = 32;
+
+/** Find the largest readable sprites among every even division of the sheet. */
+export function pickerLayout(width: number, height: number, preferredCell: number) {
+  const preferred = Number.isFinite(preferredCell) ? Math.max(16, Math.floor(preferredCell)) : 16;
+  if (!(width > 0) || !(height > 0)) return { blocks: 1, rowsPerBlock: ROWS, cell: preferred };
+
+  let best = { blocks: 1, rowsPerBlock: ROWS, cell: 16 };
+  let bestOverflow = Infinity;
+  for (let blocks = 1; blocks <= ROWS; blocks *= 2) {
+    const rowsPerBlock = ROWS / blocks;
+    const blockWidth = (width - PICKER_GAP * (blocks - 1)) / blocks;
+    const across = Math.floor((blockWidth - PICKER_GUTTER) / 4 - 4);
+    // Keep one readable strip when even the narrowest block cannot fit.
+    if (across < 16 && blocks > 1) continue;
+    const down = Math.floor((height - PICKER_HEADER) / rowsPerBlock - 4);
+    const cell = Math.max(16, Math.min(preferred, across, down));
+    const overflow = Math.max(0, PICKER_HEADER + rowsPerBlock * (cell + 4) - height);
+    if (overflow < bestOverflow || (overflow === bestOverflow && cell > best.cell)) {
+      best = { blocks, rowsPerBlock, cell };
+      bestOverflow = overflow;
+    }
+  }
+  return best;
+}
