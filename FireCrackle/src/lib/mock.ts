@@ -6,7 +6,7 @@ import type { UiAction } from "./actions";
 import type { Backend, Bucket, Flag, SettingInfo, Suggestion, View } from "./api";
 import type { ChartPoint } from "./chart";
 import type { ThumbStatus } from "./thumbs";
-import { isFire, labelsEqual, type Label } from "./grid";
+import { isFire, labelsEqual, textureRow, type Label } from "./grid";
 
 const N = 2400;
 const FPS = 30;
@@ -63,7 +63,7 @@ function drawFrame(f: number): Promise<ArrayBuffer> {
   g.fillText(`t = ${(f / FPS).toFixed(2)} s   (mock video, 30 fps)`, 40, 135);
   g.fillStyle = "#ffd24a";
   g.font = "bold 40px system-ui, sans-serif";
-  g.fillText(`TRUE sheet 1 row ${step}   (sheet 0 row ${(step + 16) % 32})`, 40, 500);
+  g.fillText(`TRUE animation row ${step}   (both sheets)`, 40, 500);
   return new Promise((resolve, reject) =>
     c.toBlob((b) => (b ? b.arrayBuffer().then(resolve) : reject(new Error("canvas.toBlob failed"))), "image/jpeg", 0.8),
   );
@@ -186,16 +186,16 @@ export function createMockBackend(): Backend {
         case "toggleMirror": pick = { ...pick, mirrored: !pick.mirrored }; break;
         case "digit": {
           if (typed === null) {
-            if (a.digit >= 4) pickRow(a.digit);
+            if (a.digit >= 4) pickRow(textureRow(pick.sheet, a.digit));
             else typed = a.digit;
           } else {
             const row = typed * 10 + a.digit;
             typed = null;
-            if (row < 32) pickRow(row);
+            if (row < 32) pickRow(textureRow(pick.sheet, row));
           }
           break;
         }
-        case "flushTyped": if (typed !== null) { const r = typed; typed = null; pickRow(r); } break;
+        case "flushTyped": if (typed !== null) { const r = typed; typed = null; pickRow(textureRow(pick.sheet, r)); } break;
         case "cancelTyping": typed = null; break;
         case "acceptSuggestion": {
           const s = suggestion();

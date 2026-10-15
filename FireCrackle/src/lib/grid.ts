@@ -28,6 +28,16 @@ export const COLUMNS: ReadonlyArray<ColumnSpec> = [
 
 export const ROWS = 32;
 
+/** User-facing animation index, with sheet 0's half-cycle offset removed. */
+export function displayRow(sheet: number, textureRow: number): number {
+  return (textureRow + (sheet === 0 ? 16 : 0)) % ROWS;
+}
+
+/** Raw PNG row used by the renderer and existing saved labels. */
+export function textureRow(sheet: number, row: number): number {
+  return (row + (sheet === 0 ? 16 : 0)) % ROWS;
+}
+
 function validRow(row: number): boolean {
   return Number.isInteger(row) && row >= 0 && row < ROWS;
 }
@@ -35,14 +45,14 @@ function validRow(row: number): boolean {
 function cellOf(sheet: number, mirrored: boolean, row: number): Cell | null {
   if (!validRow(row)) return null;
   const col = COLUMNS.findIndex((c) => c.sheet === sheet && c.mirrored === mirrored);
-  return col < 0 ? null : { col, row };
+  return col < 0 ? null : { col, row: displayRow(sheet, row) };
 }
 
 /** The fire label of a picker cell, or null for a cell outside the grid. */
 export function cellToLabel(col: number, row: number): Label | null {
   if (!Number.isInteger(col) || col < 0 || col >= COLUMNS.length || !validRow(row)) return null;
   const c = COLUMNS[col];
-  return { fire: { sheet: c.sheet, row, mirrored: c.mirrored } };
+  return { fire: { sheet: c.sheet, row: textureRow(c.sheet, row), mirrored: c.mirrored } };
 }
 
 /** The picker cell of a fire label, or null for any other label or an invalid fire label. */

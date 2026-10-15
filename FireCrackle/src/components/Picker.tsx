@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import fire0 from "../assets/fire_0.png";
 import fire1 from "../assets/fire_1.png";
-import { COLUMNS, ROWS, columnHeader, labelToCell, suggestionCells } from "../lib/grid";
+import { COLUMNS, ROWS, columnHeader, labelToCell, suggestionCells, textureRow } from "../lib/grid";
 import type { View } from "../lib/api";
 import { pickerLayout } from "../lib/pickerLayout";
 import "./Picker.css";
@@ -10,6 +10,7 @@ interface Props {
   view: View;
   /** sprite size in px; the 16 px sprites are shown scaled */
   cell: number;
+  /** The backend click contract still takes raw PNG rows. */
   onCell: (col: number, row: number) => void;
 }
 
@@ -59,6 +60,7 @@ export function Picker({ view, cell, onCell }: Props) {
                 <div key={row} className="picker-row" ref={row === focusRow ? targetRef : undefined}>
                   <div className="gutter">{row}</div>
                   {COLUMNS.map((col, c) => {
+                    const rawRow = textureRow(col.sheet, row);
                     const isCurrent = current?.col === c && current.row === row;
                     const isSug = sug.primary?.col === c && sug.primary.row === row;
                     const isAlt = sug.alt?.col === c && sug.alt.row === row;
@@ -68,7 +70,7 @@ export function Picker({ view, cell, onCell }: Props) {
                         key={c}
                         className={`cell${isCurrent ? " current" : ""}${isSug ? " suggest" : ""}${isAlt ? " alt" : ""}`}
                         title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}`}
-                        onClick={() => onCell(c, row)}
+                        onClick={() => onCell(c, rawRow)}
                         tabIndex={-1}
                       >
                         <span
@@ -76,7 +78,7 @@ export function Picker({ view, cell, onCell }: Props) {
                           style={{
                             backgroundImage: `url(${sheetImg})`,
                             backgroundSize: `${CELL}px ${CELL * ROWS}px`,
-                            backgroundPosition: `0 -${row * CELL}px`,
+                            backgroundPosition: `0 -${rawRow * CELL}px`,
                             transform: col.mirrored ? "scaleX(-1)" : undefined,
                           }}
                         />
