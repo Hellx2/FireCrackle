@@ -4,6 +4,8 @@ import type { Backend, View } from "../lib/api";
 import { IDENTITY, clampView, panView, wheelFactor, zoomAt, type Box, type ViewXform } from "../lib/zoom";
 import { isFire, type Label } from "../lib/grid";
 import { formatTime } from "../lib/timeline";
+import { HudOverlay } from "./HudOverlay";
+import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 
 export function describeLabel(label: Label): string {
   if (label === "unset") return "unlabelled";
@@ -30,6 +32,12 @@ export function VideoPane({ backend, view, onError }: Props) {
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
   const urlRef = useRef<string | null>(null);
+  const [hudEnabled, setHudEnabled] = useState(false);
+  const [hudRow, setHudRow] = useState(0);
+  const [hudOpacity, setHudOpacity] = useState(0.6);
+  const [hudFov, setHudFov] = useState(70);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const labelRow = hudRowFromLabel(view.label);
 
   useEffect(() => {
     const mine = ++token.current;
@@ -113,7 +121,8 @@ export function VideoPane({ backend, view, onError }: Props) {
           className="video-zoom"
           style={{ transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.scale})` }}
         >
-          {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} /> : <div className="placeholder">decoding…</div>}
+          {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
+          {hudEnabled && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={hudOpacity} />}
         </div>
         {xf.scale > 1 && <div className="zoom-tag">{xf.scale.toFixed(1)}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
@@ -126,6 +135,18 @@ export function VideoPane({ backend, view, onError }: Props) {
             {s.mirrored ? " · mirrored" : ""}
           </div>
         )}
+      </div>
+      <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
+        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => setHudEnabled(e.target.checked)} /> HUD fire preview</label>
+        {hudEnabled && <>
+          <button aria-label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))}>◀</button>
+          <label>Row <input aria-label="HUD texture row" type="number" min={0} max={31} value={hudRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setHudRow(n); }} /></label>
+          <button aria-label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))}>▶</button>
+          <button disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} title="Copies this frame's label into the preview; sheet 0 is converted to the equivalent sheet 1 row">Use frame label</button>
+          <label>View <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>Normal</option><option value={60}>Submerged</option></select></label>
+          <label>Opacity <input aria-label="HUD preview opacity" type="range" min={0} max={1} step={0.05} value={hudOpacity} onChange={(e) => setHudOpacity(e.target.valueAsNumber)} />{Math.round(hudOpacity*100)}%</label>
+          <span className="hud-hint">sheet 1 · preview only</span>
+        </>}
       </div>
       <div className="video-meta">
         <span>

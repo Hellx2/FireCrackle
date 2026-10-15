@@ -1,0 +1,11 @@
+# First-person HUD comparison overlay
+
+Render the vanilla 1.16.5 fire_1 sprite directly above the video using its two fixed first-person quads. Reuse the detector transform: rotate +/-10 degrees, translate (+/-0.24,-0.3,0), perspective 70 degrees (60 submerged), reversed UVs, second quad over first, alpha 0.9. Render projected texel polygons from the existing PNG; do not stretch an axis-aligned sprite across the screen.
+
+VideoPane owns temporary preview state. Toggle, row 0..31 with previous/next, opacity, geometry choice, and copying the current label into the preview. Sheet 0 converts to sheet 1 with +16 modulo 32; mirror is fixed by the HUD. No label writes. The SVG uses the decoded image's natural dimensions and the same contain fitting and zoom/pan parent as the image. Disable drawing until the image and asset dimensions are known; show asset errors.
+
+Tests first: independent projected-corner values, mirror symmetry, exact UV orientation, draw order/alpha, empty sprites, invalid dimensions/row/FOV, sheet conversion and wraparound. Failure cases: letterboxing, resizing/zooming, pending frame decode, row 31->0, controls stealing app hotkeys, transparent texels, sheet0 label conversion. Run frontend tests/build, then check controls/alignment in a browser mock. Native HUD widgets can occlude real fire; the comparison is a visual guide and cannot reproduce those widgets or automatically identify the row.
+
+Test deviation: the UV-corner assertion initially used exact floating-point equality. Equivalent interpolation differed by 3e-14 pixels; changed only that assertion to a 10-decimal-place comparison. No expected geometry values or behavior changed.
+
+Validation: seven new geometry tests pass. Browser mock verified row31->0, normal/submerged geometry, visible overlay, matching image natural dimensions/viewBox, no label writes and clipping to the image rather than letterbox gutters. Image and overlay share the existing zoom/pan parent. Vite production build passes. Frontend tests excluding the other agent's in-progress `flagText.test.ts`: 198 pass; TypeScript with that same test excluded passes. The unfiltered test/typecheck runs encounter its missing `./flagText` implementation; that is separate active phase work and was reported through the board. Native desktop-window rendering was not tested in this pass.
