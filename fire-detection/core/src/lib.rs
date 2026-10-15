@@ -1,0 +1,15 @@
+//! Sync strip codec and the tools around it. See `sync/PLAN.md` for the exact formats.
+
+pub mod detect;
+pub mod eval;
+pub mod features;
+pub mod flicker;
+pub mod json;
+pub mod labels;
+pub mod overlay;
+pub mod patch;
+pub mod presence;
+pub mod report;
+pub mod sync;
+pub mod veil;
+pub mod video;

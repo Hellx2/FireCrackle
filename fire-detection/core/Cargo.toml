@@ -1,0 +1,51 @@
+[package]
+name = "fire_core"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fire-decode"
+path = "src/bin/fire_decode.rs"
+
+[[bin]]
+name = "stamp-test-video"
+path = "src/bin/stamp_test_video.rs"
+
+[[bin]]
+name = "fire-eval"
+path = "src/bin/fire_eval.rs"
+
+[[bin]]
+name = "fire-presence"
+path = "src/bin/fire_presence.rs"
+
+[[bin]]
+name = "fire-features"
+path = "src/bin/fire_features.rs"
+
+[[bin]]
+name = "fire-patches"
+path = "src/bin/fire_patches.rs"
+
+[[bin]]
+name = "fire-colorfilter"
+path = "src/bin/fire_colorfilter.rs"
+
+[[bin]]
+name = "fire-blobs"
+path = "src/bin/fire_blobs.rs"
+
+[[bin]]
+name = "fire-flicker"
+path = "src/bin/fire_flicker.rs"
+
+[[bin]]
+name = "fire-overlay"
+path = "src/bin/fire_overlay.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

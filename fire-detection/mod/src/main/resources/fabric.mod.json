@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "firelabel",
+  "version": "${version}",
+  "name": "Fire Label",
+  "description": "Stamps a sync strip on every frame and logs the fire texture frame, to label recorded footage for fire cracking.",
+  "authors": ["FireCracking"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["org.firecracking.firelabel.FireLabelClient"]
+  },
+  "mixins": ["firelabel.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.11.0",
+    "minecraft": "1.16.5",
+    "fabric": ">=0.42.0"
+  }
+}

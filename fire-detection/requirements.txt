@@ -1,0 +1,4 @@
+obsws-python
+pytest
+numpy
+scikit-learn

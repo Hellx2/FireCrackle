@@ -1,0 +1,12 @@
+[package]
+name = "studio_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# float_roundtrip: the default float parser can be 1 ULP off, which would corrupt saved frame timestamps
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+jpeg-decoder = "0.3"

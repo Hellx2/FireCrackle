@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "org.firecracking.firelabel.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "BakedQuadAccessor",
+    "BlockRenderManagerMixin",
+    "EntityRenderDispatcherMixin",
+    "GameRendererMixin",
+    "InGameHudMixin",
+    "InGameOverlayRendererMixin",
+    "SpriteAccessor",
+    "WorldChunkMixin",
+    "WorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
