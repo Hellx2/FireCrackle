@@ -5,7 +5,7 @@ const find = (name: string) => CREDITS.flatMap((s) => s.entries).find((e) => e.n
 
 describe("the credits", () => {
   it("has the three sections in order", () => {
-    expect(CREDITS.map((s) => s.title)).toEqual(["The research behind FireCrackle", "Community", "Tool development"]);
+    expect(CREDITS.map((s) => s.title)).toEqual(["The research behind Fire Cracking", "Community", "Tool development"]);
   });
 
   it("credits the research in the order it happened, with what each person did", () => {

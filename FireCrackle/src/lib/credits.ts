@@ -12,7 +12,7 @@ export interface CreditSection {
 
 export const CREDITS: CreditSection[] = [
   {
-    title: "The research behind FireCrackle",
+    title: "The research behind Fire Cracking",
     entries: [
       { name: "Dijakonal", note: "started investigating fire in more depth and brought up that it is tick-based." },
       { name: "Lagios", note: "discovered how to use fire animations to detect splices." },
