@@ -42,21 +42,37 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** Still-frame stress preview, not a calibrated YouTube encoder or temporal codec model.
- * Full-frame compositing keeps alpha edges and codec block alignment grounded in the scene.
- * Opacity is applied before encoding; the returned image is already opaque.
+ * Scene context is used offscreen for colour/block alignment only. Restore the fire's
+ * alpha after decoding so the returned PNG overlays ONLY the mask, never the video.
+ * The caller applies comparison opacity once to this transparent result.
  */
-export async function renderCompressedQuad(frameUrl: string, texels: CompressionTexel[], width: number, height: number, opacity: number, quality: number): Promise<Blob> {
+export async function renderCompressedQuad(frameUrl: string, texels: CompressionTexel[], width: number, height: number, quality: number): Promise<Blob> {
   const spriteUrl=URL.createObjectURL(new Blob([compressionSvg(texels,width,height)],{type:"image/svg+xml"}));
+  let encodedUrl:string|undefined;
   try {
     const [frame,sprite]=await Promise.all([loadImage(frameUrl),loadImage(spriteUrl)]);
     const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
     const ctx=canvas.getContext("2d",{willReadFrequently:true});if(!ctx) throw new Error("Canvas unavailable");
     ctx.drawImage(frame,0,0,width,height);
-    ctx.globalAlpha=opacity;ctx.drawImage(sprite,0,0);ctx.globalAlpha=1;
+    ctx.drawImage(sprite,0,0);
     const pixels=ctx.getImageData(0,0,width,height);
     subsampleChroma420(pixels.data,width,height);ctx.putImageData(pixels,0,0);
-    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=> {
+    const encoded=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=> {
       if(blob?.type==="image/jpeg") resolve(blob); else reject(new Error("JPEG compression unavailable"));
     },"image/jpeg",quality));
-  } finally { URL.revokeObjectURL(spriteUrl); }
+    encodedUrl=URL.createObjectURL(encoded);
+    const damaged=await loadImage(encodedUrl);
+    ctx.clearRect(0,0,width,height);
+    ctx.drawImage(damaged,0,0);
+    // Remove every background pixel, including holes inside the fire silhouette.
+    ctx.globalCompositeOperation="destination-in";
+    ctx.drawImage(sprite,0,0);
+    ctx.globalCompositeOperation="source-over";
+    return await new Promise<Blob>((resolve,reject)=>canvas.toBlob(blob=> {
+      if(blob?.type==="image/png") resolve(blob); else reject(new Error("Transparent compression preview unavailable"));
+    },"image/png"));
+  } finally {
+    URL.revokeObjectURL(spriteUrl);
+    if(encodedUrl)URL.revokeObjectURL(encodedUrl);
+  }
 }

@@ -47,32 +47,37 @@ function mockCanvas() {
     set src(_url:string) { queueMicrotask(()=>this.onload?.()); }
   }
   vi.stubGlobal("Image",LoadedImage);
-  const ctx={globalAlpha:1, drawImage:vi.fn(function(this:{globalAlpha:number}) { draws.push(this.globalAlpha); }),
+  const ctx={globalAlpha:1, globalCompositeOperation:"source-over", clearRect:vi.fn(),
+    drawImage:vi.fn(function(this:{globalAlpha:number;globalCompositeOperation:string}) { draws.push(this.globalAlpha); operations.push(this.globalCompositeOperation); }),
     getImageData:vi.fn(()=>({data:new Uint8ClampedArray(16).fill(255)})),putImageData:vi.fn()};
   const draws:number[]=[];
+  const operations:string[]=[];
   const canvas={width:0,height:0,getContext:()=>ctx,
-    toBlob:vi.fn((cb:(blob:Blob)=>void)=>cb(new Blob(["encoded"],{type:"image/jpeg"})))};
+    toBlob:vi.fn((cb:(blob:Blob)=>void,type:string)=>cb(new Blob(["encoded"],{type})))};
   vi.stubGlobal("document",{createElement:()=>canvas});
   vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:sprite");
   vi.spyOn(URL,"revokeObjectURL").mockImplementation(()=>{});
-  return {canvas,ctx,draws};
+  return {canvas,ctx,draws,operations};
 }
 
-it("composites the scene and translucent fire at delivery size BEFORE encoding",async()=> {
-  const {canvas,ctx,draws}=mockCanvas();
-  const output=await renderCompressedQuad("blob:frame",[],2,2,0.6,0.15);
+it("returns only the compressed fire with transparency, never an opaque replacement video",async()=> {
+  const {canvas,ctx,draws,operations}=mockCanvas();
+  const output=await renderCompressedQuad("blob:frame",[],2,2,0.15);
   expect([canvas.width,canvas.height]).toEqual([2,2]);
-  expect(draws).toEqual([1,0.6]);
+  expect(draws).toEqual([1,1,1,1]);
+  expect(operations).toEqual(["source-over","source-over","source-over","destination-in"]);
+  expect(ctx.clearRect).toHaveBeenCalledWith(0,0,2,2);
   expect(ctx.drawImage.mock.calls[0]).toHaveLength(5);
   expect(ctx.putImageData.mock.invocationCallOrder[0]).toBeLessThan(canvas.toBlob.mock.invocationCallOrder[0]);
   expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function),"image/jpeg",0.15);
-  expect(output.type).toBe("image/jpeg");
+  expect(canvas.toBlob).toHaveBeenLastCalledWith(expect.any(Function),"image/png");
+  expect(output.type).toBe("image/png");
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:sprite");
 });
 
 it("reports encoder failures instead of silently presenting a sharp preview as compressed",async()=> {
   const {canvas}=mockCanvas();
   canvas.toBlob.mockImplementation(cb=>cb(new Blob(["fallback"],{type:"image/png"})));
-  await expect(renderCompressedQuad("blob:frame",[],2,2,1,0.45)).rejects.toThrow("JPEG compression unavailable");
+  await expect(renderCompressedQuad("blob:frame",[],2,2,0.45)).rejects.toThrow("JPEG compression unavailable");
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:sprite");
 });
