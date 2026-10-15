@@ -8,8 +8,6 @@ import {
   labelToCell,
   labelsEqual,
   suggestionCells,
-  displayRow,
-  textureRow,
   type Label,
 } from "./grid";
 
@@ -33,8 +31,8 @@ describe("the grid layout", () => {
 describe("cell <-> label", () => {
   it("maps a cell to the Rust JSON label shape", () => {
     expect(cellToLabel(1, 5)).toEqual({ fire: { sheet: 1, row: 5, mirrored: false } });
-    expect(cellToLabel(2, 31)).toEqual({ fire: { sheet: 0, row: 15, mirrored: true } });
-    expect(cellToLabel(0, 0)).toEqual({ fire: { sheet: 0, row: 16, mirrored: false } });
+    expect(cellToLabel(2, 31)).toEqual({ fire: { sheet: 0, row: 31, mirrored: true } });
+    expect(cellToLabel(0, 0)).toEqual({ fire: { sheet: 0, row: 0, mirrored: false } });
     expect(cellToLabel(3, 7)).toEqual({ fire: { sheet: 1, row: 7, mirrored: true } });
   });
 
@@ -86,12 +84,12 @@ describe("label helpers", () => {
 });
 
 describe("suggestion highlighting", () => {
-  it("aligns both sheets on normalized row zero while preserving raw labels", () => {
-    expect(labelToCell({ fire: { sheet: 0, row: 16, mirrored: false } })).toEqual({ col: 0, row: 0 });
-    expect(labelToCell({ fire: { sheet: 1, row: 0, mirrored: false } })).toEqual({ col: 1, row: 0 });
-    expect(suggestionCells({ sheet: 0, row: 16, mirrored: true, alt_row: 15 })).toEqual({ primary: { col: 2, row: 0 }, alt: { col: 2, row: 31 } });
+  it("uses the same animation index in labels, cells and suggestions on both sheets", () => {
     for (const sheet of [0, 1]) for (let row = 0; row < 32; row++) {
-      expect(displayRow(sheet, textureRow(sheet, row))).toBe(row);
+      const col = sheet;
+      expect(cellToLabel(col, row)).toEqual({ fire: { sheet, row, mirrored: false } });
+      expect(labelToCell({ fire: { sheet, row, mirrored: false } })).toEqual({ col, row });
+      expect(suggestionCells({ sheet, row, mirrored: false, alt_row: null }).primary).toEqual({ col, row });
     }
   });
   it("highlights the likely cell and the alternative in the same column", () => {
@@ -102,7 +100,7 @@ describe("suggestion highlighting", () => {
 
   it("has no alternative when the advance is certain", () => {
     const s = suggestionCells({ sheet: 0, mirrored: false, row: 31, alt_row: null });
-    expect(s.primary).toEqual({ col: 0, row: 15 });
+    expect(s.primary).toEqual({ col: 0, row: 31 });
     expect(s.alt).toBeNull();
   });
 

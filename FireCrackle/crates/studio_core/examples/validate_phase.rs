@@ -7,7 +7,7 @@
 //! a tick: it gets `(frame, pts, sheet-1 row)` exactly as a hand-labelled FireCrackle session would. The ticks
 //! are used here only to judge what really happened.
 //!
-//! 1. data facts and the E2 check (`f0 == f1 + 16 mod 32` on every frame);
+//! 1. data facts and shared animation-index consistency;
 //! 2. the detector on the real labels, each flag explained from the ground truth;
 //! 3. random cuts of the timeline (frames removed, later timestamps pulled forward), how many are caught.
 
@@ -79,7 +79,7 @@ fn main() {
         rows.push(Row {
             n: v["n"].as_u64().unwrap() as u32,
             tick: label["tick"].as_u64().unwrap() as u32,
-            f0: label["f0"].as_i64().unwrap().max(0) as u8,
+            f0: ((label["f0"].as_i64().unwrap().max(0) + 16) % 32) as u8,
             f1: label["f1"].as_i64().unwrap().max(0) as u8,
             fire: label["fire"].as_bool().unwrap_or(false),
         });
@@ -91,9 +91,9 @@ fn main() {
     // ---- 1. facts
     println!("== 1. data ==");
     let fire_rows: Vec<&Row> = rows.iter().filter(|r| r.fire).collect();
-    let e2 = rows.iter().filter(|r| r.f0 == (r.f1 + 16) % 32).count();
+    let e2 = rows.iter().filter(|r| r.f0 == r.f1).count();
     println!("frames with a label: {}   fire on screen: {}   video frames: {}", rows.len(), fire_rows.len(), index.frames.len());
-    println!("E2 (sheet 0 row == sheet 1 row + 16 mod 32): holds on {} of {} frames", e2, rows.len());
+    println!("Shared animation index: holds on {} of {} frames", e2, rows.len());
     let dur = pts(rows[rows.len() - 1].n) - pts(rows[0].n);
     let dticks = rows[rows.len() - 1].tick as f64 - rows[0].tick as f64;
     println!("duration {:.1} s, game ticks {}, average {:.3} ticks per video second (nominal 20)", dur, dticks, dticks / dur);
@@ -109,7 +109,7 @@ fn main() {
     println!("ground-truth sprite resets (phase tick-row changes): {} at frames {:?}", gt_resets.len(), &gt_resets[..gt_resets.len().min(12)]);
 
     // ---- 2. the detector on the real labels
-    println!("\n== 2. detector on the real labels (sheet 1 row of every fire frame; config {cfg:?}) ==");
+    println!("\n== 2. detector on the real labels (animation index of every fire frame; config {cfg:?}) ==");
     let base: Vec<FrameObs> = fire_rows
         .iter()
         .map(|r| FrameObs { frame: r.n, pts: pts(r.n), label: Label::Fire { sheet: 1, row: r.f1, mirrored: false } })

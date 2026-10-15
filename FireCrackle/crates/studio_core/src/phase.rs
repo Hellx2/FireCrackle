@@ -1,7 +1,6 @@
 //! Phase analysis without any sync strip. Every rule is derived in `PHASE-EVIDENCE.md` (E1-E5, E7):
 //!
-//! - the animation step `s` advances once per client tick (E1, E3); sheet 1 shows row `s`, sheet 0 shows
-//!   row `(s + 16) mod 32` (E2);
+//! - the animation index advances once per client tick (E1, E3), equally for both sheets;
 //! - executed ticks follow wall-clock time, `N(T) = floor(20 * T)`, so with the video timestamp `t` the
 //!   estimated phase `phi = (tick_rate * t - s) mod 32` fits in an arc of about one tick (plus timestamp
 //!   jitter) for as long as nothing resets the sprites (E7);
@@ -15,27 +14,9 @@ use serde::{Deserialize, Serialize};
 /// Number of animation steps (both sheets are 32 frames); also the circumference of the phase circle.
 pub const STEPS: u8 = 32;
 
-/// Canonical animation step of a displayed row.
-pub fn step(sheet: u8, row: u8) -> u8 {
-    if sheet == 1 {
-        row % STEPS
-    } else {
-        (row % STEPS + 16) % STEPS
-    }
-}
-
-/// Displayed row of `sheet` at animation step `s`.
-pub fn row_for_step(sheet: u8, s: u8) -> u8 {
-    if sheet == 1 {
-        s % STEPS
-    } else {
-        (s % STEPS + 16) % STEPS
-    }
-}
-
-/// For a frame showing both sheets: `row0 - row1 == 16 (mod 32)`.
+/// Simultaneous sheets must have the same animation index.
 pub fn pair_consistent(row0: u8, row1: u8) -> bool {
-    (row0 as i32 - row1 as i32).rem_euclid(STEPS as i32) == 16
+    row0 % STEPS == row1 % STEPS
 }
 
 /// Row expected `tick_delta` ticks after `row` (same sheet; both sheets advance by the same step).
@@ -248,8 +229,8 @@ pub fn analyze(obs: &[FrameObs], cfg: &Config) -> Result<Analysis, PhaseError> {
     let points: Vec<Point> = obs
         .iter()
         .filter_map(|o| match o.label {
-            Label::Fire { sheet, row, .. } => {
-                let s = step(sheet, row);
+            Label::Fire { row, .. } => {
+                let s = row;
                 let mut phase = (cfg.tick_rate * o.pts - s as f64).rem_euclid(CIRCLE);
                 if phase >= CIRCLE {
                     phase -= CIRCLE; // rem_euclid can round a tiny negative up to exactly 32

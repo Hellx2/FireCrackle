@@ -47,9 +47,9 @@ describe("first-person HUD geometry", () => {
     }
     expect(() => hudTexels(new Uint8ClampedArray(4), 0, 100, 100, 70)).toThrow();
   });
-  it("uses sheet 1 phase when copying a label, independent of picker mirroring", () => {
+  it("copies the animation index unchanged, independent of sheet and mirroring", () => {
     expect(hudRowFromLabel({ fire: { sheet: 1, row: 3, mirrored: false } })).toBe(3);
-    expect(hudRowFromLabel({ fire: { sheet: 0, row: 31, mirrored: true } })).toBe(15);
+    expect(hudRowFromLabel({ fire: { sheet: 0, row: 31, mirrored: true } })).toBe(31);
     expect(hudRowFromLabel("unset")).toBeNull();
     expect(hudRowFromLabel("no_fire")).toBeNull();
   });

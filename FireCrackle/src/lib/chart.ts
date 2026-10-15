@@ -9,7 +9,7 @@ const HALF = CIRCLE / 2;
 export interface ChartPoint {
   frame: number;
   pts: number;
-  /** The displayed sprite step (sheet 1 row == step). */
+  /** The animation index, shared by both sheets. */
   step: number;
   /** `(tick_rate * pts - step) mod 32`, in [0, 32). */
   phase: number;

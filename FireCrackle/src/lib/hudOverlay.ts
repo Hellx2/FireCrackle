@@ -49,7 +49,7 @@ export function hudTexels(rgba: Uint8ClampedArray, row: number, width: number, h
 
 export function hudRowFromLabel(label: Label): number | null {
   if (!isFire(label) || ![0,1].includes(label.fire.sheet) || !Number.isInteger(label.fire.row) || label.fire.row < 0 || label.fire.row >= 32) return null;
-  return (label.fire.row + (label.fire.sheet === 0 ? 16 : 0)) % 32;
+  return label.fire.row;
 }
 
 export const stepHudRow = (row: number, delta: number) => ((row + delta) % 32 + 32) % 32;

@@ -3,7 +3,7 @@
 //! block-permutation adaptation and overlapping bounded windows, not a calibrated significance claim.
 use crate::config::PhaseResearchConfig;
 use crate::label::Label;
-use crate::phase::{step, FrameObs};
+use crate::phase::FrameObs;
 use serde::Serialize;
 use std::f64::consts::TAU;
 
@@ -194,11 +194,11 @@ fn bins(obs: &[FrameObs], c: &PhaseResearchConfig) -> Vec<Bin> {
     let mut out = Vec::new();
     let mut group: Option<(f64, u32, u32, f64, f64, f64, usize)> = None;
     for o in obs {
-        let Label::Fire { sheet, row, .. } = o.label else {
+        let Label::Fire { row, .. } = o.label else {
             continue;
         };
         let id = (o.pts / c.bin_seconds).floor();
-        let a = (c.tick_rate * o.pts - step(sheet, row) as f64) / SCALE;
+        let a = (c.tick_rate * o.pts - row as f64) / SCALE;
         if group.as_ref().is_some_and(|g| g.0 != id) {
             let (_, first, last, _, x, y, _) = group.take().unwrap();
             out.push(Bin {
@@ -351,13 +351,13 @@ fn held_events(obs: &[FrameObs], c: &PhaseResearchConfig) -> Vec<Event> {
         }
     };
     for o in obs {
-        let Label::Fire { sheet, row, .. } = o.label else {
+        let Label::Fire { row, .. } = o.label else {
             flush(start, last, &mut out);
             start = None;
             last = None;
             continue;
         };
-        let s = step(sheet, row);
+        let s = row;
         if start.is_some_and(|v| v.2 != s)
             || last.is_some_and(|v| o.pts - v.1 > c.held_max_gap_seconds || o.frame != v.0 + 1)
         {
@@ -432,8 +432,8 @@ pub fn compare(
     let raw_phases: Vec<f64> = raw
         .iter()
         .map(|o| {
-            if let Label::Fire { sheet, row, .. } = o.label {
-                (c.tick_rate * o.pts - step(sheet, row) as f64).rem_euclid(32.0)
+            if let Label::Fire { row, .. } = o.label {
+                (c.tick_rate * o.pts - row as f64).rem_euclid(32.0)
             } else {
                 unreachable!()
             }
@@ -533,8 +533,8 @@ pub fn clock_diagnostic(
         let mut x = 0.0;
         let mut y = 0.0;
         for o in obs {
-            if let Label::Fire { sheet, row, .. } = o.label {
-                let a = (rate * o.pts - step(sheet, row) as f64) / SCALE;
+            if let Label::Fire { row, .. } = o.label {
+                let a = (rate * o.pts - row as f64) / SCALE;
                 x += a.cos();
                 y += a.sin();
             }
@@ -547,9 +547,9 @@ pub fn clock_diagnostic(
     let mut residuals: Vec<f64> = obs
         .iter()
         .filter_map(|o| {
-            if let Label::Fire { sheet, row, .. } = o.label {
+            if let Label::Fire { row, .. } = o.label {
                 Some(delta(
-                    (best.1 * o.pts - step(sheet, row) as f64).rem_euclid(32.0),
+                    (best.1 * o.pts - row as f64).rem_euclid(32.0),
                     best.2,
                 ))
             } else {

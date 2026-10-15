@@ -296,17 +296,17 @@ fn a_digit_from_four_up_labels_immediately() {
 }
 
 #[test]
-fn typed_indices_remove_sheet_zero_offset_without_changing_stored_texture_rows() {
+fn typed_indices_are_identical_on_both_sheets() {
     let mut s = session(10);
     s.toggle_sheet(); // sheet 0
     s.type_digit(0).unwrap();
     s.flush_typed().unwrap();
-    assert_eq!(s.store().get(0), fire(0, 16, false));
+    assert_eq!(s.store().get(0), fire(0, 0, false));
     s.type_digit(5).unwrap();
-    assert_eq!(s.store().get(1), fire(0, 21, false));
+    assert_eq!(s.store().get(1), fire(0, 5, false));
     s.type_digit(3).unwrap();
     s.type_digit(1).unwrap();
-    assert_eq!(s.store().get(2), fire(0, 15, false));
+    assert_eq!(s.store().get(2), fire(0, 31, false));
     s.toggle_sheet(); // sheet 1
     s.type_digit(0).unwrap();
     s.flush_typed().unwrap();

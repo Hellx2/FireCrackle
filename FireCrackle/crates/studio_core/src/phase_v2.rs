@@ -49,14 +49,14 @@ fn holds(obs: &[FrameObs], phases: &[f64], s: &Settings) -> Vec<LagInterval> {
     let c = &s.phase_v2;
     let mut lo = 0;
     while lo < obs.len() {
-        let Label::Fire { sheet, row, .. } = obs[lo].label else {
+        let Label::Fire { row, .. } = obs[lo].label else {
             lo += 1;
             continue;
         };
-        let step = phase::step(sheet, row);
+        let step = row;
         let mut hi = lo + 1;
         while hi < obs.len() {
-            let Label::Fire { sheet, row, .. } = obs[hi].label else {
+            let Label::Fire { row, .. } = obs[hi].label else {
                 break;
             };
             if obs[hi].frame != obs[hi - 1].frame + 1
@@ -64,7 +64,7 @@ fn holds(obs: &[FrameObs], phases: &[f64], s: &Settings) -> Vec<LagInterval> {
             {
                 break;
             }
-            if phase::step(sheet, row) != step {
+            if row != step {
                 let mut returned = None;
                 for j in hi + 1..(hi.saturating_add(s.phase.min_run)).min(obs.len()) {
                     if obs[j].frame != obs[j - 1].frame + 1
@@ -72,8 +72,8 @@ fn holds(obs: &[FrameObs], phases: &[f64], s: &Settings) -> Vec<LagInterval> {
                     {
                         break;
                     }
-                    if let Label::Fire { sheet, row, .. } = obs[j].label {
-                        if phase::step(sheet, row) == step {
+                    if let Label::Fire { row, .. } = obs[j].label {
+                        if row == step {
                             returned = Some(j);
                             break;
                         }

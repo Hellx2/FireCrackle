@@ -25,11 +25,8 @@ impl Game {
     }
 }
 
-/// Displayed row for step `s`, written out from E2 (independent of `row_for_step`).
-fn row_of(sheet: u8, s: i64) -> u8 {
-    let s = s.rem_euclid(32);
-    if sheet == 1 { s as u8 } else { ((s + 16) % 32) as u8 }
-}
+/// Animation index is shared by both sheets.
+fn row_of(_sheet: u8, s: i64) -> u8 { s.rem_euclid(32) as u8 }
 
 fn fire(frame: u32, pts: f64, sheet: u8, row: u8) -> FrameObs {
     FrameObs { frame, pts, label: Label::Fire { sheet, row, mirrored: false } }
@@ -70,53 +67,12 @@ fn set_row(o: &mut FrameObs, f: impl Fn(u8) -> u8) {
 // ------------------------------------------------------- step / rows (E2)
 
 #[test]
-fn step_of_sheet1_is_the_row() {
-    for r in 0..32 {
-        assert_eq!(step(1, r), r);
+fn simultaneous_sheets_share_the_same_animation_index() {
+    for index in 0..32u8 {
+        assert!(pair_consistent(index, index));
+        assert!(!pair_consistent(index, (index + 1) % 32));
     }
 }
-
-#[test]
-fn step_of_sheet0_is_row_minus_16() {
-    assert_eq!(step(0, 16), 0);
-    assert_eq!(step(0, 0), 16);
-    assert_eq!(step(0, 5), 21);
-    assert_eq!(step(0, 31), 15);
-    assert_eq!(step(0, 17), 1);
-}
-
-#[test]
-fn row_for_step_matches_the_mcmeta_frame_lists() {
-    // fire_0.png.mcmeta frames = [16..31, 0..15]; fire_1 is the identity
-    for s in 0..32u8 {
-        assert_eq!(row_for_step(1, s), s);
-        assert_eq!(row_for_step(0, s), if s < 16 { s + 16 } else { s - 16 });
-    }
-}
-
-#[test]
-fn step_and_row_for_step_are_inverse_on_every_row() {
-    for sheet in 0..2u8 {
-        for row in 0..32u8 {
-            assert_eq!(row_for_step(sheet, step(sheet, row)), row);
-        }
-    }
-}
-
-#[test]
-fn pair_consistent_means_row0_is_row1_plus_16() {
-    assert!(pair_consistent(16, 0));
-    assert!(pair_consistent(0, 16));
-    assert!(pair_consistent(31, 15));
-    assert!(!pair_consistent(17, 0));
-    assert!(!pair_consistent(5, 5));
-    for r1 in 0..32u8 {
-        assert!(pair_consistent((r1 + 16) % 32, r1));
-        assert!(!pair_consistent((r1 + 15) % 32, r1));
-        assert!(!pair_consistent((r1 + 17) % 32, r1));
-    }
-}
-
 #[test]
 fn predict_row_advances_with_ticks_and_wraps() {
     assert_eq!(predict_row(5, 0), 5);
@@ -132,9 +88,9 @@ fn predict_row_advances_with_ticks_and_wraps() {
 
 #[test]
 fn point_phase_is_rate_times_pts_minus_step_mod_32() {
-    // pts 1.0 s = 20 ticks. sheet 1 row 4: step 4 -> 16. sheet 0 row 20: step 4 -> 16.
-    // sheet 0 row 0: step 16 -> 4. pts 0.5 s = 10 ticks, sheet 1 row 12 -> -2 -> 30.
-    let o = vec![fire(0, 0.5, 1, 12), fire(1, 1.0, 1, 4), fire(2, 1.0, 0, 20), fire(3, 1.0, 0, 0)];
+    // At 1.0 s, 20 ticks minus animation index 4 gives phase 16 on either sheet.
+    // Animation index 16 gives phase 4. At 0.5 s, index 12 gives phase 30.
+    let o = vec![fire(0, 0.5, 1, 12), fire(1, 1.0, 1, 4), fire(2, 1.0, 0, 4), fire(3, 1.0, 0, 16)];
     let a = run(&o);
     let got: Vec<(u8, f64)> = a.points.iter().map(|p| (p.step, p.phase)).collect();
     assert_eq!(got, vec![(12, 30.0), (4, 16.0), (4, 16.0), (16, 4.0)]);
@@ -270,15 +226,14 @@ fn one_label_off_by_5_rows_is_a_soft_outlier_on_that_frame_only() {
 }
 
 #[test]
-fn the_wrong_sheet_with_the_right_row_number_is_a_hard_outlier() {
-    // sheet 0 shows row (s+16): the same row number on the other sheet is 16 ticks away, which no lag explains
+fn changing_sheet_preserves_the_animation_phase() {
+    // Changing appearance does not change the animation index.
     let mut o = video(600, 60.0, 1, G);
     if let Label::Fire { sheet, .. } = &mut o[200].label {
         *sheet = 0;
     }
     let a = run(&o);
-    assert_eq!(flags_of(&a), vec![(200, FlagKind::PhaseOutlier, Severity::Hard)]);
-    assert!(a.flags[0].phase_delta.abs() > 15.0);
+    assert!(a.flags.is_empty());
 }
 
 #[test]

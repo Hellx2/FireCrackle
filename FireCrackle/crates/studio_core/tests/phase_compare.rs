@@ -123,7 +123,7 @@ fn pcid_is_seed_reproducible_and_sheet_normalisation_is_shared() {
     let mut obs=phases(&(0..60).map(|i|if i<30 {0.0}else{7.0}).collect::<Vec<_>>());
     let a=compare(&obs,Method::Pcid,&Default::default()).unwrap();
     assert_eq!(a,compare(&obs,Method::Pcid,&Default::default()).unwrap());
-    for o in &mut obs { o.label=Label::Fire {sheet:0,row:16,mirrored:true}; }
+    for o in &mut obs { o.label=Label::Fire {sheet:0,row:0,mirrored:true}; }
     assert_eq!(a,compare(&obs,Method::Pcid,&Default::default()).unwrap());
 }
 #[test]

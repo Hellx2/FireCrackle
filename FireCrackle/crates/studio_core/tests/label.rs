@@ -285,11 +285,29 @@ fn zero_frame_store_is_safe() {
 fn log_line_format_is_stable() {
     assert_eq!(
         log_line(3, fire(1, 5, false)),
-        r#"{"frame":3,"label":{"fire":{"sheet":1,"row":5,"mirrored":false}}}"#
+        r#"{"version":2,"frame":3,"label":{"fire":{"sheet":1,"row":5,"mirrored":false}}}"#
     );
-    assert_eq!(log_line(0, Label::NoFire), r#"{"frame":0,"label":"no_fire"}"#);
-    assert_eq!(log_line(9, Label::Skip), r#"{"frame":9,"label":"skip"}"#);
-    assert_eq!(log_line(9, Label::Unset), r#"{"frame":9,"label":"unset"}"#);
+    assert_eq!(log_line(0, Label::NoFire), r#"{"version":2,"frame":0,"label":"no_fire"}"#);
+    assert_eq!(log_line(9, Label::Skip), r#"{"version":2,"frame":9,"label":"skip"}"#);
+    assert_eq!(log_line(9, Label::Unset), r#"{"version":2,"frame":9,"label":"unset"}"#);
+}
+
+#[test]
+fn v1_entries_migrate_once_and_v2_entries_keep_animation_indices() {
+    let legacy = r#"{"frame":0,"label":{"fire":{"sheet":0,"row":16,"mirrored":true}}}"#;
+    let first = LabelStore::replay(legacy, 4).unwrap();
+    assert_eq!(first.store.get(0), fire(0, 0, true));
+    let rewritten = log_line(0, first.store.get(0));
+    let reopened = LabelStore::replay(&rewritten, 4).unwrap();
+    assert_eq!(reopened.store.get(0), fire(0, 0, true));
+    let mixed = format!("{legacy}\n{}", log_line(0, fire(0, 5, false)));
+    assert_eq!(LabelStore::replay(&mixed, 4).unwrap().store.get(0), fire(0, 5, false));
+}
+
+#[test]
+fn future_log_versions_are_rejected_without_treating_them_as_a_torn_tail() {
+    let text = r#"{"version":999,"frame":0,"label":"skip"}"#;
+    assert!(matches!(LabelStore::replay(text, 4), Err(LabelError::Parse { .. })));
 }
 
 #[test]

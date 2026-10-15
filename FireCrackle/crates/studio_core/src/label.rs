@@ -13,7 +13,7 @@ pub enum Label {
     NoFire,
     /// Looked at, deliberately skipped.
     Skip,
-    /// A fire sprite: sheet 0 or 1, row 0..31 of that sheet, normal or mirrored.
+    /// A fire sprite: sheet 0 or 1, animation index 0..31, normal or mirrored.
     Fire { sheet: u8, row: u8, mirrored: bool },
 }
 
@@ -60,6 +60,8 @@ pub struct Replay {
 /// One log line.
 #[derive(Serialize, Deserialize)]
 struct Entry {
+    #[serde(default)]
+    version: u32,
     frame: u32,
     label: Label,
 }
@@ -196,7 +198,7 @@ impl LabelStore {
         let mut store = LabelStore::new(frame_count);
         let mut torn_tail = false;
         for (idx, &(line_no, line)) in lines.iter().enumerate() {
-            let entry: Entry = match serde_json::from_str(line) {
+            let mut entry: Entry = match serde_json::from_str(line) {
                 Ok(e) => e,
                 Err(_) if idx + 1 == lines.len() => {
                     torn_tail = true;
@@ -205,6 +207,15 @@ impl LabelStore {
                 Err(e) => return Err(LabelError::Parse { line: line_no, msg: e.to_string() }),
             };
             entry.label.validate()?;
+            if entry.version > 2 {
+                return Err(LabelError::Parse { line: line_no, msg: "Unsupported label log version".into() });
+            }
+            // Only the legacy file reader performs v1 -> v2 migration.
+            if entry.version < 2 {
+                if let Label::Fire { sheet: 0, row, .. } = &mut entry.label {
+                    *row = (*row + 16) % 32;
+                }
+            }
             store.check_frame(entry.frame)?;
             store.put(entry.frame, entry.label);
         }
@@ -212,9 +223,9 @@ impl LabelStore {
     }
 }
 
-/// One log line (no trailing newline): `{"frame":3,"label":{"fire":{"sheet":1,"row":5,"mirrored":false}}}`.
+/// One versioned animation-index log entry, without a trailing newline.
 pub fn log_line(frame: u32, label: Label) -> String {
-    serde_json::to_string(&Entry { frame, label }).expect("a plain struct always serialises")
+    serde_json::to_string(&Entry { version: 2, frame, label }).expect("a plain struct always serialises")
 }
 
 /// Clamp a (possibly negative / past-the-end) frame index into `0..count`. `None` when `count == 0`.

@@ -6,7 +6,7 @@ import type { UiAction } from "./actions";
 import type { Backend, Bucket, Flag, SettingInfo, Suggestion, View } from "./api";
 import type { ChartPoint } from "./chart";
 import type { ThumbStatus } from "./thumbs";
-import { isFire, labelsEqual, textureRow, type Label } from "./grid";
+import { isFire, labelsEqual, type Label } from "./grid";
 
 const N = 2400;
 const FPS = 30;
@@ -186,16 +186,16 @@ export function createMockBackend(): Backend {
         case "toggleMirror": pick = { ...pick, mirrored: !pick.mirrored }; break;
         case "digit": {
           if (typed === null) {
-            if (a.digit >= 4) pickRow(textureRow(pick.sheet, a.digit));
+            if (a.digit >= 4) pickRow(a.digit);
             else typed = a.digit;
           } else {
             const row = typed * 10 + a.digit;
             typed = null;
-            if (row < 32) pickRow(textureRow(pick.sheet, row));
+            if (row < 32) pickRow(row);
           }
           break;
         }
-        case "flushTyped": if (typed !== null) { const r = typed; typed = null; pickRow(textureRow(pick.sheet, r)); } break;
+        case "flushTyped": if (typed !== null) { const r = typed; typed = null; pickRow(r); } break;
         case "cancelTyping": typed = null; break;
         case "acceptSuggestion": {
           const s = suggestion();
@@ -275,8 +275,8 @@ export function createMockBackend(): Backend {
       for (const f of [...labels.keys()].sort((a, b) => a - b)) {
         const l = labels.get(f)!;
         if (!isFire(l)) continue;
-        const { sheet, row } = (l as Extract<Label, { fire: unknown }>).fire;
-        const step = sheet === 1 ? row : (row + 16) % 32;
+        const { row } = (l as Extract<Label, { fire: unknown }>).fire;
+        const step = row;
         const pts = f / FPS;
         points.push({ frame: f, pts, step, phase: (((TICK_RATE * pts - step) % 32) + 32) % 32 });
       }

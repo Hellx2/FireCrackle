@@ -3,7 +3,7 @@
 
 use crate::config::Settings;
 use crate::label::{log_line, Label, LabelError, LabelStore};
-use crate::phase::{row_for_step, Analysis, Flag, FrameObs, STEPS};
+use crate::phase::{Analysis, Flag, FrameObs, STEPS};
 use crate::project::Project;
 use serde::Serialize;
 
@@ -259,7 +259,7 @@ impl Session {
     pub fn type_digit(&mut self, digit: u8) -> Result<TypeOutcome, SessionError> {
         Ok(match self.typer.push(digit) {
             TyperResult::Pending(d) => TypeOutcome::Pending(d),
-            TyperResult::Commit(row) => TypeOutcome::Committed(self.pick_row(row_for_step(self.pick.sheet, row))?),
+            TyperResult::Commit(row) => TypeOutcome::Committed(self.pick_row(row)?),
             TyperResult::Rejected => TypeOutcome::Rejected,
         })
     }
@@ -267,7 +267,7 @@ impl Session {
     /// Commit a pending typed digit (Enter or the timeout).
     pub fn flush_typed(&mut self) -> Result<Option<Applied>, SessionError> {
         match self.typer.flush() {
-            Some(row) => Ok(Some(self.pick_row(row_for_step(self.pick.sheet, row))?)),
+            Some(row) => Ok(Some(self.pick_row(row)?)),
             None => Ok(None),
         }
     }
