@@ -11,7 +11,10 @@ pub enum AutosaveError {
     /// A line in the middle of the log cannot be parsed or holds an invalid label.
     Corrupt(LabelError),
     /// The log refers to a frame the video does not have: a log from another video.
-    VideoMismatch { frame: u32, count: u32 },
+    VideoMismatch {
+        frame: u32,
+        count: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,7 +37,10 @@ fn io(e: std::io::Error) -> AutosaveError {
 
 /// `<file name>.tmp` next to `path`.
 fn temp_path(path: &Path) -> Result<PathBuf, AutosaveError> {
-    let mut name = path.file_name().ok_or_else(|| AutosaveError::Io("the log path has no file name".into()))?.to_os_string();
+    let mut name = path
+        .file_name()
+        .ok_or_else(|| AutosaveError::Io("the log path has no file name".into()))?
+        .to_os_string();
     name.push(".tmp");
     Ok(path.with_file_name(name))
 }
@@ -49,7 +55,10 @@ impl AutosaveLog {
         cfg: &AutosaveConfig,
     ) -> Result<(AutosaveLog, LabelStore, OpenReport), AutosaveError> {
         if path.is_dir() {
-            return Err(AutosaveError::Io(format!("{} is a directory, not a label log", path.display())));
+            return Err(AutosaveError::Io(format!(
+                "{} is a directory, not a label log",
+                path.display()
+            )));
         }
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
@@ -58,7 +67,9 @@ impl AutosaveLog {
         };
         let text = String::from_utf8_lossy(&bytes);
         let replay = LabelStore::replay(&text, frame_count).map_err(|e| match e {
-            LabelError::FrameOutOfRange { frame, count } => AutosaveError::VideoMismatch { frame, count },
+            LabelError::FrameOutOfRange { frame, count } => {
+                AutosaveError::VideoMismatch { frame, count }
+            }
             other => AutosaveError::Corrupt(other),
         })?;
 
@@ -67,13 +78,31 @@ impl AutosaveLog {
             lines -= 1;
             // cut the torn last line (the last non-blank one) out of the file itself
             let body = bytes.trim_ascii_end();
-            let keep = body.iter().rposition(|&b| b == b'\n').map(|i| i + 1).unwrap_or(0);
-            let file = std::fs::OpenOptions::new().write(true).open(path).map_err(io)?;
+            let keep = body
+                .iter()
+                .rposition(|&b| b == b'\n')
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .map_err(io)?;
             file.set_len(keep as u64).map_err(io)?;
             file.sync_all().map_err(io)?;
         }
-        let report = OpenReport { lines, torn_tail_repaired: replay.torn_tail };
-        Ok((AutosaveLog { path: path.to_path_buf(), cfg: *cfg, lines }, replay.store, report))
+        let report = OpenReport {
+            lines,
+            torn_tail_repaired: replay.torn_tail,
+        };
+        Ok((
+            AutosaveLog {
+                path: path.to_path_buf(),
+                cfg: *cfg,
+                lines,
+            },
+            replay.store,
+            report,
+        ))
     }
 
     /// Append lines (each one log line without its newline). All or an error; the caller keeps the lines on error.
@@ -87,7 +116,11 @@ impl AutosaveLog {
             buf.push('\n');
         }
         // one handle per call: a vanished folder or a replaced file is noticed instead of written into the void
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).map_err(io)?;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(io)?;
         file.write_all(buf.as_bytes()).map_err(io)?;
         if self.cfg.fsync {
             file.sync_data().map_err(io)?;

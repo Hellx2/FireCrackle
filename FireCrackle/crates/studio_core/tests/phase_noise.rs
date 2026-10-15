@@ -12,7 +12,15 @@ fn row_of(s: i64) -> u8 {
 }
 
 fn fire(frame: u32, pts: f64, s: i64) -> FrameObs {
-    FrameObs { frame, pts, label: Label::Fire { sheet: 1, row: row_of(s), mirrored: false } }
+    FrameObs {
+        frame,
+        pts,
+        label: Label::Fire {
+            sheet: 1,
+            row: row_of(s),
+            mirrored: false,
+        },
+    }
 }
 
 fn run(o: &[FrameObs]) -> Analysis {
@@ -20,7 +28,10 @@ fn run(o: &[FrameObs]) -> Analysis {
 }
 
 fn kinds(a: &Analysis) -> Vec<(u32, FlagKind, Severity)> {
-    a.flags.iter().map(|f| (f.frame, f.kind, f.severity)).collect()
+    a.flags
+        .iter()
+        .map(|f| (f.frame, f.kind, f.severity))
+        .collect()
 }
 
 /// fps 20 = one tick per frame: `lens[j]` frames, each labelled `extra[j]` ticks ahead of the true step,
@@ -51,24 +62,41 @@ fn from_phases(phis: &[f64]) -> Vec<FrameObs> {
 #[test]
 fn a_level_that_comes_back_is_one_excursion_not_two_shifts() {
     let a = run(&runs_of(&[10, 5, 10], &[0, 8, 0]));
-    assert_eq!(kinds(&a), vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]);
+    assert_eq!(
+        kinds(&a),
+        vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]
+    );
     assert_eq!(a.flags[0].end_frame, 14);
-    assert!((a.flags[0].phase_delta + 8.0).abs() < 1.0, "delta {}", a.flags[0].phase_delta);
+    assert!(
+        (a.flags[0].phase_delta + 8.0).abs() < 1.0,
+        "delta {}",
+        a.flags[0].phase_delta
+    );
 }
 
 #[test]
 fn an_excursion_further_than_max_lag_is_hard() {
     let a = run(&runs_of(&[10, 5, 10], &[0, 12, 0]));
-    assert_eq!(kinds(&a), vec![(10, FlagKind::PhaseExcursion, Severity::Hard)]);
+    assert_eq!(
+        kinds(&a),
+        vec![(10, FlagKind::PhaseExcursion, Severity::Hard)]
+    );
 }
 
 #[test]
 fn a_staircase_back_is_one_excursion_with_the_peak_delta() {
     // away by 4, then by 9, then home: one event
     let a = run(&runs_of(&[10, 4, 4, 10], &[0, 4, 9, 0]));
-    assert_eq!(kinds(&a), vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]);
+    assert_eq!(
+        kinds(&a),
+        vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]
+    );
     assert_eq!(a.flags[0].end_frame, 17);
-    assert!((a.flags[0].phase_delta + 9.0).abs() < 1.0, "peak delta {}", a.flags[0].phase_delta);
+    assert!(
+        (a.flags[0].phase_delta + 9.0).abs() < 1.0,
+        "peak delta {}",
+        a.flags[0].phase_delta
+    );
 }
 
 #[test]
@@ -83,11 +111,37 @@ fn a_return_after_max_excursion_seconds_is_two_shifts_and_the_limit_is_configura
     // 700 frames at 20 fps = 35 s away from the level
     let o = runs_of(&[10, 700, 10], &[0, 8, 0]);
     let a = run(&o);
-    assert_eq!(kinds(&a), vec![(10, FlagKind::PhaseShift, Severity::Soft), (710, FlagKind::PhaseShift, Severity::Soft)]);
-    let lax = analyze(&o, &Config { max_excursion_seconds: 60.0, ..Config::default() }).unwrap();
-    assert_eq!(kinds(&lax), vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]);
-    let strict = analyze(&runs_of(&[10, 5, 10], &[0, 8, 0]), &Config { max_excursion_seconds: 0.1, ..Config::default() }).unwrap();
-    assert!(strict.flags.iter().all(|f| f.kind == FlagKind::PhaseShift), "5 frames = 0.25 s is beyond 0.1 s");
+    assert_eq!(
+        kinds(&a),
+        vec![
+            (10, FlagKind::PhaseShift, Severity::Soft),
+            (710, FlagKind::PhaseShift, Severity::Soft)
+        ]
+    );
+    let lax = analyze(
+        &o,
+        &Config {
+            max_excursion_seconds: 60.0,
+            ..Config::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        kinds(&lax),
+        vec![(10, FlagKind::PhaseExcursion, Severity::Soft)]
+    );
+    let strict = analyze(
+        &runs_of(&[10, 5, 10], &[0, 8, 0]),
+        &Config {
+            max_excursion_seconds: 0.1,
+            ..Config::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        strict.flags.iter().all(|f| f.kind == FlagKind::PhaseShift),
+        "5 frames = 0.25 s is beyond 0.1 s"
+    );
 }
 
 #[test]
@@ -126,7 +180,11 @@ fn a_cut_in_the_footage_is_a_shift_with_the_right_size() {
     }
     let a = run(&o);
     assert_eq!(kinds(&a), vec![(350, FlagKind::PhaseShift, Severity::Soft)]);
-    assert!((a.flags[0].phase_delta - 14.0).abs() < 1.0, "delta {}", a.flags[0].phase_delta);
+    assert!(
+        (a.flags[0].phase_delta - 14.0).abs() < 1.0,
+        "delta {}",
+        a.flags[0].phase_delta
+    );
 }
 
 // ------------------------------------------------------------ min shift
@@ -140,7 +198,14 @@ fn a_change_under_min_shift_is_noise_and_not_flagged() {
     phis.extend((0..30).map(|i| if i % 2 == 0 { 0.6 } else { 2.6 }));
     let o = from_phases(&phis);
     assert!(run(&o).flags.is_empty(), "{:?}", run(&o).flags);
-    let sensitive = analyze(&o, &Config { min_shift_ticks: 0.5, ..Config::default() }).unwrap();
+    let sensitive = analyze(
+        &o,
+        &Config {
+            min_shift_ticks: 0.5,
+            ..Config::default()
+        },
+    )
+    .unwrap();
     assert_eq!(sensitive.flags.len(), 1, "{:?}", sensitive.flags);
     let f = sensitive.flags[0];
     assert_eq!(f.kind, FlagKind::PhaseShift);
@@ -154,7 +219,14 @@ fn min_shift_zero_flags_every_boundary() {
     phis.extend((0..30).map(|i| if i % 2 == 0 { 0.0 } else { 2.0 }));
     phis.extend((0..30).map(|i| if i % 2 == 0 { 0.6 } else { 2.6 }));
     let o = from_phases(&phis);
-    let all = analyze(&o, &Config { min_shift_ticks: 0.0, ..Config::default() }).unwrap();
+    let all = analyze(
+        &o,
+        &Config {
+            min_shift_ticks: 0.0,
+            ..Config::default()
+        },
+    )
+    .unwrap();
     assert!(!all.flags.is_empty());
 }
 
@@ -163,7 +235,10 @@ fn min_shift_also_filters_outliers_and_excursions() {
     // a single frame 5 ticks off is flagged by default and ignored when min_shift is above 5
     let mut o = runs_of(&[10, 1, 10], &[0, 5, 0]);
     assert_eq!(run(&o).flags.len(), 1);
-    let cfg = Config { min_shift_ticks: 6.0, ..Config::default() };
+    let cfg = Config {
+        min_shift_ticks: 6.0,
+        ..Config::default()
+    };
     assert!(analyze(&o, &cfg).unwrap().flags.is_empty());
     // same for a 5-frame excursion
     o = runs_of(&[10, 5, 10], &[0, 5, 0]);
@@ -188,5 +263,8 @@ fn flags_stay_sorted_by_frame_with_excursions_and_shifts_mixed() {
     // an excursion at 10, then a permanent change at 40
     let a = run(&runs_of(&[10, 5, 25, 20], &[0, 8, 0, 9]));
     let frames: Vec<(u32, FlagKind)> = a.flags.iter().map(|f| (f.frame, f.kind)).collect();
-    assert_eq!(frames, vec![(10, FlagKind::PhaseExcursion), (40, FlagKind::PhaseShift)]);
+    assert_eq!(
+        frames,
+        vec![(10, FlagKind::PhaseExcursion), (40, FlagKind::PhaseShift)]
+    );
 }

@@ -39,14 +39,26 @@ pub fn flicker_mask(
     let off = y0 * w * 3;
     Ok((0..ma.len())
         .map(|i| {
-            ma[i] && mb[i] && (luma(&a[off + i * 3..off + i * 3 + 3]) - luma(&b[off + i * 3..off + i * 3 + 3])).abs() >= min_dl
+            ma[i]
+                && mb[i]
+                && (luma(&a[off + i * 3..off + i * 3 + 3]) - luma(&b[off + i * 3..off + i * 3 + 3]))
+                    .abs()
+                    >= min_dl
         })
         .collect())
 }
 
 /// Mean |luma change| over pixels (rows `y0..h`, every `step`-th row and column) that are palette-coloured in neither
 /// frame: how much the camera / scene moved. 0 when there is no such pixel.
-pub fn bg_motion(a: &[u8], b: &[u8], w: usize, h: usize, y0: usize, pal: &Palette, step: usize) -> Result<f64, String> {
+pub fn bg_motion(
+    a: &[u8],
+    b: &[u8],
+    w: usize,
+    h: usize,
+    y0: usize,
+    pal: &Palette,
+    step: usize,
+) -> Result<f64, String> {
     check_pair(a, b, w, h, y0)?;
     if step == 0 {
         return Err("step must be >= 1".into());
@@ -59,7 +71,9 @@ pub fn bg_motion(a: &[u8], b: &[u8], w: usize, h: usize, y0: usize, pal: &Palett
         for x in (0..w).step_by(step) {
             let i = y * w + x;
             if !ma[i] && !mb[i] {
-                sum += (luma(&a[off + i * 3..off + i * 3 + 3]) - luma(&b[off + i * 3..off + i * 3 + 3])).abs();
+                sum += (luma(&a[off + i * 3..off + i * 3 + 3])
+                    - luma(&b[off + i * 3..off + i * 3 + 3]))
+                .abs();
                 n += 1;
             }
         }

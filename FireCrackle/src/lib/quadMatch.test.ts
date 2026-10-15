@@ -40,7 +40,35 @@ it("can refine a slightly displaced rough outline",()=> {
   const rough=q.map(([x,y])=>[x+0.03,y]) as ManualQuad;
   const result=matchFireQuad(frame(atlas[0],12,true),atlas,rough);
   expect(result.candidates[0]).toMatchObject({sheet:0,row:12,mirrored:true});
-  expect(result.candidates[0].quad[0][0]).toBeCloseTo(q[0][0],5);
+  expect(Math.abs(result.candidates[0].quad[0][0]-q[0][0])).toBeLessThan(0.02);
+  const fixed=matchFireQuad(frame(atlas[0],12,true),atlas,rough,{refineGeometry:false});
+  expect(result.candidates[0].score).toBeGreaterThanOrEqual(fixed.candidates[0].score);
+});
+it("keeps every corner unchanged when geometry adjustment is disabled",()=> {
+  const atlas=sheets(),image=frame(atlas[1],23,true);
+  const rough=q.map(([x,y])=>[x+0.03,y+0.02]) as ManualQuad;
+  const result=matchFireQuad(image,atlas,rough,{refineGeometry:false});
+  expect(result.searched).toBe(128);
+  expect(result.candidates.length).toBeGreaterThan(0);
+  for(const candidate of result.candidates) expect(candidate.quad).toBe(rough);
+  const exact=matchFireQuad(image,atlas,q,{refineGeometry:false});
+  expect(exact.candidates[0]).toMatchObject({sheet:1,row:23,mirrored:true});
+});
+it("filters appearances before scoring, including mirrored edges and a single survivor",()=> {
+  const atlas=sheets();
+  for(let y=0;y<16;y++) {
+    atlas[0][((7*16+y)*16)*4+3]=y<1?255:0;
+    atlas[0][((7*16+y)*16+15)*4+3]=y<2?255:0;
+  }
+  const image=frame(atlas[1],23,true);
+  const result=matchFireQuad(image,atlas,q,{refineGeometry:false,filter:{left:2,right:1}});
+  expect(result.searched).toBe(1);
+  expect(result.candidates).toHaveLength(1);
+  expect(result.candidates[0]).toMatchObject({sheet:0,row:7,mirrored:true});
+  expect(matchFireQuad(image,atlas,q,{refineGeometry:false,filter:{left:2,right:1,excluded:[39]}}).status).toBe("filtered");
+  expect(Number.isFinite(result.margin)).toBe(true);
+  expect(matchFireQuad(image,atlas,q,{filter:{left:16,right:0}})).toEqual({status:"filtered",candidates:[],margin:0,searched:0});
+  expect(matchFireQuad(image,atlas,q,{refineGeometry:false,filter:{left:null,right:null}}).searched).toBe(128);
 });
 it("does not automatically select a winner when two sheets are indistinguishable",()=> {
   const [atlas]=sheets();
@@ -75,15 +103,15 @@ it("abstains when almost all fire is covered rather than inventing a row",()=> {
 it("adds positive evidence without diluting existing votes with masked colour mismatches",()=> {
   const atlas=sheets(),covered=frame(atlas[1],23,true);
   for(let y=10;y<90;y++)for(let x=32;x<80;x++)covered.data.set([8,8,8,255],(y*160+x)*4);
-  const partial=matchFireQuad(covered,atlas,q).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
+  const partial=matchFireQuad(covered,atlas,q,{refineGeometry:false}).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
   expect(partial).toBeDefined();
   // Reveal unrelated but fire-coloured pixels on the hidden side. They may
   // support rivals, but cannot subtract this candidate's existing evidence.
   const unrelated=frame(atlas[0],3,false);
   for(let y=10;y<90;y++)for(let x=32;x<80;x++)covered.data.set(unrelated.data.subarray((y*160+x)*4,(y*160+x)*4+4),(y*160+x)*4);
-  const extra=matchFireQuad(covered,atlas,q).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
+  const extra=matchFireQuad(covered,atlas,q,{refineGeometry:false}).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
   expect(extra).toBeDefined();expect(extra.score).toBeGreaterThanOrEqual(partial.score);
-  const full=matchFireQuad(frame(atlas[1],23,true),atlas,q).candidates[0];
+  const full=matchFireQuad(frame(atlas[1],23,true),atlas,q,{refineGeometry:false}).candidates[0];
   expect(full.score).toBeGreaterThan(partial.score);
 });
 
@@ -105,4 +133,15 @@ it("searches independent width and height stretches for a misproportioned outlin
   expect(result.candidates[0]).toMatchObject({sheet:1,row:23,mirrored:true});
   expect(result.candidates[0].quad[1][0]-result.candidates[0].quad[0][0]).toBeLessThan(0.75);
   expect(result.candidates[0].quad[3][1]-result.candidates[0].quad[0][1]).toBeGreaterThan(0.64);
+});
+
+it("cannot manufacture hundreds of votes from repeated probes of a tiny native patch",()=> {
+  const solid=new Uint8ClampedArray(16*512*4);
+  for(let i=0;i<solid.length;i+=4)solid.set([200,100,10,255],i);
+  const data=new Uint8ClampedArray(8*8*4);
+  for(let i=0;i<data.length;i+=4)data.set([200,100,10,255],i);
+  const outline:ManualQuad=[[0,0],[1,0],[1,1],[0,1]];
+  const result=matchFireQuad({data,width:8,height:8},[solid,solid],outline,{refineGeometry:false});
+  expect(result.candidates[0].score).toBeLessThanOrEqual(64/256+1e-9);
+  expect(result.status).not.toBe("clear");
 });

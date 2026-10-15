@@ -2,7 +2,11 @@ use studio_core::config::IndexConfig;
 use studio_core::index::*;
 
 fn p(pts: f64, key: bool) -> Packet {
-    Packet { pts: Some(pts), dts: None, key }
+    Packet {
+        pts: Some(pts),
+        dts: None,
+        key,
+    }
 }
 
 fn build(packets: &[Packet]) -> FrameIndex {
@@ -19,9 +23,30 @@ const REAL: &str = "0.000000,N/A,K__\n0.067000,N/A,___\n0.033000,0.000000,___\n0
 fn parses_the_real_recording_fixture() {
     let pk = parse_packets(REAL).unwrap();
     assert_eq!(pk.len(), 8);
-    assert_eq!(pk[0], Packet { pts: Some(0.0), dts: None, key: true });
-    assert_eq!(pk[1], Packet { pts: Some(0.067), dts: None, key: false });
-    assert_eq!(pk[2], Packet { pts: Some(0.033), dts: Some(0.0), key: false });
+    assert_eq!(
+        pk[0],
+        Packet {
+            pts: Some(0.0),
+            dts: None,
+            key: true
+        }
+    );
+    assert_eq!(
+        pk[1],
+        Packet {
+            pts: Some(0.067),
+            dts: None,
+            key: false
+        }
+    );
+    assert_eq!(
+        pk[2],
+        Packet {
+            pts: Some(0.033),
+            dts: Some(0.0),
+            key: false
+        }
+    );
     assert!(pk[1..].iter().all(|x| !x.key));
 }
 
@@ -44,7 +69,10 @@ fn na_pts_becomes_none_and_negative_pts_parses() {
 #[test]
 fn keyframe_is_any_k_in_the_flags() {
     let pk = parse_packets("0,0,K__\n1,1,_K_\n2,2,KD_\n3,3,___\n4,4,__\n").unwrap();
-    assert_eq!(pk.iter().map(|x| x.key).collect::<Vec<_>>(), vec![true, true, true, false, false]);
+    assert_eq!(
+        pk.iter().map(|x| x.key).collect::<Vec<_>>(),
+        vec![true, true, true, false, false]
+    );
 }
 
 #[test]
@@ -76,7 +104,10 @@ fn b_frame_reordering_is_sorted_into_display_order() {
     let idx = build(&parse_packets(REAL).unwrap());
     let pts: Vec<f64> = idx.frames.iter().map(|f| f.pts).collect();
     assert_eq!(pts, vec![0.0, 0.017, 0.033, 0.05, 0.067, 0.083, 0.1, 0.133]);
-    assert_eq!(idx.frames.iter().map(|f| f.n).collect::<Vec<_>>(), (0..8).collect::<Vec<u32>>());
+    assert_eq!(
+        idx.frames.iter().map(|f| f.n).collect::<Vec<_>>(),
+        (0..8).collect::<Vec<u32>>()
+    );
     assert_eq!(idx.summary.frame_count, 8);
 }
 
@@ -84,24 +115,38 @@ fn b_frame_reordering_is_sorted_into_display_order() {
 fn keyframe_flags_follow_their_frame_through_the_sort() {
     // the keyframe is the third packet in decode order but display frame 1
     let idx = build(&[p(0.0, false), p(0.2, false), p(0.1, true)]);
-    assert_eq!(idx.frames.iter().map(|f| f.key).collect::<Vec<_>>(), vec![false, true, false]);
+    assert_eq!(
+        idx.frames.iter().map(|f| f.key).collect::<Vec<_>>(),
+        vec![false, true, false]
+    );
 }
 
 #[test]
 fn equal_pts_keep_decode_order_and_are_counted() {
     let idx = build(&[p(0.0, true), p(0.1, false), p(0.1, true), p(0.2, false)]);
     assert_eq!(idx.summary.duplicate_pts, 1);
-    assert_eq!(idx.summary.frame_count, 4, "both duplicates stay in the index");
-    assert_eq!(idx.frames[1].key, false);
-    assert_eq!(idx.frames[2].key, true, "stable: decode order breaks the tie");
+    assert_eq!(
+        idx.summary.frame_count, 4,
+        "both duplicates stay in the index"
+    );
+    assert!(!idx.frames[1].key);
+    assert!(idx.frames[2].key, "stable: decode order breaks the tie");
 }
 
 #[test]
 fn packets_without_pts_are_left_out_and_counted() {
     let pk = [
-        Packet { pts: None, dts: None, key: false },
+        Packet {
+            pts: None,
+            dts: None,
+            key: false,
+        },
         p(0.0, true),
-        Packet { pts: None, dts: Some(0.1), key: false },
+        Packet {
+            pts: None,
+            dts: Some(0.1),
+            key: false,
+        },
         p(0.1, false),
     ];
     let idx = build(&pk);
@@ -111,9 +156,19 @@ fn packets_without_pts_are_left_out_and_counted() {
 
 #[test]
 fn no_packets_and_no_timestamps_are_errors() {
-    assert_eq!(build_index(&[], &IndexConfig::default()), Err(IndexError::NoPackets));
-    let none = [Packet { pts: None, dts: None, key: true }];
-    assert_eq!(build_index(&none, &IndexConfig::default()), Err(IndexError::NoTimestamps));
+    assert_eq!(
+        build_index(&[], &IndexConfig::default()),
+        Err(IndexError::NoPackets)
+    );
+    let none = [Packet {
+        pts: None,
+        dts: None,
+        key: true,
+    }];
+    assert_eq!(
+        build_index(&none, &IndexConfig::default()),
+        Err(IndexError::NoTimestamps)
+    );
 }
 
 #[test]
@@ -125,7 +180,9 @@ fn negative_start_pts_is_fine_and_duration_is_last_minus_first() {
 // ------------------------------------------------------------ timing
 
 fn ms_rounded_60fps(n: usize) -> Vec<Packet> {
-    (0..n).map(|i| p((i as f64 * 1000.0 / 60.0).round() / 1000.0, i == 0)).collect()
+    (0..n)
+        .map(|i| p((i as f64 * 1000.0 / 60.0).round() / 1000.0, i == 0))
+        .collect()
 }
 
 #[test]
@@ -188,7 +245,10 @@ fn two_frames_use_their_single_interval_as_the_median() {
 fn thresholds_come_from_the_config() {
     // ms jitter becomes "irregular" when the deviation limit is tiny
     let pk = ms_rounded_60fps(600);
-    let tight = IndexConfig { irregular_deviation: 0.01, ..IndexConfig::default() };
+    let tight = IndexConfig {
+        irregular_deviation: 0.01,
+        ..IndexConfig::default()
+    };
     assert!(build_index(&pk, &tight).unwrap().summary.vfr);
     // a 50% irregular stream is not VFR when the fraction limit is 90%
     let mut t = 0.0;
@@ -198,15 +258,23 @@ fn thresholds_come_from_the_config() {
             p(t, i == 0)
         })
         .collect();
-    let lax = IndexConfig { vfr_fraction: 0.9, ..IndexConfig::default() };
+    let lax = IndexConfig {
+        vfr_fraction: 0.9,
+        ..IndexConfig::default()
+    };
     assert!(!build_index(&alt, &lax).unwrap().summary.vfr);
-    assert!(build_index(&alt, &lax).unwrap().summary.irregular_intervals > 50, "still counted");
+    assert!(
+        build_index(&alt, &lax).unwrap().summary.irregular_intervals > 50,
+        "still counted"
+    );
 }
 
 // ------------------------------------------------------------ lookup
 
 fn ten_fps_with_keys(n: usize, keys: &[usize]) -> FrameIndex {
-    let pk: Vec<Packet> = (0..n).map(|i| p(i as f64 / 10.0, keys.contains(&i))).collect();
+    let pk: Vec<Packet> = (0..n)
+        .map(|i| p(i as f64 / 10.0, keys.contains(&i)))
+        .collect();
     build(&pk)
 }
 
@@ -218,7 +286,11 @@ fn keyframe_at_or_before_finds_the_governing_keyframe() {
     assert_eq!(idx.keyframe_at_or_before(8), Some(8));
     assert_eq!(idx.keyframe_at_or_before(15), Some(8));
     assert_eq!(idx.keyframe_at_or_before(19), Some(16));
-    assert_eq!(idx.keyframe_at_or_before(1_000_000), Some(16), "past the end is clamped");
+    assert_eq!(
+        idx.keyframe_at_or_before(1_000_000),
+        Some(16),
+        "past the end is clamped"
+    );
 }
 
 #[test]

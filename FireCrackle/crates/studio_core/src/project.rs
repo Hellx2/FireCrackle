@@ -42,7 +42,9 @@ pub enum ProjectError {
     /// Empty, truncated or otherwise unparsable project file.
     Corrupt(String),
     /// Written by a newer FireCrackle.
-    UnsupportedVersion { found: u32 },
+    UnsupportedVersion {
+        found: u32,
+    },
     VideoMissing(String),
     /// The video at `video_path` is not the one the project was made from.
     VideoChanged,
@@ -75,10 +77,16 @@ impl Project {
             ));
         }
         if ix.duplicate_pts > 0 {
-            warnings.push(format!("{} frames share a duplicate timestamp with the previous frame.", ix.duplicate_pts));
+            warnings.push(format!(
+                "{} frames share a duplicate timestamp with the previous frame.",
+                ix.duplicate_pts
+            ));
         }
         if ix.missing_pts > 0 {
-            warnings.push(format!("{} packets have no timestamp and were left out of the index.", ix.missing_pts));
+            warnings.push(format!(
+                "{} packets have no timestamp and were left out of the index.",
+                ix.missing_pts
+            ));
         }
         Project {
             version: PROJECT_VERSION,
@@ -88,7 +96,14 @@ impl Project {
             meta,
             index: ix.clone(),
             warnings,
-            frames: index.frames.iter().map(|f| FrameRecord { pts: f.pts, key: f.key }).collect(),
+            frames: index
+                .frames
+                .iter()
+                .map(|f| FrameRecord {
+                    pts: f.pts,
+                    key: f.key,
+                })
+                .collect(),
         }
     }
 
@@ -99,7 +114,11 @@ impl Project {
                 .frames
                 .iter()
                 .enumerate()
-                .map(|(n, f)| FrameEntry { n: n as u32, pts: f.pts, key: f.key })
+                .map(|(n, f)| FrameEntry {
+                    n: n as u32,
+                    pts: f.pts,
+                    key: f.key,
+                })
                 .collect(),
             summary: self.index.clone(),
         }
@@ -109,7 +128,10 @@ impl Project {
     pub fn save(&self, path: &Path) -> Result<(), ProjectError> {
         let io = |e: std::io::Error| ProjectError::Io(e.to_string());
         let bytes = serde_json::to_vec(self).map_err(|e| ProjectError::Io(e.to_string()))?;
-        let mut tmp_name = path.file_name().ok_or_else(|| ProjectError::Io("no file name".into()))?.to_os_string();
+        let mut tmp_name = path
+            .file_name()
+            .ok_or_else(|| ProjectError::Io("no file name".into()))?
+            .to_os_string();
         tmp_name.push(".tmp");
         let tmp = path.with_file_name(tmp_name);
         let written = (|| -> std::io::Result<()> {
@@ -126,15 +148,19 @@ impl Project {
     }
 
     pub fn load(path: &Path) -> Result<Project, ProjectError> {
-        let bytes = std::fs::read(path).map_err(|e| ProjectError::Io(format!("{}: {e}", path.display())))?;
+        let bytes = std::fs::read(path)
+            .map_err(|e| ProjectError::Io(format!("{}: {e}", path.display())))?;
         let value: serde_json::Value = serde_json::from_slice(&bytes)
             .map_err(|e| ProjectError::Corrupt(format!("{}: {e}", path.display())))?;
         if let Some(found) = value.get("version").and_then(|v| v.as_u64()) {
             if found > PROJECT_VERSION as u64 {
-                return Err(ProjectError::UnsupportedVersion { found: found.min(u32::MAX as u64) as u32 });
+                return Err(ProjectError::UnsupportedVersion {
+                    found: found.min(u32::MAX as u64) as u32,
+                });
             }
         }
-        serde_json::from_value(value).map_err(|e| ProjectError::Corrupt(format!("{}: {e}", path.display())))
+        serde_json::from_value(value)
+            .map_err(|e| ProjectError::Corrupt(format!("{}: {e}", path.display())))
     }
 
     /// The video must still exist and be the same one (fingerprint).
@@ -149,7 +175,9 @@ impl Project {
             .nth(1)
             .filter(|_| self.fingerprint.split(':').count() == 3)
             .and_then(|w| w.parse::<u64>().ok())
-            .ok_or_else(|| ProjectError::Corrupt(format!("malformed fingerprint {:?}", self.fingerprint)))?;
+            .ok_or_else(|| {
+                ProjectError::Corrupt(format!("malformed fingerprint {:?}", self.fingerprint))
+            })?;
         let now = fingerprint(video, window).map_err(|e| ProjectError::Io(e.to_string()))?;
         if now == self.fingerprint {
             Ok(())

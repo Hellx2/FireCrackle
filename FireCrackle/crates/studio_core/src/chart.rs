@@ -37,8 +37,8 @@ pub fn decimate(points: &[Point], max_points: usize) -> Vec<Point> {
         let reference = points[lo].phase;
         let (mut min_i, mut max_i) = (lo, lo);
         let (mut min_v, mut max_v) = (0.0f64, 0.0f64);
-        for i in lo..hi {
-            let v = offset(points[i].phase, reference);
+        for (i, point) in points.iter().enumerate().take(hi).skip(lo) {
+            let v = offset(point.phase, reference);
             if v < min_v {
                 min_v = v;
                 min_i = i;

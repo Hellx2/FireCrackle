@@ -26,9 +26,16 @@ pub enum DecodeError {
     Cancelled,
     Io(String),
     /// ffmpeg produced fewer frames than the job needs.
-    ShortRead { expected: u32, got: u32 },
+    ShortRead {
+        expected: u32,
+        got: u32,
+    },
     /// A decoded frame's timestamp does not match the index entry it would be shown as.
-    Misaligned { frame: u32, expected_pts: f64, got_pts: f64 },
+    Misaligned {
+        frame: u32,
+        expected_pts: f64,
+        got_pts: f64,
+    },
     /// The MJPEG stream could not be split into whole pictures.
     BadStream(String),
     FfmpegFailed(String),
@@ -64,7 +71,10 @@ pub fn split_jpegs(bytes: &[u8]) -> Split {
             Parsed::Corrupt => from = start + 2,
         }
     }
-    Split { frames, incomplete_tail }
+    Split {
+        frames,
+        incomplete_tail,
+    }
 }
 
 enum Parsed {
@@ -208,7 +218,9 @@ pub fn decode_job(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| DecodeError::ToolMissing(format!("could not run {:?}: {e}", tools.ffmpeg)))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| DecodeError::ToolMissing(format!("could not run {:?}: {e}", tools.ffmpeg)))?;
 
     // ffmpeg's log goes to stderr; drain it on its own thread so a full pipe cannot stall the video output
     let mut err_pipe = child.stderr.take().expect("stderr was piped");
@@ -248,10 +260,16 @@ pub fn decode_job(
     let got = split.frames.len() as u32;
     if !status.success() {
         let tail: Vec<&str> = stderr.lines().rev().take(3).collect();
-        return Err(DecodeError::FfmpegFailed(format!("{status}: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" | "))));
+        return Err(DecodeError::FfmpegFailed(format!(
+            "{status}: {}",
+            tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+        )));
     }
     if got < job.decode_count {
-        return Err(DecodeError::ShortRead { expected: job.decode_count, got });
+        return Err(DecodeError::ShortRead {
+            expected: job.decode_count,
+            got,
+        });
     }
 
     // every decoded frame must be the index entry it will be shown as
@@ -275,11 +293,18 @@ pub fn decode_job(
         };
         let got_pts = time_base + times[k as usize];
         if (got_pts - expected).abs() > cfg.align_tolerance * interval.max(1e-6) {
-            return Err(DecodeError::Misaligned { frame, expected_pts: expected, got_pts });
+            return Err(DecodeError::Misaligned {
+                frame,
+                expected_pts: expected,
+                got_pts,
+            });
         }
     }
 
     Ok((job.first..=job.last)
-        .map(|frame| DecodedFrame { frame, jpeg: bytes[split.frames[(frame - job.keyframe) as usize].clone()].to_vec() })
+        .map(|frame| DecodedFrame {
+            frame,
+            jpeg: bytes[split.frames[(frame - job.keyframe) as usize].clone()].to_vec(),
+        })
         .collect())
 }

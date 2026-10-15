@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import "./App.css";
 import { FlagsPanel } from "./components/FlagsPanel";
+import { AutomationTools } from "./components/AutomationTools";
 import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
 import { Picker } from "./components/Picker";
@@ -12,23 +13,27 @@ import { VideoPane, type VideoPreviewHandle } from "./components/VideoPane";
 import { selectAtlasCell, atlasSprite, type PreviewSprite } from "./lib/firePreview";
 import { candidateConfirmation, candidateDigit, candidateText, currentCandidate, spriteText, type CandidateDraft } from "./lib/labelCandidate";
 import { isFire } from "./lib/grid";
+import { stepHudRow } from "./lib/hudOverlay";
 import { useLayout } from "./hooks/useLayout";
 import { usePanelZooms } from "./hooks/usePanelZooms";
 import { useWheel } from "./hooks/useWheel";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { FLAGS_LIMITS, SIDE_LIMITS, VIDEO_LIMITS, clampSize, pickerCellSize, upperBound } from "./lib/layout";
 import { STOPPED, keyInfo, nextPlayback, playbackTick, toUiAction, type Playback } from "./lib/actions";
-import { createBackend, settingValue, type Backend } from "./lib/api";
-import { actionFor } from "./lib/keymap";
+import { createBackend, settingValue, LABEL_SOURCE_NAMES, type Backend } from "./lib/api";
+import { actionFor, isGlobalKey } from "./lib/keymap";
+import type { AtlasEdges, EdgeFilter } from "./lib/atlasFilter";
+import { readPreferences, writePreferences } from "./lib/preferences";
 
 const KEY_HELP: Array<[string, string]> = [
   ["← →", "previous / next frame (hold to repeat)"],
+  ["↑ ↓", "previous / next animation phase"],
   ["Shift + ← →", "big step"],
   ["Home / End", "first / last frame"],
   ["Space · L · J · K", "play / faster forward / faster backward / stop"],
   ["0–9", "choose a candidate animation index; nothing is saved yet"],
   ["Enter", "confirm the candidate and advance"],
-  ["S · M", "toggle sheet · toggle mirrored"],
+  ["R · T", "flip candidate · switch fire sheet 0/1"],
   ["X · Shift+X", "choose no fire · skip, then confirm"],
   ["Backspace · Ctrl+Z", "clear · undo"],
   ["Ctrl+S", "save labels and current video position"],
@@ -40,6 +45,7 @@ const KEY_HELP: Array<[string, string]> = [
   ["Ctrl + quad drag", "move all four corners together"],
   ["Hold Shift", "quad transform box: corners resize proportionally, edges resize one axis, top handle rotates"],
   ["P", "make the manual quad a parallelogram"],
+  ["E", "toggle active fire preview opacity 0% / 100%"],
   ["Select corner + Alt+click", "place that corner at the click, including outside the image; Esc deselects"],
 ];
 
@@ -56,8 +62,9 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [showCredits, setShowCredits] = useState(false);
+  const [showAutomation,setShowAutomation]=useState(false);
   const [path, setPath] = useState("");
-  const [tab, setTab] = useState<"label" | "phase">("label");
+  const [tab, setTab] = useState<"label" | "phase">(readPreferences().tab);
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
   const workareaRef = useRef<HTMLElement | null>(null);
   const { zooms, wheel: zoomWheel, reset: resetZoom } = usePanelZooms();
@@ -65,6 +72,9 @@ export default function App() {
   const videoPreviewRef = useRef<VideoPreviewHandle | null>(null);
   const [draft, setDraft] = useState<CandidateDraft | null>(null);
   const [previewSprite, setPreviewSprite] = useState<PreviewSprite | null>(null);
+  const [atlasFilter, setAtlasFilter] = useState<EdgeFilter>(readPreferences().atlasFilter);
+  const [atlasEdges, setAtlasEdges] = useState<AtlasEdges | null>(null);
+  useEffect(() => { writePreferences({ tab, atlasFilter }); }, [tab, atlasFilter]);
   const candidate = view ? currentCandidate(view, draft) : null;
   const candidatePick = candidate && isFire(candidate.label) ? candidate.label.fire : view?.pick;
   const stageSprite = useCallback((sprite: PreviewSprite) => {
@@ -112,8 +122,13 @@ export default function App() {
 
   // hotkeys
   useEffect(() => {
-    if (!view || tab !== "label") return;
+    if (!view || tab !== "label" || showAutomation) return;
     const onKey = (e: KeyboardEvent) => {
+      // Reserve navigation/confirmation before focused inputs and buttons handle them.
+      if (isGlobalKey(e)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
       const a = actionFor(
         keyInfo({
           key: e.key,
@@ -127,6 +142,7 @@ export default function App() {
       );
       if (!a) return;
       e.preventDefault();
+      if (a.type === "step" || a.type === "bigStep") setPlayback(STOPPED);
       if (a.type === "acceptSuggestion") { confirmCandidate(); return; }
       if (a.type === "digit") {
         setPlayback(STOPPED);
@@ -139,6 +155,11 @@ export default function App() {
         return;
       }
       if (a.type === "cancelTyping") { setDraft(null); return; }
+      if (a.type === "stepPhase") {
+        const sprite = previewSprite ?? (candidate && isFire(candidate.label) ? candidate.label.fire : { ...view!.pick, row: 0 });
+        stageSprite({ ...sprite, sheet: sprite.sheet as 0 | 1, row: stepHudRow(sprite.row, a.dir) });
+        return;
+      }
       if (a.type === "toggleSheet" || a.type === "toggleMirror") {
         const pick = candidatePick ?? view!.pick;
         stageSprite({ sheet: (a.type === "toggleSheet" ? 1 - pick.sheet : pick.sheet) as 0 | 1, mirrored: a.type === "toggleMirror" ? !pick.mirrored : pick.mirrored, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0 });
@@ -150,7 +171,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite]);
+  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite, previewSprite, showAutomation]);
 
   // playback is a Label-tab thing: it must not keep stepping behind the chart
   useEffect(() => {
@@ -199,6 +220,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
+          <img className="brand-icon" src="/favicon.png" alt="" draggable={false} />
           FireCrackle
           {backend.mock && <span className="tag mock">mock backend</span>}
         </div>
@@ -233,6 +255,7 @@ export default function App() {
               </IconButton>
               <span className="toolbar-divider" />
               <IconButton icon="keyboard" label="Keyboard shortcuts" aria-pressed={showKeys} onClick={() => setShowKeys((s) => !s)} />
+              <IconButton icon="fire" label="Optional automation tools" onClick={() => {setPlayback(STOPPED);setShowAutomation(true);}}>Auto label</IconButton>
               <IconButton icon="settings" label="Settings" onClick={() => setShowSettings(true)} />
             </>
           )}
@@ -276,7 +299,7 @@ export default function App() {
           )}
         </div>
       ) : tab === "phase" ? (
-        <PhaseTab backend={backend} view={view} version={ws.version} onJump={jumpToLabel} />
+        <PhaseTab key={ws.videoPath} videoKey={ws.videoPath} backend={backend} view={view} version={ws.version} onJump={jumpToLabel} />
       ) : (
         <main
           className="workarea"
@@ -290,7 +313,7 @@ export default function App() {
           }
         >
           <section className="left">
-            <VideoPane backend={backend} view={view} previewRef={videoPreviewRef} onPreviewChange={setPreviewSprite} onMatchCandidate={stageSprite} onError={(m) => console.error(m)} />
+            <VideoPane key={ws.videoPath} videoKey={ws.videoPath} backend={backend} view={view} atlasFilter={atlasFilter} atlasEdges={atlasEdges} onAnimationStart={() => setPlayback(STOPPED)} previewRef={videoPreviewRef} onPreviewChange={setPreviewSprite} onMatchCandidate={stageSprite} onStep={(frames) => { setPlayback(STOPPED); void act({ type: "step", frames }); }} onError={(m) => console.error(m)} />
             <Splitter
               direction="row"
               label="Video height"
@@ -301,6 +324,7 @@ export default function App() {
               onReset={() => resetLayout("videoHeight")}
             />
             <Timeline
+              key={ws.videoPath} videoKey={ws.videoPath}
               backend={backend}
               view={view}
               flags={ws.flags}
@@ -334,15 +358,14 @@ export default function App() {
           />
           <aside className="right">
             <div className="pick-state">
-              <IconButton icon="layers" label={`Toggle candidate sheet · current sheet ${candidatePick?.sheet ?? view.pick.sheet}`} className={candidatePick?.sheet === 1 ? "on" : ""} onClick={() => stageSprite({ sheet: (1 - (candidatePick?.sheet ?? view.pick.sheet)) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: candidatePick?.mirrored ?? view.pick.mirrored })} title="Toggle candidate sheet · S">
+              <IconButton icon="layers" label={`Toggle candidate sheet · current sheet ${candidatePick?.sheet ?? view.pick.sheet}`} className={candidatePick?.sheet === 1 ? "on" : ""} onClick={() => stageSprite({ sheet: (1 - (candidatePick?.sheet ?? view.pick.sheet)) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: candidatePick?.mirrored ?? view.pick.mirrored })} title="Switch between fire sheets 0 and 1 · T · selects a candidate; Confirm saves">
                 {candidatePick?.sheet ?? view.pick.sheet}
               </IconButton>
-              <IconButton icon="mirror" label="Mirror candidate" aria-pressed={candidatePick?.mirrored ?? view.pick.mirrored} className={candidatePick?.mirrored ? "on" : ""} onClick={() => stageSprite({ sheet: (candidatePick?.sheet ?? view.pick.sheet) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: !(candidatePick?.mirrored ?? view.pick.mirrored) })} title="Toggle candidate mirror · M">
+              <IconButton icon="mirror" label="Mirror candidate" aria-pressed={candidatePick?.mirrored ?? view.pick.mirrored} className={candidatePick?.mirrored ? "on" : ""} onClick={() => stageSprite({ sheet: (candidatePick?.sheet ?? view.pick.sheet) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: !(candidatePick?.mirrored ?? view.pick.mirrored) })} title="Flip the candidate sprite horizontally · R · Confirm saves">
                 {candidatePick?.mirrored ? "mirrored" : "normal"}
               </IconButton>
-              <IconButton icon="noFire" label="Choose no fire" onClick={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "no_fire", origin: "picked" }); }} title="Choose no fire · X · then Confirm" />
-              <IconButton icon="skip" label="Choose skip" onClick={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "skip", origin: "picked" }); }} title="Choose skip · Shift+X · then Confirm" />
-              <IconButton icon="erase" label="Clear label" onClick={() => void act({ type: "clear" })} title="Clear label · Backspace" />
+              <IconButton icon="skip" label="Choose skip" onClick={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "skip", origin: "picked" }); }} title="Mark this frame to skip · Shift+X · then Confirm" />
+              <IconButton icon="erase" label="Clear label" onClick={() => void act({ type: "clear" })} title="Remove this frame's saved label immediately, making it unreviewed · Backspace · Undo restores it" />
             </div>
             <div className="candidate-panel">
               <div className="candidate-heading"><strong>Candidate</strong><span>{candidate?.origin === "guess" ? "time guess · not saved" : candidate?.origin === "saved" ? "current saved label" : "not saved"}</span></div>
@@ -355,11 +378,15 @@ export default function App() {
               <div className="atlas-state guess-state"><b>Time guess</b><span>{view.suggestion ? spriteText(view.suggestion) : "Unavailable"}</span></div>
               {view.suggestion && <div className="prediction-source">Extrapolated from <button onClick={() => { setPlayback(STOPPED); void act({ type: "goTo", frame: view.suggestion!.from_frame }); }}>labeled frame {view.suggestion.from_frame}</button>{view.suggestion.alt_row !== null && <span> · alternate row {view.suggestion.alt_row}</span>}</div>}
               <div className="atlas-state saved-state"><b>Saved</b><span>{view.label === "unset" ? "Unreviewed" : candidateText(view.label)}</span></div>
+              {view.label_sources?.length ? <div className="atlas-state"><b>Source</b><span>{view.label_sources.map(s=>LABEL_SOURCE_NAMES[s]).join(" + ")}</span></div> : null}
               <div className="atlas-legend"><span className="candidate-state">C Candidate</span><span className="preview-state">P Preview</span><span className="guess-state">T Time guess</span><span className="saved-state">✓ Saved</span></div>
               <div className="candidate-help">Click selects · Ctrl+click previews only · Confirm saves</div>
             </div>
             <div className="picker-box" ref={pickerBoxRef} onDoubleClick={(e) => e.ctrlKey && resetZoom("picker")}>
               <Picker
+                onEdgesChange={setAtlasEdges}
+                onNoFire={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "no_fire", origin: "picked" }); }}
+                filter={atlasFilter} onFilterChange={setAtlasFilter}
                 view={view}
                 candidate={candidate?.label ?? null}
                 preview={previewSprite}
@@ -384,6 +411,7 @@ export default function App() {
       )}
       {showSettings && <SettingsPanel settings={ws.settings} onSet={ws.setSetting} onClose={() => setShowSettings(false)} />}
       {showCredits && <Credits onClose={() => setShowCredits(false)} />}
+      {showAutomation && view && <AutomationTools key={ws.videoPath} backend={backend} videoPath={ws.videoPath} onApply={ws.applyAutomation} onClose={()=>setShowAutomation(false)} />}
     </div>
   );
 }

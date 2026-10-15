@@ -99,8 +99,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
     let legacy = phase::analyze(&base, &legacy_cfg).unwrap();
-    let mut settings = Settings::default();
-    settings.phase = legacy_cfg;
+    let mut settings = Settings {
+        phase: legacy_cfg,
+        ..Settings::default()
+    };
     settings.phase_v2.bin_seconds = cfg.bin_seconds;
     settings.phase_v2.penalty_ticks2 = cfg.penalty_ticks2;
     settings.phase_v2.anchor_bins = cfg.clock_anchor_bins;

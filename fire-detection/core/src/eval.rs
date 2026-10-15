@@ -17,7 +17,9 @@ pub struct Outcome {
 
 pub fn judge(t: &Templates, truth: Candidate, ranked: &[Scored]) -> Outcome {
     let hit = |c: Candidate| c == truth || t.same_pixels(c, truth);
-    let Some(best) = ranked.first() else { return Outcome::default() };
+    let Some(best) = ranked.first() else {
+        return Outcome::default();
+    };
     Outcome {
         exact: hit(best.cand),
         top3: ranked.iter().take(3).any(|s| hit(s.cand)),
@@ -128,7 +130,10 @@ impl Stats {
             return "no parts evaluated\n".to_string();
         }
         let pct = |a: u64, n: u64| format!("{:5.1}%", 100.0 * a as f64 / n as f64);
-        let mut out = format!("{:<16} {:>9} {:>7} {:>7} {:>9} {:>7}\n", "", "parts", "exact", "top3", "sheet+mir", "row");
+        let mut out = format!(
+            "{:<16} {:>9} {:>7} {:>7} {:>9} {:>7}\n",
+            "", "parts", "exact", "top3", "sheet+mir", "row"
+        );
         let mut line = |name: &str, t: &Tally| {
             out.push_str(&format!(
                 "{:<16} {:>9} {:>7} {:>7} {:>9} {:>7}\n",

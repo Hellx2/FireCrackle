@@ -15,7 +15,9 @@ pub fn parse_label_head(line: &str) -> Option<(u32, u64)> {
     }
     let id: u32 = rest[..end].parse().ok()?;
     let rest = rest[end..].strip_prefix(",\"tick\":")?;
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     if end == 0 {
         return None;
     }
@@ -64,21 +66,30 @@ impl LabelIndex {
             match parse_label_head(&String::from_utf8_lossy(&buf)) {
                 Some((id, tick)) => {
                     rows += 1;
-                    if map.contains_key(&id) {
-                        duplicate_ids += 1;
+                    if let std::collections::hash_map::Entry::Vacant(entry) = map.entry(id) {
+                        entry.insert((tick, line_offset));
                     } else {
-                        map.insert(id, (tick, line_offset));
+                        duplicate_ids += 1;
                     }
                 }
                 None => bad_lines += 1,
             }
         }
-        Ok(LabelIndex { reader, pos: offset, map, rows, bad_lines, duplicate_ids })
+        Ok(LabelIndex {
+            reader,
+            pos: offset,
+            map,
+            rows,
+            bad_lines,
+            duplicate_ids,
+        })
     }
 
     /// The tick and the raw text of the row for `id`, if there is one.
     pub fn get(&mut self, id: u32) -> io::Result<Option<(u64, String)>> {
-        let Some(&(tick, offset)) = self.map.get(&id) else { return Ok(None) };
+        let Some(&(tick, offset)) = self.map.get(&id) else {
+            return Ok(None);
+        };
         self.reader.seek_relative(offset as i64 - self.pos as i64)?;
         let mut buf = Vec::new();
         let n = self.reader.read_until(b'\n', &mut buf)?;

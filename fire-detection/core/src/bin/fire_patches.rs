@@ -8,7 +8,9 @@
 //! writes one row per frame: n,fire,area,mind,veil,positives(p>=0.5),largest_cluster,max_p.
 
 use fire_core::json::{parse, Value};
-use fire_core::patch::{frame_patch_features, patch_truth, pool_patches, PatchModel, PatchTruth, FEATURE_NAMES, PATCH};
+use fire_core::patch::{
+    frame_patch_features, patch_truth, pool_patches, PatchModel, PatchTruth, FEATURE_NAMES, PATCH,
+};
 use fire_core::presence::Palette;
 use fire_core::video::{parse_probe, read_frame};
 use std::fs::File;
@@ -34,17 +36,28 @@ fn main() {
     let mut assets = "data/assets".to_string();
     let mut it = std::env::args().skip(1);
     let num = |v: Option<String>, what: &str| -> u64 {
-        v.and_then(|v| v.parse().ok()).filter(|&s| s > 0).unwrap_or_else(|| die(format!("{what} needs a positive number")))
+        v.and_then(|v| v.parse().ok())
+            .filter(|&s| s > 0)
+            .unwrap_or_else(|| die(format!("{what} needs a positive number")))
     };
     while let Some(a) = it.next() {
         match a.as_str() {
             "--stride" => stride = num(it.next(), "--stride"),
             "--neg-keep" => neg_keep = num(it.next(), "--neg-keep"),
-            "--min-n" => min_n = it.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| die("--min-n needs a number".into())),
+            "--min-n" => {
+                min_n = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| die("--min-n needs a number".into()))
+            }
             "--out" => out = it.next(),
             "--model" => model_path = it.next(),
             "--frames-out" => frames_out = it.next(),
-            "--assets" => assets = it.next().unwrap_or_else(|| die("--assets needs a directory".into())),
+            "--assets" => {
+                assets = it
+                    .next()
+                    .unwrap_or_else(|| die("--assets needs a directory".into()))
+            }
             _ if video.is_none() => video = Some(a),
             _ if joined.is_none() => joined = Some(a),
             _ => die(format!("unexpected argument {a}")),
@@ -57,8 +70,10 @@ fn main() {
     if scoring && frames_out.is_none() || !scoring && out.is_none() {
         die("give --out (training rows) or --model with --frames-out (frame scores)".into());
     }
-    let s0 = std::fs::read(format!("{assets}/fire_0.rgba")).unwrap_or_else(|e| die(format!("fire_0.rgba: {e}")));
-    let s1 = std::fs::read(format!("{assets}/fire_1.rgba")).unwrap_or_else(|e| die(format!("fire_1.rgba: {e}")));
+    let s0 = std::fs::read(format!("{assets}/fire_0.rgba"))
+        .unwrap_or_else(|e| die(format!("fire_0.rgba: {e}")));
+    let s1 = std::fs::read(format!("{assets}/fire_1.rgba"))
+        .unwrap_or_else(|e| die(format!("fire_1.rgba: {e}")));
     let loose = Palette::from_rgba(&[&s0, &s1], 24.0).unwrap_or_else(|e| die(e));
     let strict = Palette::from_rgba(&[&s0, &s1], 8.0).unwrap_or_else(|e| die(e));
     let model = model_path.map(|p| {
@@ -67,7 +82,14 @@ fn main() {
     });
 
     let probe = Command::new("ffprobe")
-        .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate"])
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,r_frame_rate",
+        ])
         .args(["-of", "default=noprint_wrappers=1"])
         .arg(&video)
         .output()
@@ -76,7 +98,15 @@ fn main() {
     let mut child = Command::new("ffmpeg")
         .args(["-nostdin", "-loglevel", "error", "-nostats", "-i"])
         .arg(&video)
-        .args(["-fps_mode", "passthrough", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        .args([
+            "-fps_mode",
+            "passthrough",
+            "-pix_fmt",
+            "rgb24",
+            "-f",
+            "rawvideo",
+            "-",
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .unwrap_or_else(|e| die(format!("ffmpeg: {e}")));
@@ -84,22 +114,30 @@ fn main() {
     let (w, h) = (info.width, info.height);
     let mut frame = vec![0u8; w * h * 3];
 
-    let target = if scoring { frames_out.clone().unwrap() } else { out.clone().unwrap() };
-    let mut csv = BufWriter::new(File::create(&target).unwrap_or_else(|e| die(format!("{target}: {e}"))));
+    let target = if scoring {
+        frames_out.clone().unwrap()
+    } else {
+        out.clone().unwrap()
+    };
+    let mut csv =
+        BufWriter::new(File::create(&target).unwrap_or_else(|e| die(format!("{target}: {e}"))));
     if scoring {
         writeln!(csv, "n,fire,area,mind,veil,positives,largest,max_p").unwrap();
     } else {
         writeln!(csv, "n,px,py,truth,{}", FEATURE_NAMES.join(",")).unwrap();
     }
 
-    let rows = BufReader::new(File::open(&joined).unwrap_or_else(|e| die(format!("{joined}: {e}"))));
+    let rows =
+        BufReader::new(File::open(&joined).unwrap_or_else(|e| die(format!("{joined}: {e}"))));
     let mut rng = 0x2545F4914F6CDD1Du64;
     let (mut n, mut pos_rows, mut neg_rows, mut frames) = (0u64, 0u64, 0u64, 0u64);
     for line in rows.lines() {
         let line = line.unwrap_or_else(|e| die(format!("reading {joined}: {e}")));
         match read_frame(&mut pipe, &mut frame) {
             Ok(true) => {}
-            Ok(false) => die(format!("video ended at frame {n} but {joined} has more rows")),
+            Ok(false) => die(format!(
+                "video ended at frame {n} but {joined} has more rows"
+            )),
             Err(e) => die(format!("reading video: {e}")),
         }
         let this = n;
@@ -108,8 +146,13 @@ fn main() {
             continue;
         }
         let Ok(row) = parse(&line) else { continue };
-        let Some(label) = row.get("label") else { continue };
-        let (Some(lw), Some(fire)) = (label.get("w").and_then(Value::num), label.get("fire").and_then(Value::bool)) else {
+        let Some(label) = row.get("label") else {
+            continue;
+        };
+        let (Some(lw), Some(fire)) = (
+            label.get("w").and_then(Value::num),
+            label.get("fire").and_then(Value::bool),
+        ) else {
             continue;
         };
         let scale = w as f64 / lw;
@@ -118,7 +161,13 @@ fn main() {
         for f in label.get("fires").and_then(Value::arr).unwrap_or(&[]) {
             let d = f.get("dist").and_then(Value::num).unwrap_or(0.0);
             for p in f.get("parts").and_then(Value::arr).unwrap_or(&[]) {
-                let b: Vec<f64> = p.get("box").and_then(Value::arr).unwrap_or(&[]).iter().filter_map(Value::num).collect();
+                let b: Vec<f64> = p
+                    .get("box")
+                    .and_then(Value::arr)
+                    .unwrap_or(&[])
+                    .iter()
+                    .filter_map(Value::num)
+                    .collect();
                 let vis = p.get("vis").and_then(Value::num).unwrap_or(0.0);
                 if b.len() == 4 {
                     let bx = [b[0] * scale, b[1] * scale, b[2] * scale, b[3] * scale];
@@ -129,7 +178,8 @@ fn main() {
                 }
             }
         }
-        let grid = frame_patch_features(&frame, w, h, STRIP_ROWS, &loose, &strict).unwrap_or_else(|e| die(e));
+        let grid = frame_patch_features(&frame, w, h, STRIP_ROWS, &loose, &strict)
+            .unwrap_or_else(|e| die(e));
         frames += 1;
         if let Some(m) = &model {
             let probs: Vec<f32> = grid.feats.iter().map(|f| m.predict(f)).collect();
@@ -141,7 +191,11 @@ fn main() {
                 "{this},{},{:.1},{},{:.3},{},{},{:.3}",
                 fire as u8,
                 area,
-                if mind.is_finite() { format!("{mind:.2}") } else { String::new() },
+                if mind.is_finite() {
+                    format!("{mind:.2}")
+                } else {
+                    String::new()
+                },
                 veil,
                 pooled.positives,
                 pooled.largest_cluster,
@@ -159,7 +213,7 @@ fn main() {
                         rng ^= rng << 13;
                         rng ^= rng >> 7;
                         rng ^= rng << 17;
-                        if rng % neg_keep != 0 {
+                        if !rng.is_multiple_of(neg_keep) {
                             continue;
                         }
                         0

@@ -9,36 +9,67 @@ fn c(sheet: u8, mirror: bool, row: u8) -> Candidate {
 }
 
 fn ranked(list: &[Candidate]) -> Vec<Scored> {
-    list.iter().enumerate().map(|(i, &cand)| Scored { cand, score: 1.0 - i as f64 * 0.1 }).collect()
+    list.iter()
+        .enumerate()
+        .map(|(i, &cand)| Scored {
+            cand,
+            score: 1.0 - i as f64 * 0.1,
+        })
+        .collect()
 }
 
 #[test]
 fn judge_exact_hit() {
     let t = Templates::from_rgba(S0, S1).unwrap();
-    let o = judge(&t, c(0, false, 5), &ranked(&[c(0, false, 5), c(0, false, 6)]));
+    let o = judge(
+        &t,
+        c(0, false, 5),
+        &ranked(&[c(0, false, 5), c(0, false, 6)]),
+    );
     assert!(o.exact && o.top3 && o.group_ok && o.row_ok);
 }
 
 #[test]
 fn judge_right_row_wrong_group_is_not_exact() {
     let t = Templates::from_rgba(S0, S1).unwrap();
-    let o = judge(&t, c(0, false, 5), &ranked(&[c(1, false, 5), c(0, false, 5)]));
+    let o = judge(
+        &t,
+        c(0, false, 5),
+        &ranked(&[c(1, false, 5), c(0, false, 5)]),
+    );
     assert!(!o.exact && o.row_ok && !o.group_ok && o.top3);
 }
 
 #[test]
 fn judge_right_group_wrong_row() {
     let t = Templates::from_rgba(S0, S1).unwrap();
-    let o = judge(&t, c(1, true, 5), &ranked(&[c(1, true, 9), c(1, true, 10), c(1, true, 11), c(1, true, 5)]));
+    let o = judge(
+        &t,
+        c(1, true, 5),
+        &ranked(&[c(1, true, 9), c(1, true, 10), c(1, true, 11), c(1, true, 5)]),
+    );
     assert!(!o.exact && !o.top3 && o.group_ok && !o.row_ok);
 }
 
 #[test]
 fn judge_top3_boundary() {
     let t = Templates::from_rgba(S0, S1).unwrap();
-    let third = judge(&t, c(0, false, 1), &ranked(&[c(0, false, 7), c(0, false, 8), c(0, false, 1)]));
+    let third = judge(
+        &t,
+        c(0, false, 1),
+        &ranked(&[c(0, false, 7), c(0, false, 8), c(0, false, 1)]),
+    );
     assert!(third.top3 && !third.exact);
-    let fourth = judge(&t, c(0, false, 1), &ranked(&[c(0, false, 7), c(0, false, 8), c(0, false, 9), c(0, false, 1)]));
+    let fourth = judge(
+        &t,
+        c(0, false, 1),
+        &ranked(&[
+            c(0, false, 7),
+            c(0, false, 8),
+            c(0, false, 9),
+            c(0, false, 1),
+        ]),
+    );
     assert!(!fourth.top3);
 }
 
@@ -95,7 +126,11 @@ fn stats_count_per_key_and_overall() {
     let t = Templates::from_rgba(S0, S1).unwrap();
     let mut s = Stats::default();
     let hit = judge(&t, c(0, false, 5), &ranked(&[c(0, false, 5)]));
-    let miss = judge(&t, c(0, false, 5), &ranked(&[c(1, true, 9), c(0, false, 5)]));
+    let miss = judge(
+        &t,
+        c(0, false, 5),
+        &ranked(&[c(1, true, 9), c(0, false, 5)]),
+    );
     s.record(&["a", "x"], hit);
     s.record(&["a", "y"], miss);
     s.record(&["b", "x"], hit);
@@ -113,7 +148,10 @@ fn the_table_lists_every_key_with_percentages_and_survives_no_data() {
     let t = Templates::from_rgba(S0, S1).unwrap();
     assert!(Stats::default().table().contains("no parts"));
     let mut s = Stats::default();
-    s.record(&["a"], judge(&t, c(0, false, 5), &ranked(&[c(0, false, 5)])));
+    s.record(
+        &["a"],
+        judge(&t, c(0, false, 5), &ranked(&[c(0, false, 5)])),
+    );
     let table = s.table();
     assert!(table.contains("a"));
     assert!(table.contains("100.0%"));

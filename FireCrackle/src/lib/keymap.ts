@@ -10,6 +10,7 @@ export type Action =
   | { type: "shuttle"; dir: -1 | 0 | 1 }
   | { type: "toggleSheet" }
   | { type: "toggleMirror" }
+  | { type: "stepPhase"; dir: 1 | -1 }
   | { type: "digit"; digit: number }
   | { type: "acceptSuggestion" }
   | { type: "clear" }
@@ -28,7 +29,7 @@ export interface KeyInfo {
   altKey: boolean;
   metaKey: boolean;
   repeat: boolean;
-  /** The event target is a text field / editable element: hotkeys must not fire. */
+  /** The event target is editable; only global navigation/confirm keys may fire. */
   targetEditable: boolean;
 }
 
@@ -39,6 +40,8 @@ function buildDefaults(): Bindings {
   const b: Record<string, Action> = {
     ArrowRight: { type: "step", frames: 1 },
     ArrowLeft: { type: "step", frames: -1 },
+    ArrowUp: { type: "stepPhase", dir: -1 },
+    ArrowDown: { type: "stepPhase", dir: 1 },
     "Shift+ArrowRight": { type: "bigStep", dir: 1 },
     "Shift+ArrowLeft": { type: "bigStep", dir: -1 },
     Home: { type: "home" },
@@ -47,9 +50,10 @@ function buildDefaults(): Bindings {
     j: { type: "shuttle", dir: -1 },
     k: { type: "shuttle", dir: 0 },
     l: { type: "shuttle", dir: 1 },
-    s: { type: "toggleSheet" },
-    m: { type: "toggleMirror" },
+    t: { type: "toggleSheet" },
+    r: { type: "toggleMirror" },
     Enter: { type: "acceptSuggestion" },
+    "Shift+Enter": { type: "acceptSuggestion" },
     Backspace: { type: "clear" },
     x: { type: "noFire" },
     "Shift+x": { type: "skip" },
@@ -79,9 +83,14 @@ export function bindingId(e: KeyInfo): string {
   return parts.join("+");
 }
 
-/** The action for a key event, or null (not bound, typing in a text field, or an unwanted auto-repeat). */
+/** Reserved across focused controls in the Label workspace. */
+export function isGlobalKey(e: Pick<KeyInfo, "key" | "ctrlKey" | "altKey" | "metaKey">): boolean {
+  return !e.ctrlKey && !e.altKey && !e.metaKey && ["ArrowLeft", "ArrowRight", "Enter"].includes(e.key);
+}
+
+/** The action for a key event, or null (not bound, scoped typing, or unwanted auto-repeat). */
 export function actionFor(e: KeyInfo, bindings: Bindings = DEFAULT_BINDINGS): Action | null {
-  if (e.targetEditable) return null;
+  if (e.targetEditable && !isGlobalKey(e)) return null;
   const id = bindingId(e);
   if (!Object.prototype.hasOwnProperty.call(bindings, id)) return null;
   const action = bindings[id];

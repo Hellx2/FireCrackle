@@ -29,16 +29,34 @@ struct Fake {
 }
 
 impl FrameSource for Fake {
-    fn decode(&self, job: &DecodeJob, _cancel: &AtomicBool) -> Result<Vec<DecodedFrame>, DecodeError> {
+    fn decode(
+        &self,
+        job: &DecodeJob,
+        _cancel: &AtomicBool,
+    ) -> Result<Vec<DecodedFrame>, DecodeError> {
         if self.delay_ms > 0 {
             std::thread::sleep(Duration::from_millis(self.delay_ms));
         }
         if self.fail_next.swap(false, Ordering::SeqCst) {
             return Err(DecodeError::FfmpegFailed("boom".into()));
         }
-        self.calls.lock().unwrap().push((job.keyframe, job.first, job.last));
-        let bytes = |f: u32| if self.frame_bytes > 0 { vec![f as u8; self.frame_bytes] } else { payload(f) };
-        Ok((job.first..=job.last).map(|f| DecodedFrame { frame: f, jpeg: bytes(f) }).collect())
+        self.calls
+            .lock()
+            .unwrap()
+            .push((job.keyframe, job.first, job.last));
+        let bytes = |f: u32| {
+            if self.frame_bytes > 0 {
+                vec![f as u8; self.frame_bytes]
+            } else {
+                payload(f)
+            }
+        };
+        Ok((job.first..=job.last)
+            .map(|f| DecodedFrame {
+                frame: f,
+                jpeg: bytes(f),
+            })
+            .collect())
     }
 }
 
@@ -50,13 +68,22 @@ impl Fake {
 
 fn index_of(n: usize, key_every: usize) -> Arc<FrameIndex> {
     let pk: Vec<Packet> = (0..n)
-        .map(|i| Packet { pts: Some(i as f64 / 60.0), dts: None, key: key_every != 0 && i % key_every == 0 })
+        .map(|i| Packet {
+            pts: Some(i as f64 / 60.0),
+            dts: None,
+            key: key_every != 0 && i % key_every == 0,
+        })
         .collect();
     Arc::new(build_index(&pk, &IndexConfig::default()).unwrap())
 }
 
 fn cfg(back: u32, ahead: u32, fraction: f64) -> DecodeConfig {
-    DecodeConfig { window_back: back, window_ahead: ahead, prefetch_fraction: fraction, ..DecodeConfig::default() }
+    DecodeConfig {
+        window_back: back,
+        window_ahead: ahead,
+        prefetch_fraction: fraction,
+        ..DecodeConfig::default()
+    }
 }
 
 fn service(n: usize, c: DecodeConfig, fake: &Arc<Fake>) -> FrameService {
@@ -86,7 +113,10 @@ fn hits_inside_the_window_do_not_decode_and_return_the_same_bytes() {
     }
     svc.wait_idle();
     assert_eq!(fake.calls().len(), 1);
-    assert!(Arc::ptr_eq(&a, &svc.get(100).unwrap()), "a hit hands out the cached bytes, not a copy");
+    assert!(
+        Arc::ptr_eq(&a, &svc.get(100).unwrap()),
+        "a hit hands out the cached bytes, not a copy"
+    );
 }
 
 #[test]
@@ -105,14 +135,22 @@ fn running_low_ahead_starts_a_background_prefetch_of_a_whole_window() {
 
 #[test]
 fn prefetch_is_single_flight() {
-    let fake = Arc::new(Fake { delay_ms: 40, ..Fake::default() });
+    let fake = Arc::new(Fake {
+        delay_ms: 40,
+        ..Fake::default()
+    });
     let svc = service(1000, cfg(30, 90, 0.5), &fake);
     svc.get(100).unwrap();
     for _ in 0..6 {
         svc.get(150).unwrap(); // every call finds the same shortage
     }
     svc.wait_idle();
-    assert_eq!(fake.calls().len(), 2, "one cold decode and exactly one prefetch: {:?}", fake.calls());
+    assert_eq!(
+        fake.calls().len(),
+        2,
+        "one cold decode and exactly one prefetch: {:?}",
+        fake.calls()
+    );
 }
 
 #[test]
@@ -131,7 +169,12 @@ fn stepping_backwards_prefetches_behind() {
 #[test]
 fn evicted_frames_are_dropped_from_memory() {
     let fake = Arc::new(Fake::default());
-    let svc = FrameService::with_capacity(index_of(1000, 60), fake.clone() as Arc<dyn FrameSource>, cfg(2, 2, 0.5), 5 * FRAME_BYTES);
+    let svc = FrameService::with_capacity(
+        index_of(1000, 60),
+        fake.clone() as Arc<dyn FrameSource>,
+        cfg(2, 2, 0.5),
+        5 * FRAME_BYTES,
+    );
     svc.get(100).unwrap();
     assert_eq!(svc.cached_frames(), vec![98, 99, 100, 101, 102]);
     svc.get(500).unwrap();
@@ -142,7 +185,12 @@ fn evicted_frames_are_dropped_from_memory() {
 #[test]
 fn the_wanted_frame_survives_a_window_bigger_than_the_cache() {
     let fake = Arc::new(Fake::default());
-    let svc = FrameService::with_capacity(index_of(1000, 60), fake.clone() as Arc<dyn FrameSource>, cfg(2, 2, 0.5), 3 * FRAME_BYTES);
+    let svc = FrameService::with_capacity(
+        index_of(1000, 60),
+        fake.clone() as Arc<dyn FrameSource>,
+        cfg(2, 2, 0.5),
+        3 * FRAME_BYTES,
+    );
     let bytes = svc.get(100).unwrap();
     assert_eq!(*bytes, payload(100));
     assert!(svc.cached_frames().contains(&100));
@@ -152,9 +200,20 @@ fn the_wanted_frame_survives_a_window_bigger_than_the_cache() {
 #[test]
 fn the_default_capacity_comes_from_cache_mb() {
     let fake = Arc::new(Fake::default());
-    let svc = FrameService::new(index_of(1000, 60), fake.clone() as Arc<dyn FrameSource>, DecodeConfig { cache_mb: 16, ..cfg(30, 90, 0.5) });
+    let svc = FrameService::new(
+        index_of(1000, 60),
+        fake.clone() as Arc<dyn FrameSource>,
+        DecodeConfig {
+            cache_mb: 16,
+            ..cfg(30, 90, 0.5)
+        },
+    );
     svc.get(100).unwrap();
-    assert_eq!(svc.cached_frames().len(), 121, "a handful of tiny test frames fit easily in 16 MiB");
+    assert_eq!(
+        svc.cached_frames().len(),
+        121,
+        "a handful of tiny test frames fit easily in 16 MiB"
+    );
 }
 
 // --------------------------------------------------------------- failures
@@ -164,9 +223,16 @@ fn a_failed_decode_is_an_error_and_leaves_the_cache_unchanged() {
     let fake = Arc::new(Fake::default());
     let svc = service(1000, cfg(30, 90, 0.5), &fake);
     fake.fail_next.store(true, Ordering::SeqCst);
-    assert!(matches!(svc.get(100), Err(FrameError::Decode(DecodeError::FfmpegFailed(_)))));
+    assert!(matches!(
+        svc.get(100),
+        Err(FrameError::Decode(DecodeError::FfmpegFailed(_)))
+    ));
     assert!(svc.cached_frames().is_empty());
-    assert_eq!(*svc.get(100).unwrap(), payload(100), "the next request retries and succeeds");
+    assert_eq!(
+        *svc.get(100).unwrap(),
+        payload(100),
+        "the next request retries and succeeds"
+    );
 }
 
 #[test]
@@ -184,13 +250,21 @@ fn a_failed_prefetch_is_swallowed_and_retried_later() {
     let svc = service(1000, cfg(30, 90, 0.5), &fake);
     svc.get(100).unwrap();
     fake.fail_next.store(true, Ordering::SeqCst);
-    assert_eq!(*svc.get(146).unwrap(), payload(146), "the hit itself is unaffected");
+    assert_eq!(
+        *svc.get(146).unwrap(),
+        payload(146),
+        "the hit itself is unaffected"
+    );
     svc.wait_idle();
     assert_eq!(fake.calls().len(), 1);
     assert!(!svc.cached_frames().contains(&191));
     svc.get(147).unwrap();
     svc.wait_idle();
-    assert_eq!(fake.calls().len(), 2, "the shortage is still there, so the next hit retries");
+    assert_eq!(
+        fake.calls().len(),
+        2,
+        "the shortage is still there, so the next hit retries"
+    );
     assert!(svc.cached_frames().contains(&191));
 }
 
@@ -217,11 +291,22 @@ fn a_new_config_applies_from_the_next_request() {
 
 #[test]
 fn two_threads_asking_for_different_frames_both_get_the_right_ones() {
-    let fake = Arc::new(Fake { delay_ms: 20, ..Fake::default() });
+    let fake = Arc::new(Fake {
+        delay_ms: 20,
+        ..Fake::default()
+    });
     let svc = service(1000, cfg(30, 90, 0.5), &fake);
     std::thread::scope(|s| {
-        let a = s.spawn(|| (100..140).map(|f| (f, svc.get(f).unwrap())).collect::<Vec<_>>());
-        let b = s.spawn(|| (700..740).map(|f| (f, svc.get(f).unwrap())).collect::<Vec<_>>());
+        let a = s.spawn(|| {
+            (100..140)
+                .map(|f| (f, svc.get(f).unwrap()))
+                .collect::<Vec<_>>()
+        });
+        let b = s.spawn(|| {
+            (700..740)
+                .map(|f| (f, svc.get(f).unwrap()))
+                .collect::<Vec<_>>()
+        });
         for (f, bytes) in a.join().unwrap().into_iter().chain(b.join().unwrap()) {
             assert_eq!(*bytes, payload(f));
         }
@@ -242,13 +327,28 @@ fn waiting_when_idle_returns_at_once() {
 #[test]
 fn lowering_cache_mb_evicts_frames_at_once() {
     const MIB: usize = 1 << 20;
-    let fake = Arc::new(Fake { frame_bytes: MIB, ..Fake::default() });
-    let c = DecodeConfig { window_back: 0, window_ahead: 19, cache_mb: 32, ..cfg(0, 19, 0.5) };
+    let fake = Arc::new(Fake {
+        frame_bytes: MIB,
+        ..Fake::default()
+    });
+    let c = DecodeConfig {
+        window_back: 0,
+        window_ahead: 19,
+        cache_mb: 32,
+        ..cfg(0, 19, 0.5)
+    };
     let svc = FrameService::new(index_of(1000, 60), fake.clone() as Arc<dyn FrameSource>, c);
     svc.get(100).unwrap();
     assert_eq!(svc.cached_frames().len(), 20);
     svc.set_config(DecodeConfig { cache_mb: 8, ..c });
-    assert_eq!(svc.cached_frames().len(), 8, "only the 8 most recently used frames fit in 8 MiB");
+    assert_eq!(
+        svc.cached_frames().len(),
+        8,
+        "only the 8 most recently used frames fit in 8 MiB"
+    );
     assert!(svc.used_bytes() <= 8 * MIB as u64);
-    assert!(svc.cached_frames().contains(&100), "the playhead frame was the most recently used");
+    assert!(
+        svc.cached_frames().contains(&100),
+        "the playhead frame was the most recently used"
+    );
 }

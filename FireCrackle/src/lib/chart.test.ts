@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   flagSpans,
+  focusChartRange,
   hitFlag,
   nearestPoint,
   phaseToY,
@@ -12,6 +13,16 @@ import {
 } from "./chart";
 
 const P = (frame: number, pts: number, phase = 0, step = 0): ChartPoint => ({ frame, pts, step, phase });
+
+it("focuses single frames, long flag intervals and video edges with context", () => {
+  for (const range of [{first:0,last:0},{first:999,last:999},{first:200,last:600}]) {
+    const vp=focusChartRange(range,1000,1000,60);
+    expect(vp.start).toBeGreaterThanOrEqual(0);
+    expect(vp.start).toBeLessThanOrEqual(range.first);
+    expect(vp.start+1000/vp.pxPerFrame).toBeGreaterThan(range.last);
+    expect(vp.start+1000/vp.pxPerFrame).toBeLessThanOrEqual(1000);
+  }
+});
 
 describe("relativePhase", () => {
   it("is zero at the reference", () => {

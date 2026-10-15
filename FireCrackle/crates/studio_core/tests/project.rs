@@ -1,4 +1,4 @@
-﻿use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf};
 use studio_core::config::IndexConfig;
 use studio_core::index::{build_index, Packet};
 use studio_core::project::*;
@@ -11,12 +11,23 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn meta() -> VideoMeta {
-    VideoMeta { width: 1920, height: 1080, fps_num: 60, fps_den: 1, codec: "h264".into() }
+    VideoMeta {
+        width: 1920,
+        height: 1080,
+        fps_num: 60,
+        fps_den: 1,
+        codec: "h264".into(),
+    }
 }
 
 fn index_of(n: usize) -> studio_core::index::FrameIndex {
-    let pk: Vec<Packet> =
-        (0..n).map(|i| Packet { pts: Some(i as f64 / 60.0), dts: None, key: i % 4 == 0 }).collect();
+    let pk: Vec<Packet> = (0..n)
+        .map(|i| Packet {
+            pts: Some(i as f64 / 60.0),
+            dts: None,
+            key: i % 4 == 0,
+        })
+        .collect();
     build_index(&pk, &IndexConfig::default()).unwrap()
 }
 
@@ -56,10 +67,26 @@ fn a_clean_import_has_no_warnings() {
 #[test]
 fn timing_problems_in_the_index_are_reported() {
     let pk = [
-        Packet { pts: Some(0.0), dts: None, key: true },
-        Packet { pts: Some(0.1), dts: None, key: false },
-        Packet { pts: Some(0.1), dts: None, key: false },
-        Packet { pts: None, dts: None, key: false },
+        Packet {
+            pts: Some(0.0),
+            dts: None,
+            key: true,
+        },
+        Packet {
+            pts: Some(0.1),
+            dts: None,
+            key: false,
+        },
+        Packet {
+            pts: Some(0.1),
+            dts: None,
+            key: false,
+        },
+        Packet {
+            pts: None,
+            dts: None,
+            key: false,
+        },
     ];
     let idx = build_index(&pk, &IndexConfig::default()).unwrap();
     let p = assemble(&idx);
@@ -70,7 +97,11 @@ fn timing_problems_in_the_index_are_reported() {
     let vfr: Vec<Packet> = (0..100)
         .map(|i| {
             t += if i % 2 == 0 { 0.01 } else { 0.04 };
-            Packet { pts: Some(t), dts: None, key: i == 0 }
+            Packet {
+                pts: Some(t),
+                dts: None,
+                key: i == 0,
+            }
         })
         .collect();
     let idx = build_index(&vfr, &IndexConfig::default()).unwrap();
@@ -79,25 +110,43 @@ fn timing_problems_in_the_index_are_reported() {
 
 #[test]
 fn a_single_dropped_footage_gap_is_reported_with_its_size() {
-    let mut pk: Vec<Packet> =
-        (0..1000).map(|i| Packet { pts: Some((i as f64 * 1000.0 / 60.0).round() / 1000.0), dts: None, key: i == 0 }).collect();
+    let mut pk: Vec<Packet> = (0..1000)
+        .map(|i| Packet {
+            pts: Some((i as f64 * 1000.0 / 60.0).round() / 1000.0),
+            dts: None,
+            key: i == 0,
+        })
+        .collect();
     for x in pk.iter_mut().skip(500) {
         x.pts = x.pts.map(|v| v + 0.2);
     }
     let idx = build_index(&pk, &IndexConfig::default()).unwrap();
     let p = assemble(&idx);
-    assert!(has(&p, "gap"), "a 200 ms hole is worth a warning even though the video is not VFR: {:?}", p.warnings);
+    assert!(
+        has(&p, "gap"),
+        "a 200 ms hole is worth a warning even though the video is not VFR: {:?}",
+        p.warnings
+    );
 }
 
 #[test]
 fn no_warning_mentions_a_sync_strip() {
     // the serialised project has no strip-related field, and a one-frame video (the most degenerate
     // case) warns about nothing strip-related either
-    let json = serde_json::to_string(&assemble(&index_of(10))).unwrap().to_lowercase();
+    let json = serde_json::to_string(&assemble(&index_of(10)))
+        .unwrap()
+        .to_lowercase();
     assert!(!json.contains("strip"), "{json}");
-    let single = [Packet { pts: Some(0.0), dts: None, key: true }];
+    let single = [Packet {
+        pts: Some(0.0),
+        dts: None,
+        key: true,
+    }];
     let w = assemble(&build_index(&single, &IndexConfig::default()).unwrap()).warnings;
-    assert!(w.iter().all(|x| !x.to_lowercase().contains("strip")), "{w:?}");
+    assert!(
+        w.iter().all(|x| !x.to_lowercase().contains("strip")),
+        "{w:?}"
+    );
 }
 
 // ---------------------------------------------------------- save / load
@@ -125,9 +174,15 @@ fn save_leaves_no_temp_file_behind_and_overwrites_cleanly() {
     p.warnings.push("changed".into());
     p.save(&path).unwrap();
     assert_eq!(Project::load(&path).unwrap(), p);
-    let names: Vec<String> =
-        std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    assert_eq!(names, vec!["project.json".to_string()], "no temp files: {names:?}");
+    let names: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["project.json".to_string()],
+        "no temp files: {names:?}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -141,7 +196,11 @@ fn a_stale_temp_file_from_a_crashed_save_does_not_break_the_next_save() {
     for name in ["project.json.tmp", "project.tmp", ".project.json.tmp"] {
         std::fs::write(dir.join(name), b"{ half a proj").unwrap();
     }
-    assert_eq!(Project::load(&path).unwrap(), p, "the real file is untouched by the stale temp");
+    assert_eq!(
+        Project::load(&path).unwrap(),
+        p,
+        "the real file is untouched by the stale temp"
+    );
     let mut p2 = p.clone();
     p2.warnings.push("second".into());
     p2.save(&path).unwrap();
@@ -175,22 +234,37 @@ fn paths_with_spaces_and_non_ascii_work() {
 #[test]
 fn loading_bad_files_gives_typed_errors() {
     let dir = scratch("bad");
-    assert!(matches!(Project::load(&dir.join("missing.json")), Err(ProjectError::Io(_))));
+    assert!(matches!(
+        Project::load(&dir.join("missing.json")),
+        Err(ProjectError::Io(_))
+    ));
     let empty = dir.join("empty.json");
     std::fs::write(&empty, b"").unwrap();
-    assert!(matches!(Project::load(&empty), Err(ProjectError::Corrupt(_))));
+    assert!(matches!(
+        Project::load(&empty),
+        Err(ProjectError::Corrupt(_))
+    ));
     let garbage = dir.join("garbage.json");
     std::fs::write(&garbage, b"not json at all").unwrap();
-    assert!(matches!(Project::load(&garbage), Err(ProjectError::Corrupt(_))));
+    assert!(matches!(
+        Project::load(&garbage),
+        Err(ProjectError::Corrupt(_))
+    ));
     // truncated mid-write
     let full = serde_json::to_string(&sample()).unwrap();
     let trunc = dir.join("trunc.json");
     std::fs::write(&trunc, &full.as_bytes()[..full.len() / 2]).unwrap();
-    assert!(matches!(Project::load(&trunc), Err(ProjectError::Corrupt(_))));
+    assert!(matches!(
+        Project::load(&trunc),
+        Err(ProjectError::Corrupt(_))
+    ));
     // valid JSON of the wrong shape
     let wrong = dir.join("wrong.json");
     std::fs::write(&wrong, b"{\"hello\":1}").unwrap();
-    assert!(matches!(Project::load(&wrong), Err(ProjectError::Corrupt(_))));
+    assert!(matches!(
+        Project::load(&wrong),
+        Err(ProjectError::Corrupt(_))
+    ));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -201,7 +275,12 @@ fn a_newer_file_version_is_refused_not_misread() {
     let mut p = sample();
     p.version = PROJECT_VERSION + 41;
     std::fs::write(&path, serde_json::to_string(&p).unwrap()).unwrap();
-    assert_eq!(Project::load(&path), Err(ProjectError::UnsupportedVersion { found: PROJECT_VERSION + 41 }));
+    assert_eq!(
+        Project::load(&path),
+        Err(ProjectError::UnsupportedVersion {
+            found: PROJECT_VERSION + 41
+        })
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -224,7 +303,10 @@ fn fingerprint_is_size_window_and_a_16_hex_digit_hash() {
     let parts: Vec<&str> = fp.split(':').collect();
     assert_eq!(parts.len(), 3, "{fp}");
     assert_eq!(parts[0], "20000");
-    assert_eq!(parts[1], "4096", "the window is recorded so verify does not depend on today's settings");
+    assert_eq!(
+        parts[1], "4096",
+        "the window is recorded so verify does not depend on today's settings"
+    );
     let hash = parts[2];
     assert_eq!(hash.len(), 16);
     assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
@@ -267,11 +349,19 @@ fn fingerprint_window_is_configurable_and_the_middle_is_a_documented_blind_spot(
     mid[10_000] ^= 0xFF;
     let small = fingerprint(&f, 4096).unwrap();
     write(&f, &mid);
-    assert_eq!(fingerprint(&f, 4096).unwrap(), small, "middle bytes are not hashed with a 4 KiB window");
-    assert_ne!(fingerprint(&f, 20_000).unwrap(), {
-        write(&f, &base);
-        fingerprint(&f, 20_000).unwrap()
-    }, "a window covering the file hashes the middle too");
+    assert_eq!(
+        fingerprint(&f, 4096).unwrap(),
+        small,
+        "middle bytes are not hashed with a 4 KiB window"
+    );
+    assert_ne!(
+        fingerprint(&f, 20_000).unwrap(),
+        {
+            write(&f, &base);
+            fingerprint(&f, 20_000).unwrap()
+        },
+        "a window covering the file hashes the middle too"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -321,12 +411,19 @@ fn verify_video_checks_existence_and_identity() {
     let mut changed = base.clone();
     changed[5] ^= 1;
     write(&f, &changed);
-    assert_eq!(p.verify_video(), Err(ProjectError::VideoChanged), "same size, different head");
+    assert_eq!(
+        p.verify_video(),
+        Err(ProjectError::VideoChanged),
+        "same size, different head"
+    );
 
     write(&f, &base);
     assert_eq!(p.verify_video(), Ok(()));
     std::fs::remove_file(&f).unwrap();
-    assert!(matches!(p.verify_video(), Err(ProjectError::VideoMissing(_))));
+    assert!(matches!(
+        p.verify_video(),
+        Err(ProjectError::VideoMissing(_))
+    ));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -345,6 +442,9 @@ fn a_project_rebuilds_the_frame_index_it_was_made_from() {
     let dir = scratch("frameindex");
     let path = dir.join("project.json");
     p.save(&path).unwrap();
-    assert_eq!(Project::load(&path).unwrap().frame_index().frames, idx.frames);
+    assert_eq!(
+        Project::load(&path).unwrap().frame_index().frames,
+        idx.frames
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

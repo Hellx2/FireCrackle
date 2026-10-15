@@ -80,27 +80,36 @@ impl Default for PhaseResearchConfig {
 #[serde(default)]
 pub struct PhaseV2Config {
     /// Occupied time-bin width for PELT (seconds); raw checks still inspect every label.
-    pub bin_seconds:f64,
+    pub bin_seconds: f64,
     /// Cost per extra PELT segment in circular tick-squared units.
-    pub penalty_ticks2:f64,
+    pub penalty_ticks2: f64,
     /// Early occupied bins anchoring the common circular-median clock reference.
-    pub anchor_bins:usize,
+    pub anchor_bins: usize,
     /// Contiguous same-row duration that supplies held-animation evidence (seconds).
-    pub held_seconds:f64,
+    pub held_seconds: f64,
     /// Largest timestamp gap allowed inside a held-animation interval (seconds).
-    pub held_max_gap_seconds:f64,
+    pub held_max_gap_seconds: f64,
     /// Observations on EACH side needed to assess recovery; missing evidence leaves it unknown.
-    pub recovery_samples:usize,
+    pub recovery_samples: usize,
     /// Allowed difference of before/after clock-residual centres (ticks).
-    pub recovery_ticks:f64,
+    pub recovery_ticks: f64,
     /// Minimum PELT supplement size (ticks); phase.min_shift_ticks may raise it.
-    pub supplement_min_ticks:f64,
+    pub supplement_min_ticks: f64,
 }
 impl Default for PhaseV2Config {
-    fn default()->Self { Self {bin_seconds:0.5,penalty_ticks2:5.0,anchor_bins:8,held_seconds:0.25,
-        held_max_gap_seconds:0.1,recovery_samples:6,recovery_ticks:0.75,supplement_min_ticks:0.75} }
+    fn default() -> Self {
+        Self {
+            bin_seconds: 0.5,
+            penalty_ticks2: 5.0,
+            anchor_bins: 8,
+            held_seconds: 0.25,
+            held_max_gap_seconds: 0.1,
+            recovery_samples: 6,
+            recovery_ticks: 0.75,
+            supplement_min_ticks: 0.75,
+        }
+    }
 }
-
 
 /// How the frame index judges timing regularity.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -115,7 +124,10 @@ pub struct IndexConfig {
 
 impl Default for IndexConfig {
     fn default() -> IndexConfig {
-        IndexConfig { irregular_deviation: 0.5, vfr_fraction: 0.01 }
+        IndexConfig {
+            irregular_deviation: 0.5,
+            vfr_fraction: 0.01,
+        }
     }
 }
 
@@ -128,7 +140,9 @@ pub struct ProjectConfig {
 
 impl Default for ProjectConfig {
     fn default() -> ProjectConfig {
-        ProjectConfig { fingerprint_window_bytes: 1 << 20 }
+        ProjectConfig {
+            fingerprint_window_bytes: 1 << 20,
+        }
     }
 }
 
@@ -225,7 +239,10 @@ pub struct AutosaveConfig {
 
 impl Default for AutosaveConfig {
     fn default() -> AutosaveConfig {
-        AutosaveConfig { compact_after_lines: 50_000, fsync: true }
+        AutosaveConfig {
+            compact_after_lines: 50_000,
+            fsync: true,
+        }
     }
 }
 
@@ -301,7 +318,12 @@ pub enum SettingError {
     UnknownKey(String),
     NotFinite(String),
     NotAnInteger(String),
-    OutOfRange { key: String, value: f64, min: f64, max: f64 },
+    OutOfRange {
+        key: String,
+        value: f64,
+        min: f64,
+        max: f64,
+    },
 }
 
 /// One row of the settings table: how to show, validate, read and write a setting.
@@ -750,7 +772,7 @@ only a few kilobytes each.",
         integer: true,
         explanation: "Thumbnails are taken from the video's keyframes in one fast pass. If the video has more \
 keyframes than this, they are thinned evenly (every 2nd, 3rd, ...) so that no more than this many are kept. A lower \
-number is quicker to generate and uses less disk; a higher number gives a denser strip when zoomed in.",
+number is quicker to generate and uses less disk; a higher number gives more thumbnails along the timeline when zoomed in.",
         get: |s| s.timeline.thumb_max_count as f64,
         set: |s, v| s.timeline.thumb_max_count = v as u32,
     },
@@ -760,8 +782,8 @@ number is quicker to generate and uses less disk; a higher number gives a denser
         min: 0.0,
         max: 1.0,
         integer: true,
-        explanation: "1 = generate the thumbnail strip in the background when a video is opened (it is cached in \
-the project folder, so this happens once); 0 = never generate or draw it, e.g. on a slow disk or for a huge video.",
+        explanation: "1 = generate the timeline thumbnails in the background when a video is opened (it is cached in \
+the project folder, so this happens once); 0 = never generate or draw them, e.g. on a slow disk or for a huge video.",
         get: |s| if s.timeline.thumbs_enabled { 1.0 } else { 0.0 },
         set: |s, v| s.timeline.thumbs_enabled = v != 0.0,
     },
@@ -803,7 +825,10 @@ taken for drags (shaky hand, touch pad).",
 ];
 
 fn spec(key: &str) -> Result<&'static Spec, SettingError> {
-    SPECS.iter().find(|sp| sp.key == key).ok_or_else(|| SettingError::UnknownKey(key.to_string()))
+    SPECS
+        .iter()
+        .find(|sp| sp.key == key)
+        .ok_or_else(|| SettingError::UnknownKey(key.to_string()))
 }
 
 impl Settings {
@@ -836,7 +861,12 @@ impl Settings {
             return Err(SettingError::NotFinite(key.to_string()));
         }
         if value < sp.min || value > sp.max {
-            return Err(SettingError::OutOfRange { key: key.to_string(), value, min: sp.min, max: sp.max });
+            return Err(SettingError::OutOfRange {
+                key: key.to_string(),
+                value,
+                min: sp.min,
+                max: sp.max,
+            });
         }
         if sp.integer && value.fract() != 0.0 {
             return Err(SettingError::NotAnInteger(key.to_string()));

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
+import { PREFERENCES_KEY } from "./lib/preferences";
 const fixture = vi.hoisted(() => ({
   backend: { mock: true }, act: vi.fn(async (_action: unknown) => {}), view: {} as any,
   states: [] as any[], refs: [] as Array<{current: any}>, stateCursor: 0, refCursor: 0, effectCursor: 0,
@@ -42,8 +43,10 @@ function render() {
   fixture.pending.forEach(run => run());
   return { picker: find(tree, e => e.type === Picker)!, video: find(tree, e => e.type === VideoPane)!, confirm: find(tree, e => e.props.label === "Confirm candidate")!, noFire: find(tree, e => e.props.label === "Choose no fire")! };
 }
-function key(key: string) {
-  window.dispatchEvent(Object.assign(new Event("keydown", {cancelable: true}), {key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false}));
+function key(key: string, mods: Record<string,unknown> = {}) {
+  const event=Object.assign(new Event("keydown", {cancelable: true}), {key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false,...mods});
+  window.dispatchEvent(event);
+  return event;
 }
 beforeEach(() => {
   fixture.act.mockClear(); fixture.states = [fixture.backend, null]; fixture.refs = []; fixture.effects = [];
@@ -76,9 +79,74 @@ it("forward navigation never auto-confirms and Enter confirms typed rows only ex
   expect(fixture.act).not.toHaveBeenCalled(); key("Enter");
   expect(fixture.act).toHaveBeenCalledExactlyOnceWith({type: "clickCell", col: 1, row: 31});
 });
+it("manual frame arrows navigate without saving the candidate", () => {
+  const ui = render();
+  ui.video.props.onStep(-1);
+  ui.video.props.onStep(1);
+  expect(fixture.act.mock.calls).toEqual([[{type: "step", frames: -1}], [{type: "step", frames: 1}]]);
+});
+it("reserves Enter and frame arrows before focused widget handlers, including Shift", () => {
+  render();
+  const widget = vi.fn();
+  window.addEventListener("keydown",widget);
+  expect(key("ArrowRight").defaultPrevented).toBe(true);
+  expect(key("ArrowLeft",{shiftKey:true}).defaultPrevented).toBe(true);
+  expect(fixture.act.mock.calls).toEqual([[{type:"step",frames:1}],[{type:"bigStep",dir:-1}]]);
+  fixture.act.mockClear();
+  expect(key("Enter").defaultPrevented).toBe(true);
+  expect(fixture.act).toHaveBeenCalledExactlyOnceWith({type:"acceptSuggestion"});
+  fixture.act.mockClear();
+  expect(key("Enter",{repeat:true}).defaultPrevented).toBe(true);
+  expect(fixture.act).not.toHaveBeenCalled();
+  expect(widget).not.toHaveBeenCalled();
+  key("q");
+  expect(widget).toHaveBeenCalledOnce();
+});
+it("R flips and adjacent T switches sheets without saving or advancing", () => {
+  let ui=render();
+  key("r");ui=render();
+  expect(ui.picker.props.candidate).toEqual({fire:{sheet:1,row:7,mirrored:true}});
+  key("t");ui=render();
+  expect(ui.picker.props.candidate).toEqual({fire:{sheet:0,row:7,mirrored:true}});
+  expect(fixture.act).not.toHaveBeenCalled();
+  ui.confirm.props.onClick();
+  expect(fixture.act).toHaveBeenCalledExactlyOnceWith({type:"clickCell",col:2,row:7});
+});
+it("up/down step and wrap animation phases while preserving sheet and mirror without saving", () => {
+  let ui = render();
+  ui.picker.props.onCell(3, 0, false); ui = render();
+  key("ArrowUp"); ui = render();
+  expect(ui.picker.props.candidate).toEqual({fire:{sheet:1,row:31,mirrored:true}});
+  key("ArrowDown"); ui = render();
+  expect(ui.picker.props.candidate).toEqual({fire:{sheet:1,row:0,mirrored:true}});
+  ui.video.props.onPreviewChange({sheet:0,row:14,mirrored:false}); ui = render();
+  key("ArrowDown"); ui = render();
+  expect(ui.picker.props.candidate).toEqual({fire:{sheet:0,row:15,mirrored:false}});
+  expect(fixture.act).not.toHaveBeenCalled();
+});
+
 it("No fire is a reviewed marker saved only after confirmation", () => {
-  let ui = render(); ui.noFire.props.onClick();
+  let ui = render(); ui.picker.props.onNoFire();
   expect(fixture.act).not.toHaveBeenCalled(); ui = render();
   expect(ui.picker.props.candidate).toBe("no_fire"); ui.confirm.props.onClick();
   expect(fixture.act).toHaveBeenCalledExactlyOnceWith({type: "noFire"});
+});
+it("shares the atlas edge filters with video matching without labeling", () => {
+  let ui=render();
+  ui.picker.props.onFilterChange({left:3,right:7});
+  ui=render();
+  expect(ui.picker.props.filter).toEqual({left:3,right:7});
+  expect(ui.video.props.atlasFilter).toBe(ui.picker.props.filter);
+  expect(fixture.act).not.toHaveBeenCalled();
+  ui.picker.props.onFilterChange({left:null,right:null});
+  expect(render().video.props.atlasFilter).toEqual({left:null,right:null});
+});
+it("restores saved filters and persists edits for the next launch", () => {
+  let saved=JSON.stringify({atlasFilter:{left:0,right:5},tab:"label",matchOnlyFiltered:false});
+  vi.stubGlobal("localStorage", {getItem:(key:string)=>key===PREFERENCES_KEY?saved:null,setItem:(key:string,value:string)=>{if(key===PREFERENCES_KEY)saved=value;}});
+  let ui=render();
+  expect(ui.picker.props.filter).toEqual({left:0,right:5});
+  ui.picker.props.onFilterChange({left:2,right:null});
+  ui=render();
+  expect(JSON.parse(saved)).toMatchObject({atlasFilter:{left:2,right:null},matchOnlyFiltered:false});
 });

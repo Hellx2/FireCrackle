@@ -5,14 +5,42 @@ use studio_core::project::{Project, VideoMeta};
 use studio_core::session::{Move, Session};
 
 fn project(pts: &[f64]) -> Project {
-    let packets: Vec<_> = pts.iter().map(|&pts| Packet { pts: Some(pts), dts: None, key: true }).collect();
+    let packets: Vec<_> = pts
+        .iter()
+        .map(|&pts| Packet {
+            pts: Some(pts),
+            dts: None,
+            key: true,
+        })
+        .collect();
     let index = build_index(&packets, &IndexConfig::default()).unwrap();
-    Project::assemble("prediction.mkv", 1, "fixture".into(), VideoMeta { width: 1920, height: 1080, fps_num: 60, fps_den: 1, codec: "h264".into() }, &index)
+    Project::assemble(
+        "prediction.mkv",
+        1,
+        "fixture".into(),
+        VideoMeta {
+            width: 1920,
+            height: 1080,
+            fps_num: 60,
+            fps_den: 1,
+            codec: "h264".into(),
+        },
+        &index,
+    )
 }
 fn session(pts: &[f64], labels: &[(u32, u8)]) -> Session {
     let mut store = LabelStore::new(pts.len() as u32);
     for &(n, row) in labels {
-        store.set(n, Label::Fire { sheet: 1, row, mirrored: false }).unwrap();
+        store
+            .set(
+                n,
+                Label::Fire {
+                    sheet: 1,
+                    row,
+                    mirrored: false,
+                },
+            )
+            .unwrap();
     }
     Session::new(project(pts), store, Settings::default()).unwrap()
 }
@@ -61,7 +89,16 @@ fn accepting_many_guesses_does_not_reanchor_the_clock_and_survives_replay() {
     assert_eq!(s.suggestion().unwrap().from_frame, 0);
     let log = s.take_log().join("\n");
     let mut store = LabelStore::replay(&log, 100).unwrap().store;
-    store.set(0, Label::Fire { sheet: 1, row: 5, mirrored: false }).unwrap();
+    store
+        .set(
+            0,
+            Label::Fire {
+                sheet: 1,
+                row: 5,
+                mirrored: false,
+            },
+        )
+        .unwrap();
     let mut reopened = Session::new(project(&pts), store, Settings::default()).unwrap();
     reopened.go(Move::To(22));
     assert_eq!(reopened.suggestion().unwrap().from_frame, 0);
@@ -77,7 +114,14 @@ fn manual_forward_confirms_once_without_using_auto_advance_settings() {
     s.go(Move::To(1));
     s.manual_advance(2).unwrap();
     assert_eq!(s.current(), 3);
-    assert_eq!(s.store().get(1), Label::Fire { sheet: 1, row: 6, mirrored: false });
+    assert_eq!(
+        s.store().get(1),
+        Label::Fire {
+            sheet: 1,
+            row: 6,
+            mirrored: false
+        }
+    );
     assert_eq!(s.store().get(2), Label::Unset);
     assert_eq!(s.suggestion().unwrap().from_frame, 0);
     assert!(s.undo());
@@ -111,14 +155,19 @@ fn manual_forward_preserves_explicit_labels_and_no_suggestion_still_moves() {
 #[test]
 fn trusted_phase_constraints_keep_the_correct_row_under_millisecond_pts_jitter() {
     for offset in [0.05, 0.23, 0.47, 0.71, 0.95] {
-        let pts: Vec<_> = (0..100).map(|n| n as f64 / 60.0 + if n % 2 == 0 { 0.0004 } else { -0.0004 }).collect();
+        let pts: Vec<_> = (0..100)
+            .map(|n| n as f64 / 60.0 + if n % 2 == 0 { 0.0004 } else { -0.0004 })
+            .collect();
         let truth = |n: usize| ((20.0 * n as f64 / 60.0 + offset).floor() as u8 + 29) % 32;
         let labels: Vec<_> = (0..12).map(|n| (n as u32, truth(n))).collect();
         let mut s = session(&pts, &labels);
         for n in 12..100 {
             s.go(Move::To(n as u32));
             let g = s.suggestion().unwrap();
-            assert!(g.row == truth(n) || g.alt_row == Some(truth(n)), "offset{offset} frame{n}: {g:?}");
+            assert!(
+                g.row == truth(n) || g.alt_row == Some(truth(n)),
+                "offset{offset} frame{n}: {g:?}"
+            );
         }
     }
 }
@@ -126,7 +175,11 @@ fn trusted_phase_constraints_keep_the_correct_row_under_millisecond_pts_jitter()
 #[test]
 fn explicit_confirmation_undo_and_compaction_preserve_prediction_source() {
     use studio_core::autosave::AutosaveLog;
-    let label = Label::Fire { sheet: 1, row: 5, mirrored: false };
+    let label = Label::Fire {
+        sheet: 1,
+        row: 5,
+        mirrored: false,
+    };
     let mut store = LabelStore::new(10);
     store.set(0, label).unwrap();
     store.set_predicted(1, label).unwrap();
@@ -141,7 +194,10 @@ fn explicit_confirmation_undo_and_compaction_preserve_prediction_source() {
     let dir = std::env::temp_dir().join(format!(
         "fc_prediction_{}_{}",
         std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("labels.jsonl");

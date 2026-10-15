@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "runtime/": "tools/",
+      "../../LICENSE": "LICENSE.txt",
+      "../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.txt"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

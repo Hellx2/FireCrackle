@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -19,9 +19,21 @@ fn scratch(name: &str) -> PathBuf {
 
 /// 300 frames at 30 fps, a keyframe every 30: ten keyframes.
 fn project() -> Project {
-    let pk: Vec<Packet> = (0..300).map(|i| Packet { pts: Some(i as f64 / 30.0), dts: None, key: i % 30 == 0 }).collect();
+    let pk: Vec<Packet> = (0..300)
+        .map(|i| Packet {
+            pts: Some(i as f64 / 30.0),
+            dts: None,
+            key: i % 30 == 0,
+        })
+        .collect();
     let idx = build_index(&pk, &IndexConfig::default()).unwrap();
-    let meta = VideoMeta { width: 1920, height: 1080, fps_num: 30, fps_den: 1, codec: "h264".into() };
+    let meta = VideoMeta {
+        width: 1920,
+        height: 1080,
+        fps_num: 30,
+        fps_den: 1,
+        codec: "h264".into(),
+    };
     Project::assemble("v.mkv", 1, "1:4096:0".into(), meta, &idx)
 }
 
@@ -39,7 +51,12 @@ struct Fake {
 
 impl FrameSource for Fake {
     fn decode(&self, job: &DecodeJob, _c: &AtomicBool) -> Result<Vec<DecodedFrame>, DecodeError> {
-        Ok((job.first..=job.last).map(|f| DecodedFrame { frame: f, jpeg: vec![f as u8; 8] }).collect())
+        Ok((job.first..=job.last)
+            .map(|f| DecodedFrame {
+                frame: f,
+                jpeg: vec![f as u8; 8],
+            })
+            .collect())
     }
 
     fn thumbnails(&self, plan: &ThumbPlan, cancel: &AtomicBool) -> Result<Vec<Thumb>, ThumbError> {
@@ -61,11 +78,18 @@ impl FrameSource for Fake {
         if self.fail.load(Ordering::SeqCst) {
             return Err(ThumbError::FfmpegFailed("boom".into()));
         }
-        Ok(plan.frames.iter().map(|&f| Thumb { frame: f, jpeg: vec![f as u8; 12] }).collect())
+        Ok(plan
+            .frames
+            .iter()
+            .map(|&f| Thumb {
+                frame: f,
+                jpeg: vec![f as u8; 12],
+            })
+            .collect())
     }
 }
 
-fn open(dir: &PathBuf, src: Arc<Fake>) -> Workspace {
+fn open(dir: &Path, src: Arc<Fake>) -> Workspace {
     Workspace::from_parts(dir, project(), &Settings::default(), src).unwrap()
 }
 
@@ -105,7 +129,10 @@ fn nearest_thumbnails_and_the_pictures_come_from_the_store() {
     let dir = scratch("nearest");
     let mut w = open(&dir, Arc::new(Fake::default()));
     ready(&mut w);
-    assert_eq!(w.thumb_nearest(&[0, 14, 16, 299, 150]), vec![Some(0), Some(0), Some(30), Some(270), Some(150)]);
+    assert_eq!(
+        w.thumb_nearest(&[0, 14, 16, 299, 150]),
+        vec![Some(0), Some(0), Some(30), Some(270), Some(150)]
+    );
     assert_eq!(w.thumb_nearest(&[]), Vec::<Option<u32>>::new());
     assert_eq!(w.thumb_jpeg(60).unwrap(), vec![60u8; 12]);
     let _ = std::fs::remove_dir_all(&dir);
@@ -143,10 +170,18 @@ fn thumbnails_survive_reopening_without_regenerating() {
     }
     let src = Arc::new(Fake::default());
     let mut w = open(&dir, src.clone());
-    assert_eq!(w.thumbs_status().state, ThumbState::Ready, "the cache on disk is valid");
+    assert_eq!(
+        w.thumbs_status().state,
+        ThumbState::Ready,
+        "the cache on disk is valid"
+    );
     let s = ready(&mut w);
     assert_eq!(s.state, ThumbState::Ready);
-    assert_eq!(src.calls.load(Ordering::SeqCst), 0, "the cache must be reused");
+    assert_eq!(
+        src.calls.load(Ordering::SeqCst),
+        0,
+        "the cache must be reused"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -157,7 +192,11 @@ fn changing_the_width_makes_the_cache_stale_and_it_is_regenerated() {
     let mut w = open(&dir, src.clone());
     ready(&mut w);
     w.set_setting("timeline.thumb_width_px", 160.0).unwrap();
-    assert_eq!(w.thumbs_status().state, ThumbState::Idle, "stale until regenerated");
+    assert_eq!(
+        w.thumbs_status().state,
+        ThumbState::Idle,
+        "stale until regenerated"
+    );
     let s = ready(&mut w);
     assert_eq!(s.state, ThumbState::Ready);
     assert_eq!(src.calls.load(Ordering::SeqCst), 2);
@@ -203,7 +242,11 @@ fn a_failing_run_reports_failed_and_a_later_start_retries() {
     let mut w = open(&dir, src.clone());
     let s = ready(&mut w);
     assert_eq!(s.state, ThumbState::Failed);
-    assert!(s.error.as_deref().unwrap_or("").contains("boom"), "{:?}", s.error);
+    assert!(
+        s.error.as_deref().unwrap_or("").contains("boom"),
+        "{:?}",
+        s.error
+    );
     src.fail.store(false, Ordering::SeqCst);
     let s = ready(&mut w);
     assert_eq!((s.state, s.count), (ThumbState::Ready, 10));
@@ -214,7 +257,13 @@ fn a_failing_run_reports_failed_and_a_later_start_retries() {
 #[test]
 fn a_source_without_thumbnail_support_is_failed_not_a_panic() {
     let dir = scratch("unsupported");
-    let mut w = open(&dir, Arc::new(Fake { unsupported: true, ..Fake::default() }));
+    let mut w = open(
+        &dir,
+        Arc::new(Fake {
+            unsupported: true,
+            ..Fake::default()
+        }),
+    );
     let s = ready(&mut w);
     assert_eq!(s.state, ThumbState::Failed);
     assert!(s.error.is_some());
@@ -237,11 +286,17 @@ fn a_failed_run_does_not_stop_labelling() {
 #[test]
 fn two_quick_starts_run_once() {
     let dir = scratch("twice");
-    let src = Arc::new(Fake { delay_ms: 150, ..Fake::default() });
+    let src = Arc::new(Fake {
+        delay_ms: 150,
+        ..Fake::default()
+    });
     let mut w = open(&dir, src.clone());
     let a = w.thumbs_start();
     let b = w.thumbs_start();
-    assert_eq!((a.state, b.state), (ThumbState::Running, ThumbState::Running));
+    assert_eq!(
+        (a.state, b.state),
+        (ThumbState::Running, ThumbState::Running)
+    );
     w.wait_thumbs();
     assert_eq!(src.calls.load(Ordering::SeqCst), 1);
     assert_eq!(w.thumbs_status().state, ThumbState::Ready);
@@ -275,7 +330,10 @@ fn disabled_does_nothing_and_says_so() {
 #[test]
 fn dropping_the_workspace_cancels_a_running_job_without_hanging() {
     let dir = scratch("drop");
-    let src = Arc::new(Fake { block: AtomicBool::new(true), ..Fake::default() });
+    let src = Arc::new(Fake {
+        block: AtomicBool::new(true),
+        ..Fake::default()
+    });
     let mut w = open(&dir, src.clone());
     w.thumbs_start();
     let t = Instant::now();
@@ -285,7 +343,10 @@ fn dropping_the_workspace_cancels_a_running_job_without_hanging() {
     assert!(src.started.load(Ordering::SeqCst), "the job never started");
     let t = Instant::now();
     drop(w);
-    assert!(t.elapsed() < Duration::from_secs(2), "drop waited for the blocked job");
+    assert!(
+        t.elapsed() < Duration::from_secs(2),
+        "drop waited for the blocked job"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -294,7 +355,10 @@ fn an_unknown_frame_is_an_error() {
     let dir = scratch("unknown");
     let mut w = open(&dir, Arc::new(Fake::default()));
     ready(&mut w);
-    assert!(w.thumb_jpeg(7).is_err(), "frame 7 is not a keyframe thumbnail");
+    assert!(
+        w.thumb_jpeg(7).is_err(),
+        "frame 7 is not a keyframe thumbnail"
+    );
     assert!(w.thumb_jpeg(100_000).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }

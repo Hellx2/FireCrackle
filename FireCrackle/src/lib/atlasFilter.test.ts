@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { appearanceEdges, edgeFilterValue, matchesEdges, matchingAppearances, sheetEdgeCounts, type AtlasEdges } from "./atlasFilter";
+import { animationPool, appearanceId, nextAppearance, appearanceEdges, edgeFilterValue, matchesEdges, matchingAppearances, sheetEdgeCounts, type AtlasEdges } from "./atlasFilter";
 
 it("counts only visible pixels at x=0 and x=15, in each animation row", () => {
   const rgba = new Uint8ClampedArray(16 * 512 * 4);
@@ -30,4 +30,23 @@ it("keeps zero distinct from Any and rejects invalid counts", () => {
   expect(edgeFilterValue("0")).toBe(0);
   expect(edgeFilterValue("16")).toBe(16);
   for (const value of ["", " ", "17", "-1", "2.5", "NaN"]) expect(edgeFilterValue(value)).toBeNull();
+});
+it("visits all 128 appearances once before wrapping, independent of filters when disabled", () => {
+  const pool=animationPool(null);
+  expect(new Set(pool.map(s=>appearanceId(s.sheet,s.row,s.mirrored))).size).toBe(128);
+  expect(nextAppearance(pool,pool[127])).toEqual(pool[0]);
+  expect(nextAppearance(pool,pool[0],-1)).toEqual(pool[127]);
+  expect(nextAppearance([],pool[0])).toBeNull();
+});
+it("combines mirrored edge counts with reversible per-appearance exclusions", () => {
+  const edges:AtlasEdges=[Array.from({length:32},()=>({left:3,right:7})),Array.from({length:32},()=>({left:2,right:9}))];
+  const excluded=[appearanceId(0,0,true)];
+  const filter={left:7,right:3,excluded};
+  const pool=animationPool(edges,filter);
+  expect(pool).toHaveLength(31);
+  expect(pool.every(s=>s.sheet===0&&s.mirrored&&s.row!==0)).toBe(true);
+  expect(matchingAppearances(edges,filter)).toBe(31);
+  expect(animationPool(null,filter)).toHaveLength(0);
+  expect(animationPool(null,{left:null,right:null,excluded})).toHaveLength(127);
+  expect(animationPool(edges,{...filter,excluded:[]})).toHaveLength(32);
 });

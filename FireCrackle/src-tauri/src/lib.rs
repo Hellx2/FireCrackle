@@ -7,22 +7,66 @@ use studio_core::config::{SettingInfo, Settings};
 use studio_core::import::Tools;
 use studio_core::lane::Bucket;
 use studio_core::phase::Flag;
-use studio_core::workspace::{PhaseChart, UiAction, View, Workspace};
-use tauri::ipc::Response;
+use studio_core::workspace::{PhaseChart, ThumbStatus, UiAction, View, Workspace};
 use tauri::State;
+use tauri::ipc::Response;
 mod compression;
+mod pov;
 
 #[tauri::command]
-async fn compress_fire_cycle(width: u32, height: u32, frames: Vec<Vec<u8>>, crf: u8) -> Result<Response, String> {
+async fn compress_fire_cycle(
+    width: u32,
+    height: u32,
+    frames: Vec<Vec<u8>>,
+    crf: u8,
+) -> Result<Response, String> {
     tauri::async_runtime::spawn_blocking(move || {
         compression::encode(&Tools::default().ffmpeg, width, height, frames, crf).map(Response::new)
-    }).await.map_err(err)?
+    })
+    .await
+    .map_err(err)?
 }
-
 
 #[derive(Default)]
 struct AppState {
     ws: Arc<Mutex<Option<Workspace>>>,
+    pov: pov::Jobs,
+}
+
+#[tauri::command]
+fn pov_start(state: State<'_, AppState>) -> Result<pov::Status, String> {
+    let guard = state.ws.lock().map_err(|_| "Workspace unavailable")?;
+    let project = guard
+        .as_ref()
+        .ok_or("No video is open")?
+        .automation_project();
+    state.pov.start(project, Tools::default())
+}
+
+#[tauri::command]
+fn pov_status(state: State<'_, AppState>) -> Result<Option<pov::Status>, String> {
+    state.pov.status()
+}
+
+#[tauri::command]
+fn pov_cancel(state: State<'_, AppState>, id: u64) -> Result<(), String> {
+    state.pov.cancel(id)
+}
+
+#[tauri::command]
+async fn pov_apply(state: State<'_, AppState>, id: u64) -> Result<View, String> {
+    let ws = state.ws.clone();
+    let pov = state.pov.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = ws.lock().map_err(|_| "Workspace unavailable")?;
+        let workspace = guard.as_mut().ok_or("No video is open")?;
+        let project = workspace.automation_project();
+        pov.apply(id, &project, |rows| {
+            workspace.add_auto_predictions(rows).map_err(err)
+        })
+    })
+    .await
+    .map_err(err)?
 }
 
 fn err<E: std::fmt::Debug>(e: E) -> String {
@@ -35,8 +79,12 @@ async fn run<T: Send + 'static>(
     f: impl FnOnce(&mut Workspace) -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut guard = ws.lock().map_err(|_| "internal error: the workspace lock was poisoned".to_string())?;
-        let w = guard.as_mut().ok_or_else(|| "no video is open".to_string())?;
+        let mut guard = ws
+            .lock()
+            .map_err(|_| "internal error: the workspace lock was poisoned".to_string())?;
+        let w = guard
+            .as_mut()
+            .ok_or_else(|| "no video is open".to_string())?;
         f(w)
     })
     .await
@@ -59,10 +107,19 @@ fn startup_video() -> Option<String> {
 #[tauri::command]
 async fn open_video(state: State<'_, AppState>, path: String) -> Result<View, String> {
     let ws = state.ws.clone();
+    let pov = state.pov.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut w = Workspace::open(&Tools::default(), Path::new(&path), &Settings::default()).map_err(err)?;
+        let mut w = Workspace::open(&Tools::default(), Path::new(&path), &Settings::default())
+            .map_err(err)?;
         let view = w.view();
-        let mut guard = ws.lock().map_err(|_| "internal error: the workspace lock was poisoned".to_string())?;
+        let mut guard = ws
+            .lock()
+            .map_err(|_| "internal error: the workspace lock was poisoned".to_string())?;
+        if let Some(status) = pov.status()?
+            && status.state == "running"
+        {
+            pov.cancel(status.id)?;
+        }
         if let Some(old) = guard.take() {
             old.wait_idle(); // let the previous video's prefetch finish before it is dropped
         }
@@ -87,26 +144,42 @@ async fn act(state: State<'_, AppState>, action: UiAction) -> Result<View, Strin
 async fn export_labels(state: State<'_, AppState>, path: String) -> Result<View, String> {
     run(state.ws.clone(), move |w| {
         w.export_labels_to(Path::new(&path)).map_err(err)
-    }).await
+    })
+    .await
 }
 
 #[tauri::command]
 async fn import_labels(state: State<'_, AppState>, path: String) -> Result<View, String> {
     run(state.ws.clone(), move |w| {
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("Could not read labels: {e}"))?;
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("Could not read labels: {e}"))?;
         w.import_labels(&text).map_err(err)
-    }).await
+    })
+    .await
 }
 
 /// The JPEG bytes of one frame, sent raw (no JSON).
 #[tauri::command]
 async fn frame(state: State<'_, AppState>, frame: u32) -> Result<Response, String> {
-    run(state.ws.clone(), move |w| w.frame_jpeg(frame).map(|b| Response::new((*b).clone())).map_err(err)).await
+    run(state.ws.clone(), move |w| {
+        w.frame_jpeg(frame)
+            .map(|b| Response::new((*b).clone()))
+            .map_err(err)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn timeline(state: State<'_, AppState>, start: u32, end: u32, buckets: usize) -> Result<Vec<Bucket>, String> {
-    run(state.ws.clone(), move |w| Ok(w.timeline(start, end, buckets))).await
+async fn timeline(
+    state: State<'_, AppState>,
+    start: u32,
+    end: u32,
+    buckets: usize,
+) -> Result<Vec<Bucket>, String> {
+    run(state.ws.clone(), move |w| {
+        Ok(w.timeline(start, end, buckets))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -115,8 +188,50 @@ async fn flags(state: State<'_, AppState>) -> Result<Vec<Flag>, String> {
 }
 
 #[tauri::command]
-async fn phase_chart(state: State<'_, AppState>, max_points: usize) -> Result<PhaseChart, String> {
-    run(state.ws.clone(), move |w| Ok(w.phase_chart(max_points))).await
+async fn phase_chart(
+    state: State<'_, AppState>,
+    max_points: usize,
+    source: Option<String>,
+) -> Result<PhaseChart, String> {
+    use studio_core::label::LabelSource;
+    let filter = match source.as_deref() {
+        None | Some("independent") => None,
+        Some("manual") => Some(LabelSource::Manual),
+        Some("first_person") => Some(LabelSource::FirstPerson),
+        Some("time_guess") => Some(LabelSource::TimeGuess),
+        _ => return Err("Unknown label source".into()),
+    };
+    run(state.ws.clone(), move |w| {
+        Ok(w.phase_chart_source(max_points, filter))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn thumbs_start(state: State<'_, AppState>) -> Result<ThumbStatus, String> {
+    run(state.ws.clone(), |w| Ok(w.thumbs_start())).await
+}
+
+#[tauri::command]
+async fn thumbs_status(state: State<'_, AppState>) -> Result<ThumbStatus, String> {
+    run(state.ws.clone(), |w| Ok(w.thumbs_status())).await
+}
+
+#[tauri::command]
+async fn thumb_nearest(
+    state: State<'_, AppState>,
+    frames: Vec<u32>,
+) -> Result<Vec<Option<u32>>, String> {
+    run(state.ws.clone(), move |w| Ok(w.thumb_nearest(&frames))).await
+}
+
+/// The JPEG bytes of one stored thumbnail, sent raw.
+#[tauri::command]
+async fn thumb(state: State<'_, AppState>, frame: u32) -> Result<Response, String> {
+    run(state.ws.clone(), move |w| {
+        w.thumb_jpeg(frame).map(Response::new).map_err(err)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -126,7 +241,10 @@ async fn settings_describe(state: State<'_, AppState>) -> Result<Vec<SettingInfo
 
 #[tauri::command]
 async fn settings_set(state: State<'_, AppState>, key: String, value: f64) -> Result<View, String> {
-    run(state.ws.clone(), move |w| w.set_setting(&key, value).map_err(err)).await
+    run(state.ws.clone(), move |w| {
+        w.set_setting(&key, value).map_err(err)
+    })
+    .await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -137,6 +255,10 @@ pub fn run_app() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             startup_video,
+            pov_start,
+            pov_status,
+            pov_cancel,
+            pov_apply,
             compress_fire_cycle,
             open_video,
             view,
@@ -147,6 +269,10 @@ pub fn run_app() {
             timeline,
             flags,
             phase_chart,
+            thumbs_start,
+            thumbs_status,
+            thumb_nearest,
+            thumb,
             settings_describe,
             settings_set
         ])

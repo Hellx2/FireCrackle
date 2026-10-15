@@ -1,0 +1,13 @@
+name: Feature request
+description: Explain the task a proposed feature would help with.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Suggested behavior

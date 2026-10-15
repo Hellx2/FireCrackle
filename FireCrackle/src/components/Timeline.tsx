@@ -18,6 +18,7 @@ import { thumbSlots, uniqueFrames, type ThumbStatus } from "../lib/thumbs";
 import { useWheel } from "../hooks/useWheel";
 import { IconButton } from "./Icon";
 import "./TimelineControls.css";
+import { readTimelineView, writeTimelineView } from "../lib/viewState";
 
 const RULER_H = 26;
 const THUMB_Y = 30;
@@ -38,6 +39,7 @@ const COLORS = {
 };
 
 interface Props {
+  videoKey?: string;
   backend: Backend;
   view: View;
   flags: Flag[];
@@ -47,12 +49,12 @@ interface Props {
 }
 
 /** Editor-style timeline: wheel scrolls, Ctrl+wheel zooms, drag pans. */
-export function Timeline({ backend, view, flags, version, settings, onSeek }: Props) {
+export function Timeline({ backend, view, flags, version, settings, onSeek, videoKey }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [width, setWidth] = useState(900);
   const total = view.frame_count;
-  const [vp, setVp] = useState<Viewport>(() => fitViewport(total, 900));
+  const [vp, setVp] = useState<Viewport>(() => readTimelineView(videoKey, "timeline", total, 900));
   const [buckets, setBuckets] = useState<{ first: number; len: number; list: Bucket[] }>({ first: 0, len: 1, list: [] });
   const drag = useRef<{ x0: number; start0: number; moved: boolean } | null>(null);
   const [thumbStatus, setThumbStatus] = useState<ThumbStatus>({ state: "idle", count: 0, error: null });
@@ -86,9 +88,10 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
     return () => ro.disconnect();
   }, []);
 
-  // a new video: show all of it; a new width: keep the view valid
-  useEffect(() => setVp(fitViewport(total, width)), [total]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Restore this video's view; width changes keep the viewport valid.
+  useEffect(() => setVp(readTimelineView(videoKey, "timeline", total, width)), [videoKey, total]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => setVp((v) => clampViewport(v, width, total)), [width, total]);
+  useEffect(() => { writeTimelineView(videoKey, "timeline", total, width, vp); }, [videoKey, total, width, vp]);
 
   // follow the playhead (not while the user is dragging the timeline)
   useEffect(() => {

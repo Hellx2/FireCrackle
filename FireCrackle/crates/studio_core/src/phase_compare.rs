@@ -414,8 +414,8 @@ pub fn compare(
         Method::Fixed => {
             let mut starts = vec![0];
             let mut base = 0;
-            for i in 1..bs.len() {
-                if delta(xs[i], p.mean(base, i)).abs() >= c.min_change_ticks {
+            for (i, &phase) in xs.iter().enumerate().skip(1) {
+                if delta(phase, p.mean(base, i)).abs() >= c.min_change_ticks {
                     starts.push(i);
                     base = i;
                 }

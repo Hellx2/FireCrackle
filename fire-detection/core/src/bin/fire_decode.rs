@@ -21,7 +21,10 @@ struct Failure {
 }
 
 fn fail<T>(code: i32, message: impl Into<String>) -> Result<T, Failure> {
-    Err(Failure { code, message: message.into() })
+    Err(Failure {
+        code,
+        message: message.into(),
+    })
 }
 
 struct Args {
@@ -32,7 +35,14 @@ struct Args {
 
 fn parse_args(args: Vec<String>) -> Result<Args, Failure> {
     let usage = |why: &str| -> Failure {
-        Failure { code: 2, message: if why.is_empty() { USAGE.to_string() } else { format!("error: {why}\n{USAGE}") } }
+        Failure {
+            code: 2,
+            message: if why.is_empty() {
+                USAGE.to_string()
+            } else {
+                format!("error: {why}\n{USAGE}")
+            },
+        }
     };
     let mut video = None;
     let mut labels = None;
@@ -40,8 +50,16 @@ fn parse_args(args: Vec<String>) -> Result<Args, Failure> {
     let mut it = args.into_iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--labels" => labels = Some(PathBuf::from(it.next().ok_or_else(|| usage("--labels needs a file"))?)),
-            "--out" => out = Some(PathBuf::from(it.next().ok_or_else(|| usage("--out needs a file"))?)),
+            "--labels" => {
+                labels = Some(PathBuf::from(
+                    it.next().ok_or_else(|| usage("--labels needs a file"))?,
+                ))
+            }
+            "--out" => {
+                out = Some(PathBuf::from(
+                    it.next().ok_or_else(|| usage("--out needs a file"))?,
+                ))
+            }
             s if s.starts_with("--") => return Err(usage(&format!("unknown option {s}"))),
             _ if video.is_none() => video = Some(PathBuf::from(a)),
             _ => return Err(usage("more than one video given")),
@@ -56,36 +74,78 @@ fn parse_args(args: Vec<String>) -> Result<Args, Failure> {
 fn run() -> Result<(), Failure> {
     let args = parse_args(std::env::args().skip(1).collect())?;
     if !args.video.is_file() {
-        return fail(1, format!("error: video not found: {}", args.video.display()));
+        return fail(
+            1,
+            format!("error: video not found: {}", args.video.display()),
+        );
     }
 
     // size of the video
     let probe = Command::new("ffprobe")
-        .args(["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,r_frame_rate"])
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height,r_frame_rate",
+        ])
         .args(["-of", "default=noprint_wrappers=1"])
         .arg(&args.video)
         .output()
-        .map_err(|e| Failure { code: 1, message: format!("error: could not run ffprobe (is ffmpeg installed and on PATH?): {e}") })?;
+        .map_err(|e| Failure {
+            code: 1,
+            message: format!(
+                "error: could not run ffprobe (is ffmpeg installed and on PATH?): {e}"
+            ),
+        })?;
     if !probe.status.success() {
-        return fail(1, format!("error: ffprobe could not read the video: {}", String::from_utf8_lossy(&probe.stderr).trim()));
+        return fail(
+            1,
+            format!(
+                "error: ffprobe could not read the video: {}",
+                String::from_utf8_lossy(&probe.stderr).trim()
+            ),
+        );
     }
-    let info = parse_probe(&String::from_utf8_lossy(&probe.stdout)).map_err(|e| Failure { code: 1, message: format!("error: {e}") })?;
+    let info = parse_probe(&String::from_utf8_lossy(&probe.stdout)).map_err(|e| Failure {
+        code: 1,
+        message: format!("error: {e}"),
+    })?;
     let Some((_, strip_h)) = strip_size(info.width) else {
-        return fail(1, format!("error: video is too narrow ({} px): the sync strip needs at least 480 px of width", info.width));
+        return fail(
+            1,
+            format!(
+                "error: video is too narrow ({} px): the sync strip needs at least 480 px of width",
+                info.width
+            ),
+        );
     };
     // the decoder only needs the strip rows; keep the crop height even for the chroma subsampling
     let crop_h = strip_h + strip_h % 2;
     if info.height < crop_h {
-        return fail(1, format!("error: video is too short ({} px) for the sync strip", info.height));
+        return fail(
+            1,
+            format!(
+                "error: video is too short ({} px) for the sync strip",
+                info.height
+            ),
+        );
     }
 
     let mut index = match &args.labels {
-        Some(p) => Some(LabelIndex::build(p).map_err(|e| Failure { code: 1, message: format!("error: cannot read labels {}: {e}", p.display()) })?),
+        Some(p) => Some(LabelIndex::build(p).map_err(|e| Failure {
+            code: 1,
+            message: format!("error: cannot read labels {}: {e}", p.display()),
+        })?),
         None => None,
     };
 
     let mut out: Box<dyn Write> = match &args.out {
-        Some(p) => Box::new(BufWriter::new(File::create(p).map_err(|e| Failure { code: 1, message: format!("error: cannot create {}: {e}", p.display()) })?)),
+        Some(p) => Box::new(BufWriter::new(File::create(p).map_err(|e| Failure {
+            code: 1,
+            message: format!("error: cannot create {}: {e}", p.display()),
+        })?)),
         None => Box::new(BufWriter::new(io::stdout().lock())),
     };
 
@@ -98,7 +158,10 @@ fn run() -> Result<(), Failure> {
         .args(["-pix_fmt", "gray", "-f", "rawvideo", "-"])
         .stdout(Stdio::piped())
         .spawn()
-        .map_err(|e| Failure { code: 1, message: format!("error: could not run ffmpeg (is it installed and on PATH?): {e}") })?;
+        .map_err(|e| Failure {
+            code: 1,
+            message: format!("error: could not run ffmpeg (is it installed and on PATH?): {e}"),
+        })?;
     let mut pipe = child.stdout.take().expect("stdout was piped");
 
     let mut buf = vec![0u8; info.width * crop_h];
@@ -111,7 +174,10 @@ fn run() -> Result<(), Failure> {
             Err(e) => {
                 let _ = child.kill();
                 let _ = out.flush();
-                return fail(3, format!("error: video stream ended unexpectedly after {n} frames: {e}"));
+                return fail(
+                    3,
+                    format!("error: video stream ended unexpectedly after {n} frames: {e}"),
+                );
             }
         }
         let code = decode(&buf, info.width, crop_h);
@@ -143,14 +209,28 @@ fn run() -> Result<(), Failure> {
         }
     }
     drop(pipe);
-    let status = child.wait().map_err(|e| Failure { code: 3, message: format!("error: waiting for ffmpeg: {e}") })?;
+    let status = child.wait().map_err(|e| Failure {
+        code: 3,
+        message: format!("error: waiting for ffmpeg: {e}"),
+    })?;
     if !status.success() {
-        return fail(3, format!("error: ffmpeg failed after {n} frames ({status})"));
+        return fail(
+            3,
+            format!("error: ffmpeg failed after {n} frames ({status})"),
+        );
     }
 
-    eprintln!("fire-decode: video={}x{} {}", info.width, info.height, summary.to_line());
+    eprintln!(
+        "fire-decode: video={}x{} {}",
+        info.width,
+        info.height,
+        summary.to_line()
+    );
     if let Some(idx) = &index {
-        eprintln!("fire-decode: labels rows={} bad_lines={} duplicate_ids={}", idx.rows, idx.bad_lines, idx.duplicate_ids);
+        eprintln!(
+            "fire-decode: labels rows={} bad_lines={} duplicate_ids={}",
+            idx.rows, idx.bad_lines, idx.duplicate_ids
+        );
     }
     Ok(())
 }

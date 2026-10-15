@@ -6,12 +6,23 @@ use std::io::{Cursor, ErrorKind, Read};
 #[test]
 fn parses_a_normal_probe_output() {
     let info = parse_probe("width=1920\nheight=1080\nr_frame_rate=60/1\n").unwrap();
-    assert_eq!(info, VideoInfo { width: 1920, height: 1080, fps_num: 60, fps_den: 1 });
+    assert_eq!(
+        info,
+        VideoInfo {
+            width: 1920,
+            height: 1080,
+            fps_num: 60,
+            fps_den: 1
+        }
+    );
 }
 
 #[test]
 fn key_order_and_extra_keys_do_not_matter() {
-    let info = parse_probe("codec_name=h264\nr_frame_rate=30000/1001\nheight=720\nwidth=1280\nprofile=High\n").unwrap();
+    let info = parse_probe(
+        "codec_name=h264\nr_frame_rate=30000/1001\nheight=720\nwidth=1280\nprofile=High\n",
+    )
+    .unwrap();
     assert_eq!(info.width, 1280);
     assert_eq!(info.height, 720);
     assert_eq!((info.fps_num, info.fps_den), (30000, 1001));
@@ -26,18 +37,30 @@ fn windows_line_endings_are_fine() {
 #[test]
 fn missing_or_invalid_fields_are_errors_not_panics() {
     assert!(parse_probe("").is_err());
-    assert!(parse_probe("width=1920\nheight=1080\n").is_err(), "no frame rate");
-    assert!(parse_probe("width=1920\nr_frame_rate=60/1\n").is_err(), "no height");
+    assert!(
+        parse_probe("width=1920\nheight=1080\n").is_err(),
+        "no frame rate"
+    );
+    assert!(
+        parse_probe("width=1920\nr_frame_rate=60/1\n").is_err(),
+        "no height"
+    );
     assert!(parse_probe("width=abc\nheight=1080\nr_frame_rate=60/1\n").is_err());
     assert!(parse_probe("width=0\nheight=1080\nr_frame_rate=60/1\n").is_err());
     assert!(parse_probe("width=1920\nheight=0\nr_frame_rate=60/1\n").is_err());
     assert!(parse_probe("width=1920\nheight=1080\nr_frame_rate=0/0\n").is_err());
-    assert!(parse_probe("width=1920\nheight=1080\nr_frame_rate=60\n").is_err(), "not a fraction");
+    assert!(
+        parse_probe("width=1920\nheight=1080\nr_frame_rate=60\n").is_err(),
+        "not a fraction"
+    );
 }
 
 #[test]
 fn only_the_first_stream_counts_if_ffprobe_prints_several() {
-    let info = parse_probe("width=1920\nheight=1080\nr_frame_rate=60/1\nwidth=640\nheight=360\nr_frame_rate=30/1\n").unwrap();
+    let info = parse_probe(
+        "width=1920\nheight=1080\nr_frame_rate=60/1\nwidth=640\nheight=360\nr_frame_rate=30/1\n",
+    )
+    .unwrap();
     assert_eq!(info.width, 1920);
 }
 
@@ -53,7 +76,10 @@ fn reads_whole_frames_then_reports_a_clean_end() {
         assert_eq!(buf[0], i * 10);
         assert_eq!(buf[9], i * 10 + 9);
     }
-    assert!(!read_frame(&mut r, &mut buf).unwrap(), "clean EOF at a frame boundary");
+    assert!(
+        !read_frame(&mut r, &mut buf).unwrap(),
+        "clean EOF at a frame boundary"
+    );
 }
 
 #[test]

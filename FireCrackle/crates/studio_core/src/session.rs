@@ -2,7 +2,7 @@
 //! autosave queue, as one pure object. The UI calls one method per user action.
 
 use crate::config::Settings;
-use crate::label::{Label, LabelError, LabelStore};
+use crate::label::{Label, LabelError, LabelSource, LabelStore};
 use crate::phase::{Analysis, Flag, FrameObs, STEPS};
 use crate::project::Project;
 use serde::Serialize;
@@ -142,17 +142,31 @@ pub struct Session {
 
 impl Session {
     /// The playhead starts on the first unlabelled frame (frame 0 when everything is labelled).
-    pub fn new(project: Project, store: LabelStore, settings: Settings) -> Result<Session, SessionError> {
+    pub fn new(
+        project: Project,
+        store: LabelStore,
+        settings: Settings,
+    ) -> Result<Session, SessionError> {
         if project.frames.len() != store.frame_count() as usize {
-            return Err(SessionError::FrameCountMismatch { project: project.frames.len(), store: store.frame_count() });
+            return Err(SessionError::FrameCountMismatch {
+                project: project.frames.len(),
+                store: store.frame_count(),
+            });
         }
-        let current = if store.get(0) == Label::Unset { 0 } else { store.next_unlabelled(0, true).unwrap_or(0) };
+        let current = if store.get(0) == Label::Unset {
+            0
+        } else {
+            store.next_unlabelled(0, true).unwrap_or(0)
+        };
         Ok(Session {
             project,
             store,
             settings,
             current,
-            pick: PickState { sheet: 1, mirrored: false },
+            pick: PickState {
+                sheet: 1,
+                mirrored: false,
+            },
             typer: RowTyper::new(),
             log: Vec::new(),
             analysis: None,
@@ -170,13 +184,40 @@ impl Session {
     pub fn import_labels(&mut self, text: &str) -> Result<usize, SessionError> {
         let frames = self.store.import_json(text, &self.project.fingerprint)?;
         self.typer.clear();
-        for &frame in &frames { self.log.push(self.store.log_line(frame)); }
-        if !frames.is_empty() { self.analysis = None; }
+        for &frame in &frames {
+            self.log.push(self.store.log_line(frame));
+        }
+        if !frames.is_empty() {
+            self.analysis = None;
+        }
         Ok(frames.len())
     }
 
     pub fn settings(&self) -> &Settings {
         &self.settings
+    }
+
+    /// Fill only untouched frames with detector predictions, as one undoable import.
+    pub fn add_auto_predictions(&mut self, rows: &[(u32, u8)]) -> Result<usize, SessionError> {
+        let mut entries = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for &(frame, row) in rows {
+            if frame >= self.store.frame_count() {
+                return Err(LabelError::FrameOutOfRange {
+                    frame,
+                    count: self.store.frame_count(),
+                }
+                .into());
+            }
+            if row >= 32 {
+                return Err(LabelError::InvalidRow(row).into());
+            }
+            if seen.insert(frame) && self.store.get(frame) == Label::Unset {
+                entries.push(serde_json::json!({"version":2,"frame":frame,"label":Label::Fire {sheet:1,row,mirrored:false},"predicted":true,"sources":["first_person"]}));
+            }
+        }
+        let text = serde_json::json!({"format":"firecrackle-labels","version":2,"fingerprint":self.project.fingerprint,"frame_count":self.store.frame_count(),"labels":entries}).to_string();
+        self.import_labels(&text)
     }
 
     pub fn set_settings(&mut self, settings: Settings) {
@@ -216,8 +257,21 @@ impl Session {
             Move::End => last,
             Move::NextUnlabelled => self.store.next_unlabelled(cur, true).unwrap_or(cur),
             Move::PrevUnlabelled => self.store.next_unlabelled(cur, false).unwrap_or(cur),
-            Move::NextFlag => self.analysis().flags.iter().map(|f| f.frame).find(|&f| f > cur).unwrap_or(cur),
-            Move::PrevFlag => self.analysis().flags.iter().rev().map(|f| f.frame).find(|&f| f < cur).unwrap_or(cur),
+            Move::NextFlag => self
+                .analysis()
+                .flags
+                .iter()
+                .map(|f| f.frame)
+                .find(|&f| f > cur)
+                .unwrap_or(cur),
+            Move::PrevFlag => self
+                .analysis()
+                .flags
+                .iter()
+                .rev()
+                .map(|f| f.frame)
+                .find(|&f| f < cur)
+                .unwrap_or(cur),
         };
         self.current
     }
@@ -239,10 +293,18 @@ impl Session {
         self.apply_with_source(label, false)
     }
 
-    fn apply_with_source(&mut self, label: Label, predicted: bool) -> Result<Applied, SessionError> {
+    fn apply_with_source(
+        &mut self,
+        label: Label,
+        predicted: bool,
+    ) -> Result<Applied, SessionError> {
         self.typer.clear();
         let frame = self.current;
-        let changed = if predicted { self.store.set_predicted(frame, label)? } else { self.store.set(frame, label)? };
+        let changed = if predicted {
+            self.store.set_predicted(frame, label)?
+        } else {
+            self.store.set(frame, label)?
+        };
         if changed {
             self.log.push(self.store.log_line(frame));
             self.analysis = None;
@@ -261,11 +323,20 @@ impl Session {
 
     /// Label the current frame as the picked sheet/mirror with `row`.
     pub fn pick_row(&mut self, row: u8) -> Result<Applied, SessionError> {
-        self.apply(Label::Fire { sheet: self.pick.sheet, row, mirrored: self.pick.mirrored })
+        self.apply(Label::Fire {
+            sheet: self.pick.sheet,
+            row,
+            mirrored: self.pick.mirrored,
+        })
     }
 
     /// A click on a picker cell: sets the pick state and labels the frame.
-    pub fn click_cell(&mut self, sheet: u8, row: u8, mirrored: bool) -> Result<Applied, SessionError> {
+    pub fn click_cell(
+        &mut self,
+        sheet: u8,
+        row: u8,
+        mirrored: bool,
+    ) -> Result<Applied, SessionError> {
         let label = Label::fire(sheet, row, mirrored)?; // validated before the pick state changes
         self.pick = PickState { sheet, mirrored };
         self.apply(label)
@@ -300,7 +371,14 @@ impl Session {
         let now = self.project.frames[self.current as usize].pts;
         let mut trusted = Vec::new();
         for (frame, label) in self.store.iter() {
-            let Label::Fire { sheet, row, mirrored } = label else { continue };
+            let Label::Fire {
+                sheet,
+                row,
+                mirrored,
+            } = label
+            else {
+                continue;
+            };
             if frame == self.current || self.store.is_predicted(frame) {
                 continue;
             }
@@ -309,19 +387,36 @@ impl Session {
                 trusted.push((frame, pts, sheet, row, mirrored));
             }
         }
-        let &(from_frame, anchor_pts, sheet, row, mirrored) =
-            trusted.iter().min_by(|a, b| (a.1 - now).abs().total_cmp(&(b.1 - now).abs()).then(a.0.cmp(&b.0)))?;
+        let &(from_frame, anchor_pts, sheet, row, mirrored) = trusted.iter().min_by(|a, b| {
+            (a.1 - now)
+                .abs()
+                .total_cmp(&(b.1 - now).abs())
+                .then(a.0.cmp(&b.0))
+        })?;
         let dt = now - anchor_pts;
         if dt.abs() > max_seconds {
             return None;
         }
         let rate = self.settings.phase.tick_rate;
-        let snap = |x: f64| if (x - x.round()).abs() < WHOLE_TICK_EPS { x.round() } else { x };
+        let snap = |x: f64| {
+            if (x - x.round()).abs() < WHOLE_TICK_EPS {
+                x.round()
+            } else {
+                x
+            }
+        };
         // At the anchor the unknown fractional tick phase lies in [0,1). Nearby trusted rows
         // intersect that interval. Stop at conflicting timing instead of smoothing over a stall.
         let (mut lo, mut hi) = (0.0f64, 1.0f64);
-        trusted.retain(|t| (t.1 - anchor_pts).abs() <= self.settings.label.suggest_calibration_seconds);
-        trusted.sort_by(|a, b| (a.1 - anchor_pts).abs().total_cmp(&(b.1 - anchor_pts).abs()).then(a.0.cmp(&b.0)));
+        trusted.retain(|t| {
+            (t.1 - anchor_pts).abs() <= self.settings.label.suggest_calibration_seconds
+        });
+        trusted.sort_by(|a, b| {
+            (a.1 - anchor_pts)
+                .abs()
+                .total_cmp(&(b.1 - anchor_pts).abs())
+                .then(a.0.cmp(&b.0))
+        });
         for &(frame, pts, _, other_row, _) in &trusted {
             if frame == from_frame {
                 continue;
@@ -331,7 +426,9 @@ impl Session {
             }
             let x = snap(rate * (pts - anchor_pts));
             let nominal = x.round() as i64;
-            let observed = nominal + (other_row as i64 - row as i64 - nominal + 16).rem_euclid(STEPS as i64) - 16;
+            let observed = nominal
+                + (other_row as i64 - row as i64 - nominal + 16).rem_euclid(STEPS as i64)
+                - 16;
             let a = lo.max(observed as f64 - x);
             let b = hi.min(observed as f64 + 1.0 - x);
             if b - a <= WHOLE_TICK_EPS {
@@ -351,8 +448,15 @@ impl Session {
         } else {
             let frames = &self.project.frames;
             let i = self.current as usize;
-            let before = frames[..i].iter().rev().find(|f| f.pts < now).map(|f| now - f.pts);
-            let after = frames[i + 1..].iter().find(|f| f.pts > now).map(|f| f.pts - now);
+            let before = frames[..i]
+                .iter()
+                .rev()
+                .find(|f| f.pts < now)
+                .map(|f| now - f.pts);
+            let after = frames[i + 1..]
+                .iter()
+                .find(|f| f.pts > now)
+                .map(|f| f.pts - now);
             let interval = match (before, after) {
                 (Some(a), Some(b)) => a.min(b),
                 (Some(a), None) | (None, Some(a)) => a,
@@ -361,7 +465,10 @@ impl Session {
             let uncertainty = rate * interval * self.settings.label.suggest_capture_frames;
             let down = a - advance as f64;
             let up = advance as f64 + 1.0 - b;
-            if uncertainty > 0.0 && up <= uncertainty + WHOLE_TICK_EPS && up <= down + WHOLE_TICK_EPS {
+            if uncertainty > 0.0
+                && up <= uncertainty + WHOLE_TICK_EPS
+                && up <= down + WHOLE_TICK_EPS
+            {
                 Some(advance + 1)
             } else if uncertainty > 0.0 && down <= uncertainty + WHOLE_TICK_EPS {
                 Some(advance - 1)
@@ -370,33 +477,67 @@ impl Session {
             }
         };
         let to_row = |a: i64| (row as i64 + a).rem_euclid(STEPS as i64) as u8;
-        Some(Suggestion { sheet, mirrored, row: to_row(advance), alt_row: alt.map(to_row), from_frame })
+        Some(Suggestion {
+            sheet,
+            mirrored,
+            row: to_row(advance),
+            alt_row: alt.map(to_row),
+            from_frame,
+        })
     }
 
     pub fn accept_suggestion(&mut self) -> Result<Applied, SessionError> {
         let s = self.suggestion().ok_or(SessionError::NoSuggestion)?;
-        self.pick = PickState { sheet: s.sheet, mirrored: s.mirrored };
-        self.apply_with_source(Label::Fire { sheet: s.sheet, row: s.row, mirrored: s.mirrored }, true)
+        self.pick = PickState {
+            sheet: s.sheet,
+            mirrored: s.mirrored,
+        };
+        self.apply_with_source(
+            Label::Fire {
+                sheet: s.sheet,
+                row: s.row,
+                mirrored: s.mirrored,
+            },
+            true,
+        )
     }
 
     /// Confirm the departing unset frame, then navigate exactly once (never use label auto-advance).
     pub fn manual_advance(&mut self, frames: i64) -> Result<u32, SessionError> {
         if frames > 0 && self.current < self.last() && self.label() == Label::Unset {
             if let Some(s) = self.suggestion() {
-                let label = Label::Fire { sheet: s.sheet, row: s.row, mirrored: s.mirrored };
+                let label = Label::Fire {
+                    sheet: s.sheet,
+                    row: s.row,
+                    mirrored: s.mirrored,
+                };
                 if self.store.set_predicted(self.current, label)? {
                     self.log.push(self.store.log_line(self.current));
                     self.analysis = None;
                 }
-                self.pick = PickState { sheet: s.sheet, mirrored: s.mirrored };
+                self.pick = PickState {
+                    sheet: s.sheet,
+                    mirrored: s.mirrored,
+                };
             }
         }
         Ok(self.go(Move::Frames(frames)))
     }
 
-    pub fn fill_range(&mut self, start: u32, end: u32, label: Label) -> Result<usize, SessionError> {
+    pub fn fill_range(
+        &mut self,
+        start: u32,
+        end: u32,
+        label: Label,
+    ) -> Result<usize, SessionError> {
         let in_range = start <= end && end < self.store.frame_count();
-        let before: Vec<_> = if in_range { (start..=end).map(|f| (self.store.get(f), self.store.is_predicted(f))).collect() } else { Vec::new() };
+        let before: Vec<_> = if in_range {
+            (start..=end)
+                .map(|f| (self.store.get(f), self.store.is_predicted(f)))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let changed = self.store.fill_range(start, end, label)?;
         if changed > 0 {
             for (i, frame) in (start..=end).enumerate() {
@@ -425,23 +566,52 @@ impl Session {
         }
     }
 
-    /// Phase analysis of the current labels (cached until the labels change).
+    /// Phase evidence uses independently chosen labels, never accepted clock predictions.
     pub fn analysis(&mut self) -> &Analysis {
         if self.analysis.is_none() {
-            let obs: Vec<FrameObs> = self
-                .store
-                .iter()
-                .into_iter()
-                .filter(|(_, l)| l.is_fire())
-                .map(|(frame, label)| FrameObs { frame, pts: self.project.frames[frame as usize].pts, label })
-                .collect();
-            self.analysis = Some(crate::phase_v2::analyze(&obs, &self.settings).expect("labels, settings and project timestamps are valid"));
+            let obs: Vec<FrameObs> =
+                self.store
+                    .iter()
+                    .into_iter()
+                    .filter(|(frame, l)| {
+                        l.is_fire()
+                            && self.store.sources(*frame).iter().any(|s| {
+                                matches!(s, LabelSource::Manual | LabelSource::FirstPerson)
+                            })
+                    })
+                    .map(|(frame, label)| FrameObs {
+                        frame,
+                        pts: self.project.frames[frame as usize].pts,
+                        label,
+                    })
+                    .collect();
+            self.analysis = Some(
+                crate::phase_v2::analyze(&obs, &self.settings)
+                    .expect("labels, settings and project timestamps are valid"),
+            );
         }
         self.analysis.as_ref().expect("just computed")
     }
 
     pub fn flags(&mut self) -> &[Flag] {
         &self.analysis().flags
+    }
+
+    pub fn analysis_for_source(&self, source: LabelSource) -> Analysis {
+        let obs: Vec<_> = self
+            .store
+            .iter()
+            .into_iter()
+            .filter(|(frame, label)| {
+                label.is_fire() && self.store.sources(*frame).contains(&source)
+            })
+            .map(|(frame, label)| FrameObs {
+                frame,
+                pts: self.project.frames[frame as usize].pts,
+                label,
+            })
+            .collect();
+        crate::phase_v2::analyze(&obs, &self.settings).expect("valid labels and timestamps")
     }
 
     /// Log lines for every change since the last call (undo included), ready for `AutosaveLog::append`.

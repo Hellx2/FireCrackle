@@ -1,11 +1,8 @@
 [package]
 name = "firecrackle"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Frame-by-frame Minecraft fire annotation and animation timing analysis"
 edition = "2024"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -22,6 +19,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 studio_core = { path = "../crates/studio_core" }
+fire_core = { path = "../../fire-detection/core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -33,3 +31,7 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Interactive development must not run the per-frame detector as unoptimized Rust.
+[profile.dev.package.fire_core]
+opt-level = 3

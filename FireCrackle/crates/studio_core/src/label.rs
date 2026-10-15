@@ -40,7 +40,11 @@ pub enum LabelError {
 impl Label {
     /// A validated fire label.
     pub fn fire(sheet: u8, row: u8, mirrored: bool) -> Result<Label, LabelError> {
-        let label = Label::Fire { sheet, row, mirrored };
+        let label = Label::Fire {
+            sheet,
+            row,
+            mirrored,
+        };
         label.validate()?;
         Ok(label)
     }
@@ -67,6 +71,14 @@ pub struct Replay {
 }
 
 /// One log line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelSource {
+    Manual,
+    FirstPerson,
+    TimeGuess,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Entry {
     #[serde(default)]
@@ -75,6 +87,30 @@ struct Entry {
     label: Label,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     predicted: bool,
+    #[serde(default, skip_serializing_if = "default_sources")]
+    sources: Vec<LabelSource>,
+}
+
+fn default_sources(sources: &Vec<LabelSource>) -> bool {
+    sources.is_empty() || sources.as_slice() == [LabelSource::Manual]
+}
+
+impl Entry {
+    fn sources(&self) -> BTreeSet<LabelSource> {
+        if self.label == Label::Unset {
+            return BTreeSet::new();
+        }
+        if !self.sources.is_empty() {
+            return self.sources.iter().copied().collect();
+        }
+        [if self.predicted {
+            LabelSource::TimeGuess
+        } else {
+            LabelSource::Manual
+        }]
+        .into_iter()
+        .collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -87,19 +123,26 @@ struct LabelArchive {
 }
 
 /// Previous labels of the frames one undo step restores.
-type UndoStep = Vec<(u32, Label, bool)>;
+type UndoStep = Vec<(u32, Label, bool, BTreeSet<LabelSource>)>;
 
 #[derive(Debug, Clone)]
 pub struct LabelStore {
     frame_count: u32,
     labels: BTreeMap<u32, Label>,
     predicted: BTreeSet<u32>,
+    sources: BTreeMap<u32, BTreeSet<LabelSource>>,
     undo: Vec<UndoStep>,
 }
 
 impl LabelStore {
     pub fn new(frame_count: u32) -> LabelStore {
-        LabelStore { frame_count, labels: BTreeMap::new(), predicted: BTreeSet::new(), undo: Vec::new() }
+        LabelStore {
+            frame_count,
+            labels: BTreeMap::new(),
+            predicted: BTreeSet::new(),
+            sources: BTreeMap::new(),
+            undo: Vec::new(),
+        }
     }
 
     pub fn frame_count(&self) -> u32 {
@@ -109,30 +152,49 @@ impl LabelStore {
     /// Portable snapshot: animation indices and prediction provenance are preserved.
     pub fn export_json(&self, fingerprint: &str) -> String {
         let archive = LabelArchive {
-            format: "firecrackle-labels".into(), version: 2,
-            fingerprint: fingerprint.into(), frame_count: self.frame_count,
-            labels: self.iter().into_iter().map(|(frame, label)| Entry {
-                version: 2, frame, label, predicted: self.is_predicted(frame),
-            }).collect(),
+            format: "firecrackle-labels".into(),
+            version: 2,
+            fingerprint: fingerprint.into(),
+            frame_count: self.frame_count,
+            labels: self
+                .iter()
+                .into_iter()
+                .map(|(frame, label)| Entry {
+                    version: 2,
+                    frame,
+                    label,
+                    predicted: self.is_predicted(frame),
+                    sources: self.sources(frame).into_iter().collect(),
+                })
+                .collect(),
         };
         serde_json::to_string_pretty(&archive).expect("plain label archive")
     }
 
     /// Validate the entire snapshot before merging; the whole import is one undo step.
     pub fn import_json(&mut self, text: &str, fingerprint: &str) -> Result<Vec<u32>, LabelError> {
-        let bad = |msg: &str| LabelError::Parse { line: 0, msg: msg.into() };
-        let archive: LabelArchive = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| bad(&format!("Invalid label file: {e}")))?;
+        let bad = |msg: &str| LabelError::Parse {
+            line: 0,
+            msg: msg.into(),
+        };
+        let archive: LabelArchive = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .map_err(|e| bad(&format!("Invalid label file: {e}")))?;
         if archive.format != "firecrackle-labels" || archive.version != 2 {
             return Err(bad("Unsupported label export format or version"));
         }
         if archive.frame_count != self.frame_count || archive.fingerprint != fingerprint {
-            return Err(bad("These labels belong to a different video. Open the matching video first."));
+            return Err(bad(
+                "These labels belong to a different video. Open the matching video first.",
+            ));
         }
         let mut seen = BTreeSet::new();
         for entry in &archive.labels {
             self.check_frame(entry.frame)?;
             entry.label.validate()?;
-            if entry.version != 2 || !seen.insert(entry.frame) || (entry.predicted && !entry.label.is_fire()) {
+            if entry.version != 2
+                || !seen.insert(entry.frame)
+                || (entry.predicted && !entry.label.is_fire())
+            {
                 return Err(bad("Invalid or duplicate label entry"));
             }
         }
@@ -140,14 +202,20 @@ impl LabelStore {
         for entry in archive.labels {
             let previous = self.get(entry.frame);
             let predicted = self.is_predicted(entry.frame);
-            if (previous, predicted) == (entry.label, entry.predicted) { continue; }
-            undo.push((entry.frame, previous, predicted));
+            let sources = entry.sources();
+            let old_sources = self.sources(entry.frame);
+            if previous == entry.label && sources == old_sources {
+                continue;
+            }
+            undo.push((entry.frame, previous, predicted, old_sources));
             self.put(entry.frame, entry.label);
-            if entry.predicted { self.predicted.insert(entry.frame); }
+            self.put_sources(entry.frame, sources);
         }
-        let mut frames: Vec<_> = undo.iter().map(|(frame, _, _)| *frame).collect();
+        let mut frames: Vec<_> = undo.iter().map(|(frame, _, _, _)| *frame).collect();
         frames.sort_unstable();
-        if !undo.is_empty() { self.undo.push(undo); }
+        if !undo.is_empty() {
+            self.undo.push(undo);
+        }
         Ok(frames)
     }
 
@@ -160,21 +228,48 @@ impl LabelStore {
         self.predicted.contains(&frame)
     }
 
+    pub fn sources(&self, frame: u32) -> BTreeSet<LabelSource> {
+        self.sources.get(&frame).cloned().unwrap_or_default()
+    }
+
+    fn put_sources(&mut self, frame: u32, sources: BTreeSet<LabelSource>) {
+        if sources.is_empty() {
+            return;
+        }
+        if self.get(frame).is_fire() && !sources.contains(&LabelSource::Manual) {
+            self.predicted.insert(frame);
+        } else {
+            self.predicted.remove(&frame);
+        }
+        self.sources.insert(frame, sources);
+    }
+
     /// Persist both value and source; accepted guesses must not become calibration evidence on restart.
     pub fn log_line(&self, frame: u32) -> String {
-        serde_json::to_string(&Entry { version: 2, frame, label: self.get(frame), predicted: self.is_predicted(frame) }).expect("plain log entry")
+        serde_json::to_string(&Entry {
+            version: 2,
+            frame,
+            label: self.get(frame),
+            predicted: self.is_predicted(frame),
+            sources: self.sources(frame).into_iter().collect(),
+        })
+        .expect("plain log entry")
     }
 
     fn check_frame(&self, frame: u32) -> Result<(), LabelError> {
         if frame < self.frame_count {
             Ok(())
         } else {
-            Err(LabelError::FrameOutOfRange { frame, count: self.frame_count })
+            Err(LabelError::FrameOutOfRange {
+                frame,
+                count: self.frame_count,
+            })
         }
     }
 
     fn put(&mut self, frame: u32, label: Label) {
         self.predicted.remove(&frame);
+        self.sources.remove(&frame);
         if label == Label::Unset {
             self.labels.remove(&frame);
         } else {
@@ -192,20 +287,36 @@ impl LabelStore {
         self.set_with_source(frame, label, true)
     }
 
-    fn set_with_source(&mut self, frame: u32, label: Label, predicted: bool) -> Result<bool, LabelError> {
+    fn set_with_source(
+        &mut self,
+        frame: u32,
+        label: Label,
+        predicted: bool,
+    ) -> Result<bool, LabelError> {
         label.validate()?;
         self.check_frame(frame)?;
         let prev = self.get(frame);
         let was_predicted = self.is_predicted(frame);
-        let predicted = predicted && label.is_fire();
-        if prev == label && was_predicted == predicted {
+        let old_sources = self.sources(frame);
+        let mut sources = if prev == label {
+            old_sources.clone()
+        } else {
+            BTreeSet::new()
+        };
+        if label != Label::Unset {
+            sources.insert(if predicted && label.is_fire() {
+                LabelSource::TimeGuess
+            } else {
+                LabelSource::Manual
+            });
+        }
+        if prev == label && old_sources == sources {
             return Ok(false);
         }
-        self.undo.push(vec![(frame, prev, was_predicted)]);
+        self.undo
+            .push(vec![(frame, prev, was_predicted, old_sources)]);
         self.put(frame, label);
-        if predicted {
-            self.predicted.insert(frame);
-        }
+        self.put_sources(frame, sources);
         Ok(true)
     }
 
@@ -222,11 +333,9 @@ impl LabelStore {
     pub fn undo_step(&mut self) -> Option<Vec<u32>> {
         let step = self.undo.pop()?;
         let mut frames: Vec<u32> = Vec::with_capacity(step.len());
-        for (frame, prev, predicted) in step {
+        for (frame, prev, _predicted, sources) in step {
             self.put(frame, prev);
-            if predicted {
-                self.predicted.insert(frame);
-            }
+            self.put_sources(frame, sources);
             frames.push(frame);
         }
         frames.sort_unstable();
@@ -246,8 +355,18 @@ impl LabelStore {
         for f in start..=end {
             let prev = self.get(f);
             if prev != label || self.is_predicted(f) {
-                step.push((f, prev, self.is_predicted(f)));
+                let old_sources = self.sources(f);
+                let mut sources = if prev == label {
+                    old_sources.clone()
+                } else {
+                    BTreeSet::new()
+                };
+                if label != Label::Unset {
+                    sources.insert(LabelSource::Manual);
+                }
+                step.push((f, prev, self.is_predicted(f), old_sources));
                 self.put(f, label);
+                self.put_sources(f, sources);
             }
         }
         let changed = step.len();
@@ -263,7 +382,9 @@ impl LabelStore {
         if forward {
             (from.saturating_add(1)..self.frame_count).find(|f| !self.labels.contains_key(f))
         } else {
-            (0..from.min(self.frame_count)).rev().find(|f| !self.labels.contains_key(f))
+            (0..from.min(self.frame_count))
+                .rev()
+                .find(|f| !self.labels.contains_key(f))
         }
     }
 
@@ -281,7 +402,12 @@ impl LabelStore {
     /// Blank lines are ignored; an unparsable *last* line is dropped (`torn_tail`);
     /// an unparsable earlier line, an invalid label or a frame >= `frame_count` is an error.
     pub fn replay(text: &str, frame_count: u32) -> Result<Replay, LabelError> {
-        let lines: Vec<(usize, &str)> = text.lines().enumerate().map(|(i, l)| (i + 1, l.trim())).filter(|(_, l)| !l.is_empty()).collect();
+        let lines: Vec<(usize, &str)> = text
+            .lines()
+            .enumerate()
+            .map(|(i, l)| (i + 1, l.trim()))
+            .filter(|(_, l)| !l.is_empty())
+            .collect();
         let mut store = LabelStore::new(frame_count);
         let mut torn_tail = false;
         for (idx, &(line_no, line)) in lines.iter().enumerate() {
@@ -291,11 +417,19 @@ impl LabelStore {
                     torn_tail = true;
                     break;
                 }
-                Err(e) => return Err(LabelError::Parse { line: line_no, msg: e.to_string() }),
+                Err(e) => {
+                    return Err(LabelError::Parse {
+                        line: line_no,
+                        msg: e.to_string(),
+                    })
+                }
             };
             entry.label.validate()?;
             if entry.version > 2 {
-                return Err(LabelError::Parse { line: line_no, msg: "Unsupported label log version".into() });
+                return Err(LabelError::Parse {
+                    line: line_no,
+                    msg: "Unsupported label log version".into(),
+                });
             }
             // Only the legacy file reader performs v1 -> v2 migration.
             if entry.version < 2 {
@@ -305,9 +439,7 @@ impl LabelStore {
             }
             store.check_frame(entry.frame)?;
             store.put(entry.frame, entry.label);
-            if entry.predicted && entry.label.is_fire() {
-                store.predicted.insert(entry.frame);
-            }
+            store.put_sources(entry.frame, entry.sources());
         }
         Ok(Replay { store, torn_tail })
     }
@@ -315,7 +447,18 @@ impl LabelStore {
 
 /// One versioned animation-index log entry, without a trailing newline.
 pub fn log_line(frame: u32, label: Label) -> String {
-    serde_json::to_string(&Entry { version: 2, frame, label, predicted: false }).expect("a plain struct always serialises")
+    serde_json::to_string(&Entry {
+        version: 2,
+        frame,
+        label,
+        predicted: false,
+        sources: if label == Label::Unset {
+            vec![]
+        } else {
+            vec![LabelSource::Manual]
+        },
+    })
+    .expect("a plain struct always serialises")
 }
 
 /// Clamp a (possibly negative / past-the-end) frame index into `0..count`. `None` when `count == 0`.

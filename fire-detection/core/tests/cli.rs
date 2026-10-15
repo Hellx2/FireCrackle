@@ -48,9 +48,9 @@ fn background(t: usize) -> Vec<u8> {
 /// What each video frame carries: `None` = no strip at all.
 fn spec(i: usize) -> Option<(u32, u32)> {
     match i {
-        5 | 6 => None,                      // unstamped
-        10 => Some((1000 + 9 / 3, 509)),    // a duplicate of frame 9
-        15 => Some((1000 + 15 / 3, 9000)),  // an id that has no label row
+        5 | 6 => None,                     // unstamped
+        10 => Some((1000 + 9 / 3, 509)),   // a duplicate of frame 9
+        15 => Some((1000 + 15 / 3, 9000)), // an id that has no label row
         _ => Some((1000 + (i / 3) as u32, 500 + i as u32)),
     }
 }
@@ -68,7 +68,16 @@ fn make_video(dir: &Path) -> PathBuf {
     }
     std::fs::write(&raw, &bytes).unwrap();
     let ok = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-s",
+        ])
         .arg(format!("{W}x{H}"))
         .args(["-r", "60", "-i"])
         .arg(&raw)
@@ -91,7 +100,9 @@ fn make_labels(dir: &Path) -> PathBuf {
         if id == 512 {
             tick += 1; // wrong on purpose
         }
-        s.push_str(&format!("{{\"f\":{id},\"tick\":{tick},\"f0\":3,\"f1\":19,\"fire\":false,\"fires\":[]}}\n"));
+        s.push_str(&format!(
+            "{{\"f\":{id},\"tick\":{tick},\"f0\":3,\"f1\":19,\"fire\":false,\"fires\":[]}}\n"
+        ));
     }
     std::fs::write(&path, s).unwrap();
     path
@@ -102,7 +113,10 @@ fn run(args: &[&str]) -> Output {
 }
 
 fn lines(o: &Output) -> Vec<String> {
-    String::from_utf8_lossy(&o.stdout).lines().map(|s| s.to_string()).collect()
+    String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 fn stderr(o: &Output) -> String {
@@ -119,21 +133,37 @@ fn decodes_and_joins_every_frame() {
     let dir = scratch("main");
     let video = make_video(&dir);
     let labels = make_labels(&dir);
-    let out = run(&[video.to_str().unwrap(), "--labels", labels.to_str().unwrap()]);
+    let out = run(&[
+        video.to_str().unwrap(),
+        "--labels",
+        labels.to_str().unwrap(),
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     let rows = lines(&out);
-    assert_eq!(rows.len(), FRAMES, "one row per video frame, none duplicated or dropped");
+    assert_eq!(
+        rows.len(),
+        FRAMES,
+        "one row per video frame, none duplicated or dropped"
+    );
 
     for (n, row) in rows.iter().enumerate() {
-        assert!(row.starts_with(&format!("{{\"n\":{n},")), "row {n} out of order: {row}");
+        assert!(
+            row.starts_with(&format!("{{\"n\":{n},")),
+            "row {n} out of order: {row}"
+        );
     }
     // the unstamped frames are reported as undecodable, not guessed
     for n in [5, 6] {
-        assert_eq!(rows[n], format!("{{\"n\":{n},\"tick\":null,\"f\":null,\"tick_ok\":null,\"label\":null}}"));
+        assert_eq!(
+            rows[n],
+            format!("{{\"n\":{n},\"tick\":null,\"f\":null,\"tick_ok\":null,\"label\":null}}")
+        );
     }
     // a normal frame: strip decoded, label row attached verbatim, tick agrees
     assert!(
-        rows[0].starts_with("{\"n\":0,\"tick\":1000,\"f\":500,\"tick_ok\":true,\"label\":{\"f\":500,\"tick\":1000,"),
+        rows[0].starts_with(
+            "{\"n\":0,\"tick\":1000,\"f\":500,\"tick_ok\":true,\"label\":{\"f\":500,\"tick\":1000,"
+        ),
         "{}",
         rows[0]
     );
@@ -142,14 +172,28 @@ fn decodes_and_joins_every_frame() {
     assert!(rows[9].contains("\"f\":509"), "{}", rows[9]);
     assert!(rows[10].contains("\"f\":509"), "{}", rows[10]);
     // wrong tick in the label log -> flagged, label still attached
-    assert!(rows[12].contains("\"f\":512") && rows[12].contains("\"tick_ok\":false"), "{}", rows[12]);
+    assert!(
+        rows[12].contains("\"f\":512") && rows[12].contains("\"tick_ok\":false"),
+        "{}",
+        rows[12]
+    );
     // an id the label log does not have
-    assert_eq!(rows[15], "{\"n\":15,\"tick\":1005,\"f\":9000,\"tick_ok\":null,\"label\":null}");
+    assert_eq!(
+        rows[15],
+        "{\"n\":15,\"tick\":1005,\"f\":9000,\"tick_ok\":null,\"label\":null}"
+    );
 
     let err = stderr(&out);
     for key in [
-        "video=1920x1080", "frames=24", "decoded=22", "undecodable=2", "matched=21", "unmatched=1",
-        "tick_mismatch=1", "id_repeats=1", "id_decreases=1",
+        "video=1920x1080",
+        "frames=24",
+        "decoded=22",
+        "undecodable=2",
+        "matched=21",
+        "unmatched=1",
+        "tick_mismatch=1",
+        "id_repeats=1",
+        "id_decreases=1",
     ] {
         assert!(err.contains(key), "summary lacks {key}: {err}");
     }
@@ -181,7 +225,13 @@ fn out_writes_a_file_and_leaves_stdout_empty() {
     let video = make_video(&dir);
     let labels = make_labels(&dir);
     let target = dir.join("joined.jsonl");
-    let out = run(&[video.to_str().unwrap(), "--labels", labels.to_str().unwrap(), "--out", target.to_str().unwrap()]);
+    let out = run(&[
+        video.to_str().unwrap(),
+        "--labels",
+        labels.to_str().unwrap(),
+        "--out",
+        target.to_str().unwrap(),
+    ]);
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(out.stdout.is_empty());
     let text = std::fs::read_to_string(&target).unwrap();
@@ -207,7 +257,11 @@ fn a_missing_label_file_is_a_clean_error() {
     }
     let dir = scratch("nolabelfile");
     let video = make_video(&dir);
-    let out = run(&[video.to_str().unwrap(), "--labels", dir.join("nope.jsonl").to_str().unwrap()]);
+    let out = run(&[
+        video.to_str().unwrap(),
+        "--labels",
+        dir.join("nope.jsonl").to_str().unwrap(),
+    ]);
     assert!(!out.status.success());
     assert!(stderr(&out).to_lowercase().contains("error"));
     assert!(!stderr(&out).contains("panicked"));
@@ -236,7 +290,17 @@ fn a_video_too_narrow_for_the_strip_is_refused() {
     let dir = scratch("narrow");
     let p = dir.join("small.mp4");
     let ok = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10", "-t", "1"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=320x180:rate=10",
+            "-t",
+            "1",
+        ])
         .args(["-pix_fmt", "yuv420p"])
         .arg(&p)
         .status()
@@ -245,7 +309,11 @@ fn a_video_too_narrow_for_the_strip_is_refused() {
     assert!(ok);
     let out = run(&[p.to_str().unwrap()]);
     assert!(!out.status.success());
-    assert!(stderr(&out).to_lowercase().contains("narrow"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).to_lowercase().contains("narrow"),
+        "{}",
+        stderr(&out)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

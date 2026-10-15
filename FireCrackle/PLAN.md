@@ -1,3 +1,9 @@
+# Historical implementation plan
+
+This document records the original milestone sequence and observations from those milestones.
+Its test counts, proposed APIs and TODOs are historical, not the current acceptance checklist.
+For current behavior and checks, use `README.md`, the root `CONTRIBUTING.md` and the tests.
+
 # FireCrackle: plan
 
 Desktop tool (Tauri 2: React + TypeScript UI, Rust backend, Windows + Linux) for the manual part of the
@@ -80,4 +86,12 @@ test files unchanged between red and green.
 3. Phase tab (chart + flags + jump to frame): **done**, see `PLAN-M3.md` (phase and row charts, hover read-out,
    click a flag or point to open it in Label). Checked against the mock in the browser and compiled into the Tauri shim;
    not yet checked on a real labelled video.
+3b. Timeline thumbnails: **done**, see `PLAN-M4.md` (one keyframe-only ffmpeg pass, disk cache, background job,
+   picture row in the timeline; 3 new documented settings).
+TODO (later): multi-fire labels. If a frame shows several fires, every one must show the same sprite, so one label
+   is enough for now; two fires showing different rows in one frame would itself be suspicious and could become a flag.
+TODO (found 2026-10-15 on real data, `validate_phase` on clip2): a client **freeze** (video frames identical for 2.4 s,
+   game tick stuck for 142 frames, then +47 ticks in one frame) is flagged Hard as "not explainable by lag", which
+   is the wrong wording, and the +47 catch-up contradicts the E4 claim that catch-up is capped at 10 per frame
+   (`PHASE-EVIDENCE.md`). Re-check against the Yarn source before changing severities; consider a "frozen" explanation.
 4. Linux pass (sidecars, webkit2gtk), packaging, then multi-fire labels.

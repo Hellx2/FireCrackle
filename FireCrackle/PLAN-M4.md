@@ -1,4 +1,22 @@
+# Historical thumbnail milestone
+
+The status and counts below describe the original implementation checkpoint. The current
+thumbnail integration is preserved in source and covered by the workspace/FFmpeg tests;
+use the root contributing guide for current commands.
+
 # M4: timeline thumbnails (plan)
+
+**Status: built.** 425 Rust tests (38 `thumbs`, 17 `thumbs_workspace`, 36 settings), 141 TypeScript tests, `tsc`,
+the Vite build and the Tauri shim clean. Real ffmpeg: the pass is verified on synthetic videos (GOP, stride, 1.5 s
+start offset, one keyframe, paths with spaces, cancel, missing tool) and on a copy of a real 1080p60 recording
+(9400 frames: 40 thumbnails in 0.97 s, reopening reuses the cache). In the browser against the mock: "making
+thumbnails..." then the picture row. Not verified: the real Tauri window drawing the row.
+Deviations from the plan, stated openly: (1) the UI asks `thumb_nearest(frames)` (slots are anchored to the video,
+not equal divisions of the view), so the planned `strip()` was dropped before it was written; (2) the
+"failed save keeps the old store" test was changed after the red run to block the staging folder (`thumbs.tmp`)
+instead of a picture file, because the store is written to a staging folder and swapped in; (3) two existing tests
+had their counts bumped to 36 settings, and my first wording of two setting explanations tripped the existing
+"no mention of the old strip" guard, so the wording (not the test) was changed.
 
 Goal: a picture strip along the timeline (like a video editor) so the user can see where scenes and fire are
 without stepping. Decoding ten arbitrary frames costs seconds (each needs its own seek), so thumbnails come from
@@ -19,9 +37,9 @@ without stepping. Decoding ten arbitrary frames costs seconds (each needs its ow
 - **Background**: `Workspace::thumbs_start()` spawns one job thread (a second call while running does nothing);
   `thumbs_status()` = idle | running | ready | failed(message) | disabled, with a count. Dropping the workspace
   cancels the job (kills ffmpeg). A failure never blocks labelling.
-- **Strip**: `thumbs::strip(frames, start, end, slots)` = for each slot across the visible range the nearest
-  thumbnail frame. The UI draws each distinct thumbnail once per slot, so zooming in shows the nearest keyframe
-  (coarse where keyframes are far apart: a stated limit, not a bug).
+- **Row**: the UI cuts the visible video into slots (`thumbSlots`, anchored to the video so panning does not
+  re-cut them) and asks `thumb_nearest` for the stored thumbnail nearest to each slot's centre frame; zooming in
+  shows the nearest keyframe (coarse where keyframes are far apart: a stated limit, not a bug).
 - **Settings** (all documented, ranges in `config.rs`): `timeline.thumb_width_px` (exists), `timeline.thumb_quality`
   (MJPEG q 2-31, default 5), `timeline.thumb_max_count` (default 600), `timeline.thumbs_enabled` (default on).
 - Tauri: `thumbs_start`, `thumbs_status`, `thumb_strip`, `thumb` (raw bytes). UI: `lib/thumbs.ts` (slot geometry,
@@ -35,8 +53,7 @@ without stepping. Decoding ten arbitrary frames costs seconds (each needs its ow
   two pictures mapping to one frame, empty list, non-increasing times.
 - Store: missing file, corrupt/partial `meta.json`, other video (fingerprint), other width/quality/stride,
   frame not in the store, empty save, a failed write leaves the old store valid, atomic meta.
-- `nearest`/`strip`: empty store, one thumbnail, ties, frames before the first / after the last thumbnail, a range
-  of 0 frames, 0 slots, more slots than frames, `start >= end`.
+- `nearest`: empty store, one thumbnail, ties, frames before the first / after the last thumbnail.
 - ffmpeg: missing tool, cancel before and during, a video with a single keyframe, a start offset (1.5 s),
   stride > 1, width bigger than the video (no upscale needed: `min(w, iw)`), odd sizes, paths with spaces.
 - Workspace: persists across reopen (no regeneration), settings change makes it stale and regenerates, a failing

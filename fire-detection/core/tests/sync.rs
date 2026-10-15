@@ -112,7 +112,11 @@ fn roundtrip_edge_pairs_at_1080p() {
     ];
     for (tick, id) in pairs {
         let f = stamped(w, h, tick, id, 0);
-        assert_eq!(decode(&f, w, h), Some(code(tick, id)), "tick {tick:#x} id {id:#x}");
+        assert_eq!(
+            decode(&f, w, h),
+            Some(code(tick, id)),
+            "tick {tick:#x} id {id:#x}"
+        );
     }
 }
 
@@ -130,7 +134,10 @@ fn many_ticks_share_one_frame_id_space_independently() {
     // Several rendered frames in one tick: same tick, different ids all decode distinctly.
     let (w, h) = (1920, 1080);
     for id in 100..110 {
-        assert_eq!(decode(&stamped(w, h, 4242, id, 40), w, h), Some(code(4242, id)));
+        assert_eq!(
+            decode(&stamped(w, h, 4242, id, 40), w, h),
+            Some(code(4242, id))
+        );
     }
 }
 
@@ -142,7 +149,11 @@ fn roundtrip_many_random_pairs() {
         let tick = rng.next() & MAX_TICK;
         let id = rng.next() & MAX_ID;
         let f = stamped(w, h, tick, id, 90);
-        assert_eq!(decode(&f, w, h), Some(code(tick, id)), "tick {tick:#x} id {id:#x}");
+        assert_eq!(
+            decode(&f, w, h),
+            Some(code(tick, id)),
+            "tick {tick:#x} id {id:#x}"
+        );
     }
 }
 
@@ -152,7 +163,11 @@ fn roundtrip_at_common_resolutions() {
         let h = height_for(w);
         for (tick, id) in [(0, 0), (0xABCDE, 0x54321), (MAX_TICK, MAX_ID)] {
             let f = stamped(w, h, tick, id, 30);
-            assert_eq!(decode(&f, w, h), Some(code(tick, id)), "{w}px {tick:#x}/{id:#x}");
+            assert_eq!(
+                decode(&f, w, h),
+                Some(code(tick, id)),
+                "{w}px {tick:#x}/{id:#x}"
+            );
         }
     }
 }
@@ -189,7 +204,11 @@ fn survives_rescaling_after_stamping() {
     let f = stamped(w, h, 0x13579B, 0x2468AC, 40);
     for (dw, dh) in [(1280, 720), (960, 540), (2560, 1440), (854, 480)] {
         let r = resize_nearest(&f, w, h, dw, dh);
-        assert_eq!(decode(&r, dw, dh), Some(code(0x13579B, 0x2468AC)), "{dw}x{dh}");
+        assert_eq!(
+            decode(&r, dw, dh),
+            Some(code(0x13579B, 0x2468AC)),
+            "{dw}x{dh}"
+        );
     }
 }
 
@@ -199,7 +218,11 @@ fn survives_horizontal_blur() {
     let f = stamped(w, h, 0x2468AC, 0x13579B, 128);
     for radius in [1, 2] {
         let b = blur_h(&f, w, h, radius);
-        assert_eq!(decode(&b, w, h), Some(code(0x2468AC, 0x13579B)), "radius {radius}");
+        assert_eq!(
+            decode(&b, w, h),
+            Some(code(0x2468AC, 0x13579B)),
+            "radius {radius}"
+        );
     }
 }
 
@@ -291,10 +314,22 @@ fn random_noise_frames_are_never_decoded() {
 fn out_of_range_values_are_errors() {
     let (w, h) = (1920, 1080);
     let mut f = vec![0u8; w * h];
-    assert_eq!(stamp(&mut f, w, h, 1, MAX_ID + 1), Err(SyncError::IdOutOfRange));
-    assert_eq!(stamp(&mut f, w, h, 1, u32::MAX), Err(SyncError::IdOutOfRange));
-    assert_eq!(stamp(&mut f, w, h, MAX_TICK + 1, 1), Err(SyncError::TickOutOfRange));
-    assert_eq!(stamp(&mut f, w, h, u32::MAX, 1), Err(SyncError::TickOutOfRange));
+    assert_eq!(
+        stamp(&mut f, w, h, 1, MAX_ID + 1),
+        Err(SyncError::IdOutOfRange)
+    );
+    assert_eq!(
+        stamp(&mut f, w, h, 1, u32::MAX),
+        Err(SyncError::IdOutOfRange)
+    );
+    assert_eq!(
+        stamp(&mut f, w, h, MAX_TICK + 1, 1),
+        Err(SyncError::TickOutOfRange)
+    );
+    assert_eq!(
+        stamp(&mut f, w, h, u32::MAX, 1),
+        Err(SyncError::TickOutOfRange)
+    );
     // nothing was drawn by the failed calls
     assert!(f.iter().all(|&p| p == 0));
 }
@@ -319,7 +354,10 @@ fn too_small_frames() {
 fn wrong_buffer_length() {
     let (w, h) = (1920, 1080);
     let mut short = vec![0u8; w * h - 1];
-    assert_eq!(stamp(&mut short, w, h, 1, 1), Err(SyncError::BadBufferLength));
+    assert_eq!(
+        stamp(&mut short, w, h, 1, 1),
+        Err(SyncError::BadBufferLength)
+    );
     assert_eq!(decode(&short, w, h), None);
     assert_eq!(decode(&[], 0, 0), None);
 }

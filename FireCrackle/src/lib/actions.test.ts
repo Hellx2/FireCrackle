@@ -46,7 +46,7 @@ describe("key action -> backend action", () => {
     for (const type of seen) {
       const sample = Object.values(DEFAULT_BINDINGS).find((a) => a.type === type)!;
       const mapped = toUiAction(sample);
-      if (type === "playPause" || type === "shuttle") expect(mapped).toBeNull();
+      if (type === "playPause" || type === "shuttle" || type === "stepPhase") expect(mapped).toBeNull();
       else expect(mapped, type).not.toBeNull();
     }
   });

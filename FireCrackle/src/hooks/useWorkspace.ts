@@ -29,6 +29,7 @@ export function messageOf(e: unknown): string {
 }
 
 export interface WorkspaceState {
+  videoPath?: string;
   view: View | null;
   flags: Flag[];
   settings: SettingInfo[];
@@ -40,6 +41,7 @@ export interface WorkspaceState {
   save: () => Promise<void>;
   transferLabels: (kind: "import" | "export") => Promise<void>;
   transferring: boolean;
+  applyAutomation: (id:number) => Promise<void>;
   /** True while an action is in flight (playback skips ticks instead of queueing them). */
   busy: React.MutableRefObject<boolean>;
   open: (path: string) => Promise<void>;
@@ -57,6 +59,15 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
   const [opening, setOpening] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const busy = useRef(false);
+  const applyAutomation = useCallback(async (id:number) => {
+    if (!backend?.povApply || busy.current) return;
+    busy.current=true;
+    try {
+      const next=await backend.povApply(id);
+      setView(next);setVersion(v=>v+1);setError(next.save_error);
+    } catch(e) {setError(messageOf(e));throw e;}
+    finally {busy.current=false;}
+  },[backend]);
   const isOpen = view !== null;
   const videoPath = useRef<string | null>(null);
   const restoredBackend = useRef<Backend | null>(null);
@@ -211,5 +222,5 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     [backend],
   );
 
-  return { view, flags, settings, error, version, opening, saveStatus, save, transferLabels, transferring, busy, open, act, setSetting, clearError: () => setError(null) };
+  return { view, videoPath: videoPath.current ?? undefined, flags, settings, error, version, opening, saveStatus, save, transferLabels, transferring, applyAutomation, busy, open, act, setSetting, clearError: () => setError(null) };
 }

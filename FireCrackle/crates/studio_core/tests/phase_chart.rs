@@ -18,22 +18,40 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn project(n: usize, fps: f64) -> Project {
-    let pk: Vec<Packet> = (0..n).map(|i| Packet { pts: Some(i as f64 / fps), dts: None, key: i % 30 == 0 }).collect();
+    let pk: Vec<Packet> = (0..n)
+        .map(|i| Packet {
+            pts: Some(i as f64 / fps),
+            dts: None,
+            key: i % 30 == 0,
+        })
+        .collect();
     let idx = build_index(&pk, &IndexConfig::default()).unwrap();
-    let meta = VideoMeta { width: 1920, height: 1080, fps_num: fps as u32, fps_den: 1, codec: "h264".into() };
+    let meta = VideoMeta {
+        width: 1920,
+        height: 1080,
+        fps_num: fps as u32,
+        fps_den: 1,
+        codec: "h264".into(),
+    };
     Project::assemble("v.mkv", 1, "1:4096:0".into(), meta, &idx)
 }
 
 struct Fake;
 impl FrameSource for Fake {
     fn decode(&self, job: &DecodeJob, _c: &AtomicBool) -> Result<Vec<DecodedFrame>, DecodeError> {
-        Ok((job.first..=job.last).map(|f| DecodedFrame { frame: f, jpeg: vec![f as u8; 8] }).collect())
+        Ok((job.first..=job.last)
+            .map(|f| DecodedFrame {
+                frame: f,
+                jpeg: vec![f as u8; 8],
+            })
+            .collect())
     }
 }
 
 fn ws(name: &str, n: usize) -> (PathBuf, Workspace) {
     let dir = scratch(name);
-    let w = Workspace::from_parts(&dir, project(n, 20.0), &Settings::default(), Arc::new(Fake)).unwrap();
+    let w = Workspace::from_parts(&dir, project(n, 20.0), &Settings::default(), Arc::new(Fake))
+        .unwrap();
     (dir, w)
 }
 
@@ -82,7 +100,12 @@ fn a_clean_run_is_one_flat_run_at_phase_zero() {
     label_run(&mut w, 40, 999, 0);
     let c = w.phase_chart(1000);
     assert_eq!(c.points.len(), 40);
-    assert!(c.points.iter().all(|p| p.phase.abs() < 1e-6 || (p.phase - 32.0).abs() < 1e-6), "phi must be 0");
+    assert!(
+        c.points
+            .iter()
+            .all(|p| p.phase.abs() < 1e-6 || (p.phase - 32.0).abs() < 1e-6),
+        "phi must be 0"
+    );
     assert_eq!(c.runs.len(), 1);
     assert!(c.flags.is_empty());
     assert_eq!(c.points[7].step, 7);
@@ -96,7 +119,13 @@ fn a_cut_shows_up_as_a_shift_flag_and_two_runs() {
     label_run(&mut w, 40, 20, 5);
     let c = w.phase_chart(1000);
     assert_eq!(c.runs.len(), 2);
-    assert!(c.flags.iter().any(|f| f.kind == FlagKind::PhaseShift && f.frame == 20), "{:?}", c.flags);
+    assert!(
+        c.flags
+            .iter()
+            .any(|f| f.kind == FlagKind::PhaseShift && f.frame == 20),
+        "{:?}",
+        c.flags
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -140,7 +169,11 @@ fn changing_a_phase_setting_updates_the_chart() {
     assert!(before > 0);
     w.set_setting("phase.min_shift_ticks", 8.0).unwrap(); // 5 ticks is now inside the noise floor
     let after = w.phase_chart(1000);
-    assert!(after.flags.len() < before, "{before} -> {}", after.flags.len());
+    assert!(
+        after.flags.len() < before,
+        "{before} -> {}",
+        after.flags.len()
+    );
     assert_eq!(after.window_ticks, 2.0);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -164,9 +197,13 @@ fn the_chart_serialises_to_json_the_ui_can_read() {
 
 #[test]
 fn the_session_chart_includes_the_fixed_clock_and_event_evidence() {
-    let (dir,mut w)=ws("clock_evidence",64);label_run(&mut w,40,20,5);
-    let v=serde_json::to_value(w.phase_chart(1000)).unwrap();
-    assert!(v["reference_phase"].is_number());assert!(v["flag_details"].as_array().is_some_and(|a|!a.is_empty()));
-    assert!(v["clock_residuals"].as_array().is_some_and(|a|!a.is_empty()));
-    let _=std::fs::remove_dir_all(&dir);
+    let (dir, mut w) = ws("clock_evidence", 64);
+    label_run(&mut w, 40, 20, 5);
+    let v = serde_json::to_value(w.phase_chart(1000)).unwrap();
+    assert!(v["reference_phase"].is_number());
+    assert!(v["flag_details"].as_array().is_some_and(|a| !a.is_empty()));
+    assert!(v["clock_residuals"]
+        .as_array()
+        .is_some_and(|a| !a.is_empty()));
+    let _ = std::fs::remove_dir_all(&dir);
 }

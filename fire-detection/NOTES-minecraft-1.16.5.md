@@ -1,7 +1,8 @@
 # Minecraft 1.16.5 fire internals (Yarn `1.16.5+build.10`)
 
-Checked against the real deobfuscated code (javap of the Yarn-remapped jar) and vanilla assets from the
-1.16.5 client jar, plus a recorded label log from the dev client. Class and method names below are Yarn.
+Original behavioral notes checked locally against Minecraft 1.16.5, its vanilla assets and a
+recorded label log. Names use Yarn `1.16.5+build.10` for reference; no decompiled game source
+or mapping files are included here. The mod resolves its development dependencies through Gradle.
 
 ## 1. What drives the fire animation
 
@@ -9,14 +10,13 @@ Checked against the real deobfuscated code (javap of the Yarn-remapped jar) and 
   (`SpriteIdentifier`, `.getSprite()` gives the live `Sprite`).
 - Chain per client tick: `MinecraftClient.tick()` -> `TextureManager.tick()` -> every tick listener
   -> `SpriteAtlasTexture.tick()` -> `tickAnimatedSprites()` -> `Sprite.tickAnimation()` for each animated sprite.
-- **Gate**: in `MinecraftClient.tick()` the call is `if (this.world != null) textureManager.tick();`
-  There is **no `paused` check**. Consequences:
+- **Gate**: texture updates run when a world exists, including while paused. Consequences:
   - Fire keeps animating while the game is paused (confirmed in game).
   - Fire does not animate on the title screen / while loading (`world == null`); confirmed: `f0` sat at 0 until the world loaded.
   - Leaving and re-entering a world pauses the animation for the time spent outside, so the phase shifts
     across a world leave/join (a legitimate discontinuity, not a splice).
-- `Sprite.tickAnimation()`: `frameTicks++`; when `frameTicks >= metadata.getFrameTime(frameIndex)` then
-  `frameIndex = (frameIndex + 1) % frameCount`, `frameTicks = 0`, and the displayed image is uploaded.
+- `Sprite.tickAnimation()` advances its elapsed counter, moves to the next animation step when
+  that step's duration expires, wraps at the end, resets the elapsed counter and uploads the image.
   Both fire sheets have default frame time 1, so **the animation step advances once per client tick**.
 - `frameIndex` is the **animation step**, not the image row. The displayed image row is
   `metadata.getFrameIndex(frameIndex)` (see section 2).

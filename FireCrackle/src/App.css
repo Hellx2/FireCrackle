@@ -104,6 +104,11 @@ input {
   gap: 8px;
   align-items: center;
 }
+.brand-icon {
+  width: 24px;
+  height: 24px;
+  user-select: none;
+}
 .tag {
   font-size: 11px;
   font-weight: 500;
@@ -151,6 +156,8 @@ input {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .chart-head {
   display: flex;
@@ -168,6 +175,7 @@ input {
   border-radius: 6px;
   cursor: crosshair;
   display: block;
+  touch-action: none;
 }
 .chart.phase {
   height: 260px;
@@ -341,6 +349,16 @@ input {
 .zoom-box {
   flex: 0 0 auto;
 }
+.left > .zoom-box:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 var(--flags-h, 150px);
+  min-height: 0;
+}
+.left > .zoom-box:last-child > .flags {
+  flex: 1;
+  min-height: 0;
+}
 .picker-box {
   flex: 1;
   min-height: 0;
@@ -408,7 +426,10 @@ input {
   background: var(--panel);
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+  align-items: center;
+  flex-wrap: wrap;
 }
+.frame-step-controls { display: inline-flex; align-items: center; gap: 4px; }
 .video-meta b {
   color: var(--text);
 }
@@ -440,6 +461,8 @@ input {
   border-radius: 8px;
   padding: 8px 10px;
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 .panel-title {
   font-weight: 600;
@@ -457,8 +480,9 @@ input {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: var(--flags-h, 150px);
-  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 .flags li.inside button {
   border-color: var(--accent);
@@ -466,7 +490,9 @@ input {
 .flags li button {
   width: 100%;
   display: grid;
-  grid-template-columns: 52px 100px 1fr auto;
+  grid-template-columns: 52px 170px minmax(max-content, 1fr) max-content;
+  white-space: nowrap;
+  min-width: max-content;
   gap: 8px;
   text-align: left;
   margin: 2px 0;
@@ -496,6 +522,7 @@ input {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-left: 6px;
 }
 .candidate-panel { flex: 0 0 auto; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; display: grid; gap: 7px; }
 .candidate-heading, .candidate-actions { display: flex; align-items: center; gap: 8px; }

@@ -26,6 +26,7 @@ export interface View {
   pts: number;
   fps: number;
   label: Label;
+  label_sources?: LabelSource[];
   pick: PickState;
   typed_pending: number | null;
   suggestion: Suggestion | null;
@@ -80,7 +81,7 @@ export interface Backend {
   timeline(start: number, end: number, buckets: number): Promise<Bucket[]>;
   flags(): Promise<Flag[]>;
   /** The phase series (at most `maxPoints` points), runs and flags for the Phase tab. */
-  phaseChart(maxPoints: number): Promise<PhaseChart>;
+  phaseChart(maxPoints: number,source?:"independent"|LabelSource): Promise<PhaseChart>;
   /** Start (or find already made) the timeline thumbnails; they are generated in the background. */
   thumbsStart(): Promise<ThumbStatus>;
   thumbsStatus(): Promise<ThumbStatus>;
@@ -91,7 +92,19 @@ export interface Backend {
   settingsSet(key: string, value: number): Promise<View>;
   /** Native label file dialog and transfer; null on cancel. */
   transferLabels?(kind: "import" | "export"): Promise<View | null>;
+  povStart?(): Promise<PovStatus>;
+  povStatus?(): Promise<PovStatus | null>;
+  povCancel?(id:number): Promise<void>;
+  povApply?(id:number): Promise<View>;
 }
+
+export interface PovStatus {
+  id:number; video_path:string; state:"running"|"done"|"cancelled"|"failed";
+  processed:number; total:number; accepted:number; applied:number; error:string|null;
+}
+
+export type LabelSource="manual"|"first_person"|"time_guess";
+export const LABEL_SOURCE_NAMES:Record<LabelSource,string>={manual:"Human checked",first_person:"First-person tool",time_guess:"Time guess"};
 
 export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -107,6 +120,10 @@ export async function createBackend(): Promise<Backend> {
   const { open, save } = await import("@tauri-apps/plugin-dialog");
   return {
     mock: false,
+    povStart: () => invoke<PovStatus>("pov_start"),
+    povStatus: () => invoke<PovStatus|null>("pov_status"),
+    povCancel: (id) => invoke<void>("pov_cancel",{id}),
+    povApply: (id) => invoke<View>("pov_apply",{id}),
     async transferLabels(kind) {
       const filters = [{ name: "FireCrackle labels", extensions: ["json"] }];
       const path = kind === "export"
@@ -130,7 +147,7 @@ export async function createBackend(): Promise<Backend> {
     frame: (frame) => invoke<ArrayBuffer>("frame", { frame }),
     timeline: (start, end, buckets) => invoke<Bucket[]>("timeline", { start, end, buckets }),
     flags: () => invoke<Flag[]>("flags"),
-    phaseChart: (maxPoints) => invoke<PhaseChart>("phase_chart", { maxPoints }),
+    phaseChart: (maxPoints,source) => invoke<PhaseChart>("phase_chart", { maxPoints,source }),
     thumbsStart: () => invoke<ThumbStatus>("thumbs_start"),
     thumbsStatus: () => invoke<ThumbStatus>("thumbs_status"),
     thumbNearest: (frames) => invoke<Array<number | null>>("thumb_nearest", { frames }),

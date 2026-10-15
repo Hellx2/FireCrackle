@@ -25,14 +25,23 @@ pub struct RowScore {
 /// View-space corners of the two overlay quads (hand view = identity), order c0..c3 as in the mod's OverlayQuads:
 /// for r in {0, 1} with s = 2r - 1 a unit quad at z = -0.5 is rotated s * 10 degrees about Y and translated (-s * 0.24, -0.3, 0).
 pub fn overlay_quads() -> [Corners; 2] {
-    const CORNERS: [[f64; 3]; 4] = [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]];
+    const CORNERS: [[f64; 3]; 4] = [
+        [-0.5, -0.5, -0.5],
+        [0.5, -0.5, -0.5],
+        [0.5, 0.5, -0.5],
+        [-0.5, 0.5, -0.5],
+    ];
     let mut out = [[[0.0; 3]; 4]; 2];
     for (r, quad) in out.iter_mut().enumerate() {
         let s = 2.0 * r as f64 - 1.0;
         let a = (s * 10.0f64).to_radians();
         let (sin, cos) = a.sin_cos();
         for (i, c) in CORNERS.iter().enumerate() {
-            quad[i] = [c[0] * cos + c[2] * sin - s * 0.24, c[1] - 0.3, -c[0] * sin + c[2] * cos];
+            quad[i] = [
+                c[0] * cos + c[2] * sin - s * 0.24,
+                c[1] - 0.3,
+                -c[0] * sin + c[2] * cos,
+            ];
         }
     }
     out
@@ -41,7 +50,13 @@ pub fn overlay_quads() -> [Corners; 2] {
 /// Perspective projection (vertical `fov_deg`, aspect w/h, looking down -z) to pixels, y down. None if the point is not
 /// in front of the camera or fov / size are unusable.
 pub fn project(p: [f64; 3], fov_deg: f64, w: usize, h: usize) -> Option<(f64, f64)> {
-    if !fov_deg.is_finite() || fov_deg <= 0.0 || fov_deg >= 180.0 || w == 0 || h == 0 || !(p[2] < -1e-9) {
+    if !fov_deg.is_finite()
+        || fov_deg <= 0.0
+        || fov_deg >= 180.0
+        || w == 0
+        || h == 0
+        || p[2].partial_cmp(&-1e-9) != Some(std::cmp::Ordering::Less)
+    {
         return None;
     }
     let f = 1.0 / (fov_deg.to_radians() / 2.0).tan();
@@ -52,15 +67,30 @@ pub fn project(p: [f64; 3], fov_deg: f64, w: usize, h: usize) -> Option<(f64, f6
 }
 
 /// The texel of `quad` that covers the pixel centre (x, y), if any (ray from the camera through the pixel meets the quad).
-fn texel_at_pixel(quad: &Corners, x: f64, y: f64, fov_deg: f64, w: usize, h: usize) -> Option<(usize, usize)> {
+fn texel_at_pixel(
+    quad: &Corners,
+    x: f64,
+    y: f64,
+    fov_deg: f64,
+    w: usize,
+    h: usize,
+) -> Option<(usize, usize)> {
     let f = 1.0 / (fov_deg.to_radians() / 2.0).tan();
     let aspect = w as f64 / h as f64;
-    let d = [(2.0 * x / w as f64 - 1.0) * aspect / f, (1.0 - 2.0 * y / h as f64) / f, -1.0];
+    let d = [
+        (2.0 * x / w as f64 - 1.0) * aspect / f,
+        (1.0 - 2.0 * y / h as f64) / f,
+        -1.0,
+    ];
     let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     let e1 = sub(quad[1], quad[0]);
     let e3 = sub(quad[3], quad[0]);
-    let n = [e1[1] * e3[2] - e1[2] * e3[1], e1[2] * e3[0] - e1[0] * e3[2], e1[0] * e3[1] - e1[1] * e3[0]];
+    let n = [
+        e1[1] * e3[2] - e1[2] * e3[1],
+        e1[2] * e3[0] - e1[0] * e3[2],
+        e1[0] * e3[1] - e1[1] * e3[0],
+    ];
     let denom = dot(n, d);
     if denom.abs() < 1e-12 {
         return None;
@@ -75,7 +105,10 @@ fn texel_at_pixel(quad: &Corners, x: f64, y: f64, fov_deg: f64, w: usize, h: usi
         return None;
     }
     let (u, v) = (1.0 - s, 1.0 - tt);
-    Some((((u * TEX as f64) as usize).min(TEX - 1), ((v * TEX as f64) as usize).min(TEX - 1)))
+    Some((
+        ((u * TEX as f64) as usize).min(TEX - 1),
+        ((v * TEX as f64) as usize).min(TEX - 1),
+    ))
 }
 
 fn luma(r: u8, g: u8, b: u8) -> f64 {
@@ -86,12 +119,25 @@ fn luma(r: u8, g: u8, b: u8) -> f64 {
 /// a row the frame is sampled where that texel lands on screen (both quads, the second one drawn over the first); the score
 /// is the zero-mean normalised correlation of frame luma against template luma. Texels off screen are skipped; fewer than 10
 /// usable samples or a flat frame score -1 (z = -100).
-pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f64) -> Result<Vec<RowScore>, String> {
+pub fn match_overlay(
+    sheet1: &[u8],
+    frame: &[u8],
+    w: usize,
+    h: usize,
+    fov_deg: f64,
+) -> Result<Vec<RowScore>, String> {
     if sheet1.len() != SHEET_LEN {
-        return Err(format!("fire_1 must be {SHEET_LEN} bytes of RGBA, got {}", sheet1.len()));
+        return Err(format!(
+            "fire_1 must be {SHEET_LEN} bytes of RGBA, got {}",
+            sheet1.len()
+        ));
     }
     if w == 0 || h == 0 || frame.len() != w * h * 3 {
-        return Err(format!("frame must be {w}x{h} RGB24 ({} bytes), got {}", w * h * 3, frame.len()));
+        return Err(format!(
+            "frame must be {w}x{h} RGB24 ({} bytes), got {}",
+            w * h * 3,
+            frame.len()
+        ));
     }
     if !fov_deg.is_finite() || fov_deg <= 0.0 || fov_deg >= 180.0 {
         return Err(format!("fov must be in (0, 180) degrees: {fov_deg}"));
@@ -104,7 +150,10 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
     let mut covered_by: Vec<Option<(usize, usize)>> = vec![None; TEX * TEX];
     for ty in 0..TEX {
         for tx in 0..TEX {
-            let (u, v) = ((tx as f64 + 0.5) / TEX as f64, (ty as f64 + 0.5) / TEX as f64);
+            let (u, v) = (
+                (tx as f64 + 0.5) / TEX as f64,
+                (ty as f64 + 0.5) / TEX as f64,
+            );
             let (s, t) = (1.0 - u, 1.0 - v);
             for (qi, q) in quads.iter().enumerate() {
                 let mut p = [0.0; 3];
@@ -116,9 +165,11 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
                     if xi >= 0.0 && yi >= 0.0 && (xi as usize) < w && (yi as usize) < h {
                         let o = (yi as usize * w + xi as usize) * 3;
                         let warm = frame[o] as i32 - frame[o + 2] as i32 >= WARM_FRAME;
-                        samples[ty * TEX + tx][qi] = Some((luma(frame[o], frame[o + 1], frame[o + 2]), warm));
+                        samples[ty * TEX + tx][qi] =
+                            Some((luma(frame[o], frame[o + 1], frame[o + 2]), warm));
                         if qi == 0 {
-                            covered_by[ty * TEX + tx] = texel_at_pixel(&quads[1], xi + 0.5, yi + 0.5, fov_deg, w, h);
+                            covered_by[ty * TEX + tx] =
+                                texel_at_pixel(&quads[1], xi + 0.5, yi + 0.5, fov_deg, w, h);
                         }
                     }
                 }
@@ -142,9 +193,12 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
                 let [s0, s1] = samples[ty * TEX + tx];
                 // a sample is dropped when the template says "orange here" but the frame is not: something (hotbar,
                 // hearts, a menu) is drawn over the overlay at that pixel
-                let usable = |s: Option<(f64, bool)>| s.filter(|&(_, warm)| warm || !tpl_warm).map(|(l, _)| l);
+                let usable = |s: Option<(f64, bool)>| {
+                    s.filter(|&(_, warm)| warm || !tpl_warm).map(|(l, _)| l)
+                };
                 if let Some(v) = usable(s0) {
-                    let hidden = covered_by[ty * TEX + tx].map_or(false, |(cx, cy)| sheet1[((row * TEX + cy) * TEX + cx) * 4 + 3] != 0);
+                    let hidden = covered_by[ty * TEX + tx]
+                        .is_some_and(|(cx, cy)| sheet1[((row * TEX + cy) * TEX + cx) * 4 + 3] != 0);
                     if !hidden {
                         fv.push(v);
                         tv.push(tl);
@@ -160,7 +214,10 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
         let score = if n < MIN_SAMPLES {
             -1.0
         } else {
-            let (mf, mt) = (fv.iter().sum::<f64>() / n as f64, tv.iter().sum::<f64>() / n as f64);
+            let (mf, mt) = (
+                fv.iter().sum::<f64>() / n as f64,
+                tv.iter().sum::<f64>() / n as f64,
+            );
             let (mut cov, mut vf, mut vt) = (0.0, 0.0, 0.0);
             for k in 0..n {
                 cov += (fv[k] - mf) * (tv[k] - mt);
@@ -178,7 +235,12 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
         } else {
             score.clamp(-0.9999, 0.9999).atanh() * ((n - 3) as f64).sqrt()
         };
-        out.push(RowScore { row: row as u8, score, z, samples: n });
+        out.push(RowScore {
+            row: row as u8,
+            score,
+            z,
+            samples: n,
+        });
     }
     out.sort_by(|a, b| b.z.partial_cmp(&a.z).unwrap());
     Ok(out)
@@ -187,7 +249,7 @@ pub fn match_overlay(sheet1: &[u8], frame: &[u8], w: usize, h: usize, fov_deg: f
 /// Silhouette matcher (see DETECT_PLAN.md, round 7b): which fire_1 row, and is the overlay there at all.
 ///
 /// Probe pixels on a grid are mapped to the texel of each quad that covers them. A row predicts "orange" at a probe when
-/// either covering texel is opaque. The frame is orange ("warm") where R >= 45, 5B <= R and 8G >= R. The row whose prediction
+/// either covering texel is opaque. The frame is orange ("warm") where R >= 45, 5B <= R and 10G >= 3R. The row whose prediction
 /// agrees best with the frame, over probes where rows disagree, wins; presence is how well that row separates warm from
 /// not-warm probes.
 pub struct SilhouetteMatcher {
@@ -199,10 +261,12 @@ pub struct SilhouetteMatcher {
     pred: Vec<Vec<bool>>,
     /// indices into the probes whose prediction differs between rows
     disc: Vec<usize>,
-    /// expected colour per row, per probe (the texel on top: quad 1 over quad 0), None where both are transparent
-    col: Vec<Vec<Option<[u8; 3]>>>,
-    /// probes where the expected opacity or colour differs between rows
-    disc_col: Vec<usize>,
+    /// Opaque discriminating probe indices and expected G/R ratios, per row.
+    colour_probes: Vec<Vec<(usize, f64)>>,
+    /// Packed discriminating silhouettes: exact agreement via XOR/popcount.
+    disc_bits: Vec<Vec<u64>>,
+    /// Same per-row veil arithmetic as unveil_rows, sampled only at detector probes.
+    veil_math: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, Clone)]
@@ -213,33 +277,58 @@ pub struct SilhouetteResult {
     pub ranked_colour: Vec<(u8, f64)>,
     /// Youden index of the best row: P(warm | predicted orange) - P(warm | predicted not orange).
     pub presence: f64,
+    /// Best row's colour evidence in -1..1: (matching probes - mismatching probes) / probes the row expects opaque. Comparable
+    /// across matchers built for different FOVs.
+    pub colour_evidence: f64,
 }
 
 const MIN_PROBES: usize = 200;
-/// An observed colour matches the expected one when no channel is further than this from (gain * expected).
-const COLOUR_TOL: f64 = 40.0;
+/// An observed pixel matches the expected texel colour when its green/red ratio is within this of the texel's and it is not
+/// too dark to tell. The value sits on a plateau: 0.04..0.08 all gave at least 94% on lava frames and at least 99% elsewhere
+/// on the two recorded clips (see DETECT_PLAN.md, result 12).
+const CHROMA_TOL: f64 = 0.06;
+const CHROMA_MIN_RED: f64 = 25.0;
+/// Weight of the standardised colour score against the standardised silhouette agreement.
+const COLOUR_WEIGHT: f64 = 2.0;
 /// Rows with fewer usable colour probes than this get no colour score.
 const MIN_COLOUR_PROBES: usize = 5;
 
 fn standardise(x: &[f64], valid: &[bool]) -> Vec<f64> {
-    let vals: Vec<f64> = x.iter().zip(valid).filter(|(_, v)| **v).map(|(a, _)| *a).collect();
+    let vals: Vec<f64> = x
+        .iter()
+        .zip(valid)
+        .filter(|(_, v)| **v)
+        .map(|(a, _)| *a)
+        .collect();
     if vals.is_empty() {
         return vec![-9.0; x.len()];
     }
     let mean = vals.iter().sum::<f64>() / vals.len() as f64;
     let sd = (vals.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / vals.len() as f64).sqrt();
     let sd = if sd > 1e-12 { sd } else { 1.0 };
-    x.iter().zip(valid).map(|(a, v)| if *v { (a - mean) / sd } else { -9.0 }).collect()
+    x.iter()
+        .zip(valid)
+        .map(|(a, v)| if *v { (a - mean) / sd } else { -9.0 })
+        .collect()
 }
 
+/// Fire orange: red-dominant, little blue, and green at least 30% of red (fire texels are >= 0.36; red lava fog is about 0.16).
 fn is_warm(r: u8, g: u8, b: u8) -> bool {
-    r >= 45 && (b as u32) * 5 <= r as u32 && (g as u32) * 8 >= r as u32
+    r >= 45 && (b as u32) * 5 <= r as u32 && (g as u32) * 10 >= (r as u32) * 3
 }
 
 impl SilhouetteMatcher {
-    pub fn new(sheet1: &[u8], w: usize, h: usize, fov_deg: f64) -> Result<SilhouetteMatcher, String> {
+    pub fn new(
+        sheet1: &[u8],
+        w: usize,
+        h: usize,
+        fov_deg: f64,
+    ) -> Result<SilhouetteMatcher, String> {
         if sheet1.len() != SHEET_LEN {
-            return Err(format!("fire_1 must be {SHEET_LEN} bytes of RGBA, got {}", sheet1.len()));
+            return Err(format!(
+                "fire_1 must be {SHEET_LEN} bytes of RGBA, got {}",
+                sheet1.len()
+            ));
         }
         if w == 0 || h == 0 {
             return Err("frame size must be non-zero".into());
@@ -254,8 +343,10 @@ impl SilhouetteMatcher {
         for y in (0..h).step_by(step) {
             for x in (0..w).step_by(step) {
                 let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
-                let t0 = texel_at_pixel(&quads[0], px, py, fov_deg, w, h).map(|(tx, ty)| ty * TEX + tx);
-                let t1 = texel_at_pixel(&quads[1], px, py, fov_deg, w, h).map(|(tx, ty)| ty * TEX + tx);
+                let t0 =
+                    texel_at_pixel(&quads[0], px, py, fov_deg, w, h).map(|(tx, ty)| ty * TEX + tx);
+                let t1 =
+                    texel_at_pixel(&quads[1], px, py, fov_deg, w, h).map(|(tx, ty)| ty * TEX + tx);
                 if t0.is_some() || t1.is_some() {
                     offsets.push((y * w + x) * 3);
                     tex.push([t0, t1]);
@@ -263,12 +354,18 @@ impl SilhouetteMatcher {
             }
         }
         if offsets.len() < MIN_PROBES {
-            return Err(format!("only {} probe pixels fall on the overlay at {w}x{h}, fov {fov_deg}: too few", offsets.len()));
+            return Err(format!(
+                "only {} probe pixels fall on the overlay at {w}x{h}, fov {fov_deg}: too few",
+                offsets.len()
+            ));
         }
         let mut pred = vec![vec![false; offsets.len()]; ROWS];
         for (row, p) in pred.iter_mut().enumerate() {
             for (k, t) in tex.iter().enumerate() {
-                p[k] = t.iter().flatten().any(|&ti| sheet1[(row * TEX * TEX + ti) * 4 + 3] != 0);
+                p[k] = t
+                    .iter()
+                    .flatten()
+                    .any(|&ti| sheet1[(row * TEX * TEX + ti) * 4 + 3] != 0);
             }
         }
         let mut col = vec![vec![None; offsets.len()]; ROWS];
@@ -284,7 +381,9 @@ impl SilhouetteMatcher {
                 }
             }
         }
-        let disc_col: Vec<usize> = (0..offsets.len()).filter(|&k| col.iter().any(|c| c[k] != col[0][k])).collect();
+        let disc_col: Vec<usize> = (0..offsets.len())
+            .filter(|&k| col.iter().any(|c| c[k] != col[0][k]))
+            .collect();
         let disc: Vec<usize> = (0..offsets.len())
             .filter(|&k| {
                 let first = pred[0][k];
@@ -294,7 +393,46 @@ impl SilhouetteMatcher {
         if disc.is_empty() {
             return Err("no probe distinguishes the rows".into());
         }
-        Ok(SilhouetteMatcher { w, h, offsets, pred, disc, col, disc_col })
+        let colour_probes = col
+            .iter()
+            .map(|c| {
+                disc_col
+                    .iter()
+                    .filter_map(|&k| c[k].map(|rgb| (k, rgb[1] as f64 / (rgb[0] as f64).max(1.0))))
+                    .collect()
+            })
+            .collect();
+        let disc_bits = pred
+            .iter()
+            .map(|p| {
+                let mut words = vec![0u64; disc.len().div_ceil(64)];
+                for (i, &k) in disc.iter().enumerate() {
+                    if p[k] {
+                        words[i / 64] |= 1u64 << (i % 64);
+                    }
+                }
+                words
+            })
+            .collect();
+        let veil_math = offsets
+            .iter()
+            .map(|&o| {
+                let y = o / 3 / w;
+                let a = crate::veil::A_TOP
+                    + (crate::veil::A_BOTTOM - crate::veil::A_TOP) * (y as f64 + 0.5) / h as f64;
+                (crate::veil::COLOUR * a, 1.0 / (1.0 - a))
+            })
+            .collect();
+        Ok(SilhouetteMatcher {
+            w,
+            h,
+            offsets,
+            pred,
+            disc,
+            colour_probes,
+            disc_bits,
+            veil_math,
+        })
     }
 
     /// True when another row predicts exactly the same silhouette at every probe (nothing can tell them apart).
@@ -304,13 +442,56 @@ impl SilhouetteMatcher {
     }
 
     pub fn match_frame(&self, frame: &[u8]) -> Result<SilhouetteResult, String> {
+        self.match_sampled(frame, false)
+    }
+
+    /// Exact equivalent to match_frame(unveil_rows(frame)), without a full-frame allocation/pass.
+    pub fn match_frame_veiled(&self, frame: &[u8]) -> Result<SilhouetteResult, String> {
+        self.match_sampled(frame, true)
+    }
+
+    fn match_sampled(&self, frame: &[u8], veiled: bool) -> Result<SilhouetteResult, String> {
         if frame.len() != self.w * self.h * 3 {
-            return Err(format!("frame must be {}x{} RGB24 ({} bytes), got {}", self.w, self.h, self.w * self.h * 3, frame.len()));
+            return Err(format!(
+                "frame must be {}x{} RGB24 ({} bytes), got {}",
+                self.w,
+                self.h,
+                self.w * self.h * 3,
+                frame.len()
+            ));
         }
-        let warm: Vec<bool> = self.offsets.iter().map(|&o| is_warm(frame[o], frame[o + 1], frame[o + 2])).collect();
+        let mut warm = Vec::with_capacity(self.offsets.len());
+        let mut ratios = Vec::with_capacity(self.offsets.len());
+        for (k, &o) in self.offsets.iter().enumerate() {
+            let rgb = if veiled {
+                let (bias, inv) = self.veil_math[k];
+                std::array::from_fn(|i| {
+                    ((frame[o + i] as f64 - bias) * inv).round().clamp(0., 255.) as u8
+                })
+            } else {
+                [frame[o], frame[o + 1], frame[o + 2]]
+            };
+            warm.push(is_warm(rgb[0], rgb[1], rgb[2]));
+            ratios.push(if rgb[0] as f64 >= CHROMA_MIN_RED {
+                rgb[1] as f64 / rgb[0] as f64
+            } else {
+                f64::NAN
+            });
+        }
+        let mut observed = vec![0u64; self.disc.len().div_ceil(64)];
+        for (i, &k) in self.disc.iter().enumerate() {
+            if warm[k] {
+                observed[i / 64] |= 1u64 << (i % 64);
+            }
+        }
         let mut ranked: Vec<(u8, f64)> = (0..ROWS)
             .map(|row| {
-                let agree = self.disc.iter().filter(|&&k| self.pred[row][k] == warm[k]).count();
+                let differences: usize = self.disc_bits[row]
+                    .iter()
+                    .zip(&observed)
+                    .map(|(a, b)| (a ^ b).count_ones() as usize)
+                    .sum();
+                let agree = self.disc.len() - differences;
                 (row as u8, agree as f64 / self.disc.len() as f64)
             })
             .collect();
@@ -335,36 +516,38 @@ impl SilhouetteMatcher {
         for (row, a) in ranked.iter() {
             agree_by_row[*row as usize] = *a;
         }
+        // Chromaticity, not raw colour: the green/red ratio of a pixel does not change under a vignette or a veil gain, and
+        // lava fog (G/R about 0.16) is far from every fire texel (G/R >= 0.36) although it is close in raw colour.
         let mut m = vec![0.0f64; ROWS];
         let mut valid = vec![false; ROWS];
-        let mut ratios: Vec<f64> = Vec::new();
+        let mut evidence = vec![0.0f64; ROWS];
         for row in 0..ROWS {
-            let ks: Vec<usize> = self.disc_col.iter().copied().filter(|&k| self.col[row][k].is_some()).collect();
-            if ks.len() < MIN_COLOUR_PROBES {
+            let probes = &self.colour_probes[row];
+            if probes.len() < MIN_COLOUR_PROBES {
                 continue;
             }
-            ratios.clear();
-            for &k in &ks {
-                let (o, c) = (self.offsets[k], self.col[row][k].unwrap());
-                let (so, sc) = (frame[o] as f64 + frame[o + 1] as f64 + frame[o + 2] as f64, c[0] as f64 + c[1] as f64 + c[2] as f64);
-                ratios.push(so / sc.max(1.0));
-            }
-            ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let g = ratios[ratios.len() / 2].clamp(0.4, 1.15);
             let mut score = 0.0;
-            for &k in &ks {
-                let (o, c) = (self.offsets[k], self.col[row][k].unwrap());
-                let diff = (0..3).map(|i| (frame[o + i] as f64 - g * c[i] as f64).abs()).fold(0.0, f64::max);
-                score += if diff < COLOUR_TOL { 1.0 } else { -1.0 };
+            for &(k, expected) in probes {
+                let hit = (ratios[k] - expected).abs() < CHROMA_TOL;
+                score += if hit { 1.0 } else { -1.0 };
             }
             m[row] = score;
+            evidence[row] = score / probes.len() as f64;
             valid[row] = true;
         }
         let all_valid = vec![true; ROWS];
         let z_sil = standardise(&agree_by_row, &all_valid);
         let z_col = standardise(&m, &valid);
-        let mut ranked_colour: Vec<(u8, f64)> = (0..ROWS).map(|r| (r as u8, z_sil[r] + z_col[r])).collect();
+        let mut ranked_colour: Vec<(u8, f64)> = (0..ROWS)
+            .map(|r| (r as u8, z_sil[r] + COLOUR_WEIGHT * z_col[r]))
+            .collect();
         ranked_colour.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        Ok(SilhouetteResult { ranked, ranked_colour, presence: rate(on_warm, on) - rate(off_warm, off) })
+        let colour_evidence = evidence[ranked_colour[0].0 as usize];
+        Ok(SilhouetteResult {
+            ranked,
+            ranked_colour,
+            presence: rate(on_warm, on) - rate(off_warm, off),
+            colour_evidence,
+        })
     }
 }

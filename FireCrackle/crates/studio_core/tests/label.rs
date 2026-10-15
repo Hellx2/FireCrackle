@@ -107,7 +107,11 @@ fn next_unlabelled_forward_and_backward() {
     let mut s = LabelStore::new(6);
     s.set(1, Label::Skip).unwrap();
     s.set(2, fire(1, 0, false)).unwrap();
-    assert_eq!(s.next_unlabelled(0, true), Some(3), "1 and 2 are labelled, 0 is the start");
+    assert_eq!(
+        s.next_unlabelled(0, true),
+        Some(3),
+        "1 and 2 are labelled, 0 is the start"
+    );
     assert_eq!(s.next_unlabelled(3, true), Some(4));
     assert_eq!(s.next_unlabelled(3, false), Some(0));
     assert_eq!(s.next_unlabelled(0, false), None);
@@ -136,7 +140,11 @@ fn next_unlabelled_none_when_all_done_or_at_end() {
     }
     assert_eq!(s.next_unlabelled(0, true), None);
     let s2 = LabelStore::new(3);
-    assert_eq!(s2.next_unlabelled(2, true), None, "nothing after the last frame");
+    assert_eq!(
+        s2.next_unlabelled(2, true),
+        None,
+        "nothing after the last frame"
+    );
 }
 
 #[test]
@@ -185,10 +193,18 @@ fn fill_range_counts_only_changed_frames_and_undo_restores_each_previous_label()
     let mut s = LabelStore::new(6);
     s.set(1, fire(1, 4, false)).unwrap(); // already what we will fill
     s.set(2, Label::Skip).unwrap(); // will be overwritten
-    assert_eq!(s.fill_range(0, 3, fire(1, 4, false)), Ok(3), "frame 1 already had it");
+    assert_eq!(
+        s.fill_range(0, 3, fire(1, 4, false)),
+        Ok(3),
+        "frame 1 already had it"
+    );
     assert!(s.undo());
     assert_eq!(s.get(0), Label::Unset);
-    assert_eq!(s.get(1), fire(1, 4, false), "restored to its earlier label, not Unset");
+    assert_eq!(
+        s.get(1),
+        fire(1, 4, false),
+        "restored to its earlier label, not Unset"
+    );
     assert_eq!(s.get(2), Label::Skip);
     assert_eq!(s.get(3), Label::Unset);
 }
@@ -200,7 +216,11 @@ fn fill_range_that_changes_nothing_leaves_no_undo_entry() {
     s.fill_range(1, 2, Label::NoFire).unwrap();
     assert_eq!(s.fill_range(1, 2, Label::NoFire), Ok(0));
     assert!(s.undo());
-    assert_eq!(s.get(1), Label::Unset, "undo reverted the real fill, not the no-op");
+    assert_eq!(
+        s.get(1),
+        Label::Unset,
+        "undo reverted the real fill, not the no-op"
+    );
     assert_eq!(s.get(0), Label::Skip);
 }
 
@@ -219,11 +239,40 @@ fn fill_range_with_unset_clears_the_range() {
 #[test]
 fn fill_range_rejects_bad_input_without_changing_anything() {
     let mut s = LabelStore::new(5);
-    assert_eq!(s.fill_range(3, 1, Label::Skip), Err(LabelError::BadRange { start: 3, end: 1 }));
-    assert_eq!(s.fill_range(2, 5, Label::Skip), Err(LabelError::FrameOutOfRange { frame: 5, count: 5 }));
-    assert_eq!(s.fill_range(7, 9, Label::Skip), Err(LabelError::FrameOutOfRange { frame: 9, count: 5 }));
-    assert!(s.fill_range(0, 2, Label::Fire { sheet: 2, row: 0, mirrored: false }).is_err());
-    assert!(s.fill_range(0, 2, Label::Fire { sheet: 0, row: 32, mirrored: false }).is_err());
+    assert_eq!(
+        s.fill_range(3, 1, Label::Skip),
+        Err(LabelError::BadRange { start: 3, end: 1 })
+    );
+    assert_eq!(
+        s.fill_range(2, 5, Label::Skip),
+        Err(LabelError::FrameOutOfRange { frame: 5, count: 5 })
+    );
+    assert_eq!(
+        s.fill_range(7, 9, Label::Skip),
+        Err(LabelError::FrameOutOfRange { frame: 9, count: 5 })
+    );
+    assert!(s
+        .fill_range(
+            0,
+            2,
+            Label::Fire {
+                sheet: 2,
+                row: 0,
+                mirrored: false
+            }
+        )
+        .is_err());
+    assert!(s
+        .fill_range(
+            0,
+            2,
+            Label::Fire {
+                sheet: 0,
+                row: 32,
+                mirrored: false
+            }
+        )
+        .is_err());
     assert_eq!(s.labelled_count(), 0);
     assert!(!s.undo(), "failed fills leave no undo entry");
 }
@@ -243,18 +292,42 @@ fn invalid_labels_are_rejected() {
     assert!(Label::fire(1, 31, true).is_ok());
     assert!(Label::fire(0, 0, false).is_ok());
     assert!(Label::Skip.validate().is_ok());
-    assert_eq!(Label::Fire { sheet: 9, row: 0, mirrored: false }.validate(), Err(LabelError::InvalidSheet(9)));
+    assert_eq!(
+        Label::Fire {
+            sheet: 9,
+            row: 0,
+            mirrored: false
+        }
+        .validate(),
+        Err(LabelError::InvalidSheet(9))
+    );
 }
 
 #[test]
 fn set_rejects_invalid_label_and_out_of_range_frame_without_side_effects() {
     let mut s = LabelStore::new(5);
     assert_eq!(
-        s.set(0, Label::Fire { sheet: 0, row: 40, mirrored: false }),
+        s.set(
+            0,
+            Label::Fire {
+                sheet: 0,
+                row: 40,
+                mirrored: false
+            }
+        ),
         Err(LabelError::InvalidRow(40))
     );
-    assert_eq!(s.set(5, Label::Skip), Err(LabelError::FrameOutOfRange { frame: 5, count: 5 }));
-    assert_eq!(s.clear(99), Err(LabelError::FrameOutOfRange { frame: 99, count: 5 }));
+    assert_eq!(
+        s.set(5, Label::Skip),
+        Err(LabelError::FrameOutOfRange { frame: 5, count: 5 })
+    );
+    assert_eq!(
+        s.clear(99),
+        Err(LabelError::FrameOutOfRange {
+            frame: 99,
+            count: 5
+        })
+    );
     assert_eq!(s.labelled_count(), 0);
     assert!(!s.undo());
 }
@@ -265,16 +338,27 @@ fn setting_the_same_label_is_a_noop_with_no_undo_entry() {
     s.set(1, Label::Skip).unwrap();
     s.set(2, Label::NoFire).unwrap();
     assert_eq!(s.set(2, Label::NoFire), Ok(false));
-    assert_eq!(s.clear(4), Ok(false), "clearing an unlabelled frame changes nothing");
+    assert_eq!(
+        s.clear(4),
+        Ok(false),
+        "clearing an unlabelled frame changes nothing"
+    );
     assert!(s.undo());
-    assert_eq!(s.get(2), Label::Unset, "undo reverted the real change, not the no-op");
+    assert_eq!(
+        s.get(2),
+        Label::Unset,
+        "undo reverted the real change, not the no-op"
+    );
     assert_eq!(s.get(1), Label::Skip);
 }
 
 #[test]
 fn zero_frame_store_is_safe() {
     let mut s = LabelStore::new(0);
-    assert_eq!(s.set(0, Label::Skip), Err(LabelError::FrameOutOfRange { frame: 0, count: 0 }));
+    assert_eq!(
+        s.set(0, Label::Skip),
+        Err(LabelError::FrameOutOfRange { frame: 0, count: 0 })
+    );
     assert_eq!(s.next_unlabelled(0, true), None);
     assert_eq!(s.get(0), Label::Unset);
 }
@@ -287,9 +371,18 @@ fn log_line_format_is_stable() {
         log_line(3, fire(1, 5, false)),
         r#"{"version":2,"frame":3,"label":{"fire":{"sheet":1,"row":5,"mirrored":false}}}"#
     );
-    assert_eq!(log_line(0, Label::NoFire), r#"{"version":2,"frame":0,"label":"no_fire"}"#);
-    assert_eq!(log_line(9, Label::Skip), r#"{"version":2,"frame":9,"label":"skip"}"#);
-    assert_eq!(log_line(9, Label::Unset), r#"{"version":2,"frame":9,"label":"unset"}"#);
+    assert_eq!(
+        log_line(0, Label::NoFire),
+        r#"{"version":2,"frame":0,"label":"no_fire"}"#
+    );
+    assert_eq!(
+        log_line(9, Label::Skip),
+        r#"{"version":2,"frame":9,"label":"skip"}"#
+    );
+    assert_eq!(
+        log_line(9, Label::Unset),
+        r#"{"version":2,"frame":9,"label":"unset"}"#
+    );
 }
 
 #[test]
@@ -301,13 +394,19 @@ fn v1_entries_migrate_once_and_v2_entries_keep_animation_indices() {
     let reopened = LabelStore::replay(&rewritten, 4).unwrap();
     assert_eq!(reopened.store.get(0), fire(0, 0, true));
     let mixed = format!("{legacy}\n{}", log_line(0, fire(0, 5, false)));
-    assert_eq!(LabelStore::replay(&mixed, 4).unwrap().store.get(0), fire(0, 5, false));
+    assert_eq!(
+        LabelStore::replay(&mixed, 4).unwrap().store.get(0),
+        fire(0, 5, false)
+    );
 }
 
 #[test]
 fn future_log_versions_are_rejected_without_treating_them_as_a_torn_tail() {
     let text = r#"{"version":999,"frame":0,"label":"skip"}"#;
-    assert!(matches!(LabelStore::replay(text, 4), Err(LabelError::Parse { .. })));
+    assert!(matches!(
+        LabelStore::replay(text, 4),
+        Err(LabelError::Parse { .. })
+    ));
 }
 
 #[test]
@@ -351,7 +450,11 @@ fn replay_has_no_undo_history() {
 
 #[test]
 fn replay_tolerates_blank_lines_and_crlf() {
-    let log = format!("{}\r\n\r\n{}\r\n", log_line(0, Label::Skip), log_line(1, Label::NoFire));
+    let log = format!(
+        "{}\r\n\r\n{}\r\n",
+        log_line(0, Label::Skip),
+        log_line(1, Label::NoFire)
+    );
     let r = LabelStore::replay(&log, 3).unwrap();
     assert_eq!(r.store.labelled_count(), 2);
     assert!(!r.torn_tail);
@@ -366,7 +469,11 @@ fn replay_empty_text_is_an_empty_store() {
 
 #[test]
 fn replay_drops_a_torn_last_line() {
-    let log = format!("{}\n{}", log_line(0, Label::Skip), r#"{"frame":1,"label":{"fire":{"sheet":1,"ro"#);
+    let log = format!(
+        "{}\n{}",
+        log_line(0, Label::Skip),
+        r#"{"frame":1,"label":{"fire":{"sheet":1,"ro"#
+    );
     let r = LabelStore::replay(&log, 3).unwrap();
     assert!(r.torn_tail);
     assert_eq!(r.store.get(0), Label::Skip);
@@ -383,7 +490,11 @@ fn replay_torn_tail_also_when_newline_terminated_garbage_is_last() {
 
 #[test]
 fn replay_corrupt_middle_line_is_an_error_with_its_line_number() {
-    let log = format!("{}\nnot json\n{}\n", log_line(0, Label::Skip), log_line(1, Label::Skip));
+    let log = format!(
+        "{}\nnot json\n{}\n",
+        log_line(0, Label::Skip),
+        log_line(1, Label::Skip)
+    );
     match LabelStore::replay(&log, 3) {
         Err(LabelError::Parse { line, .. }) => assert_eq!(line, 2),
         other => panic!("expected Parse error on line 2, got {other:?}"),
@@ -402,7 +513,10 @@ fn replay_rejects_frames_beyond_the_video() {
 #[test]
 fn replay_rejects_invalid_labels() {
     let log = r#"{"frame":0,"label":{"fire":{"sheet":3,"row":0,"mirrored":false}}}"#;
-    assert_eq!(LabelStore::replay(log, 5).unwrap_err(), LabelError::InvalidSheet(3));
+    assert_eq!(
+        LabelStore::replay(log, 5).unwrap_err(),
+        LabelError::InvalidSheet(3)
+    );
 }
 
 // ------------------------------------------------------------ undo_step
@@ -422,7 +536,11 @@ fn undo_step_after_a_range_fill_lists_only_the_changed_frames_ascending() {
     s.set(4, Label::Skip).unwrap();
     s.fill_range(2, 6, Label::Skip).unwrap(); // frame 4 already had it
     assert_eq!(s.undo_step(), Some(vec![2, 3, 5, 6]));
-    assert_eq!(s.get(4), Label::Skip, "the earlier label of frame 4 is untouched");
+    assert_eq!(
+        s.get(4),
+        Label::Skip,
+        "the earlier label of frame 4 is untouched"
+    );
     assert_eq!(s.undo_step(), Some(vec![4]));
 }
 

@@ -18,7 +18,10 @@ fn expected_line(width: usize, tick: u32, id: u32) -> String {
     let mut f = vec![0u8; width * height];
     stamp(&mut f, width, height, tick, id).unwrap();
     let (sw, _) = strip_size(width).unwrap();
-    let row: String = f[..sw].iter().map(|&p| if p == 255 { '1' } else { '0' }).collect();
+    let row: String = f[..sw]
+        .iter()
+        .map(|&p| if p == 255 { '1' } else { '0' })
+        .collect();
     format!("{width} {tick:06X} {id:06X} {row}")
 }
 
@@ -45,7 +48,15 @@ fn golden_rows_are_internally_sane() {
         let line = expected_line(w, 0x123456, 0x654321);
         let row = line.split(' ').nth(3).unwrap();
         let c = 8.0 * w as f64 / 1920.0;
-        assert_eq!(row.as_bytes()[(c * 0.5) as usize], b'1', "{w}: cell 0 white");
-        assert_eq!(row.as_bytes()[(c * 1.5) as usize], b'0', "{w}: cell 1 black");
+        assert_eq!(
+            row.as_bytes()[(c * 0.5) as usize],
+            b'1',
+            "{w}: cell 0 white"
+        );
+        assert_eq!(
+            row.as_bytes()[(c * 1.5) as usize],
+            b'0',
+            "{w}: cell 1 black"
+        );
     }
 }

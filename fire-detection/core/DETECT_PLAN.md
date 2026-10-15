@@ -283,3 +283,30 @@ Overlay matcher: row accuracy 75.5% (clip1: 99.5%), presence AUC 0.82 (clip1: 0.
    options FOV repeatedly; it did not move the overlay (the hand/overlay projection ignores options.fov; GameRenderer.getFov(changingFov=false) = 70, x60/70 when submerged).
    Trying both 70 and 60 and choosing by evidence: 75.8% vs 76.6% always-70 vs 76.7% with the true FOV: no gain. Only 70 and 60 are tried (user: other versions later).
 Outside the lava stretch (661 frames): 94.4%; the remaining errors are mostly off by 1-3 rows.
+
+## Result 12 (lava fix: stricter "orange" test + chroma colour evidence; end to end with veil reversal and FOV 70/60 choice)
+Diagnosis of the lava stretch with the true row and FOV 60: the predicted overlay matches the real frame closely, so geometry and row were right. The failure was
+evidence: lava fog (about (153,25,0), G/R 0.16) passed the lenient "warm" test (G/R >= 0.125) and sat within raw-colour tolerance 40 of the darkest orange texels.
+Fix (core/src/overlay.rs, tests first, 6 new tests, all 22 silhouette tests pass):
+- "warm" now requires G/R >= 0.3 (fire texels are >= 0.36);
+- colour evidence compares CHROMATICITY: |G/R observed - G/R texel| < 0.06 and R >= 25 (no gain estimate needed: vignette and veil gain cancel), weight 2 against the silhouette;
+- `colour_evidence` (best row's (hits - misses) / probes) is comparable across FOVs, so the FOV (70, or 60 while submerged) is chosen by it.
+Sweep behind it (probe data from both clips, true FOV): chroma tolerance 0.03 -> 0.886 overall, 0.04 -> 0.985, 0.05 -> 0.988, 0.06 -> 0.990, 0.08 -> 0.979, 0.10 -> 0.965:
+a plateau at 0.04-0.08, so 0.06 is not a knife edge. Colour-weight and strict-warm variants were all within ~1% on the plateau.
+End to end through fire-overlay (veil detect + reverse, FOV choice by evidence):
+  clip1: row accuracy 194/194 = 100% (was 99.5%).
+  clip2: 919/932 = 98.6% (was 75.5%); lava stretch 95.6% (was 33.2%); other frames 99.8% (was 94.4%); veiled frames outside lava 100% (was 90.2%); FOV 60 chosen on 80 frames (true: 77-78).
+  Presence: colour-evidence >= 0.5 -> clip1 recall 89.7%, 0 false positives of 6332; clip2 recall 96.0%, 0 false positives of 2979 (AUC 1.000 / 0.992).
+  Silhouette presence is weaker on clip2 (AUC 0.970; at 0.5: recall 93.5%, 9 false positives), so colour evidence is the better "is the overlay there" score.
+CAVEAT: the constants (chroma tolerance, weight 2, G/R 0.3) were chosen on clip1 + clip2 themselves, i.e. these numbers are in-sample; the plateau argues against a knife-edge fit
+but there is still no recording the constants have not seen. The next recordings (other GUI scales / FOV / window sizes) are the honest test.
+
+## Result 13 (the other failure case: veil missed behind a big GUI panel)
+After result 12, clip2 still had 13 wrong overlay frames. 10 of them (14580-14675) had a real GUI veil (label veil 0.81) that the detector did not flag, so they were never
+un-veiled (evidence -1): an inventory panel in the middle covers > 10% of the frame, more than the tolerated out-of-range share. The other 3 (9745, 14350-14355) plus 15025 are
+off by 1-3 rows at overlay visibility 4-14%: almost nothing of the overlay is on screen.
+Fix (core/src/veil.rs, 5 new tests written first, 2 red before the change, 16 pass): judge the veil only on the outer 20% of the width on each side, where inventory,
+crafting and creative panels, buttons and the hotbar never reach. On a veil-looking centre inside an unveiled scene it still says "not veiled".
+Result: clip2 928/932 = 99.6% (was 98.6%), clip1 194/194. On overlay frames the detector is now exact: clip2 135 of 135 frames with label veil >= 0.6 are flagged, 0 false flags;
+clip1 none either way. (Frames flagged on clip1 overall rose from 6 to 212; those are non-overlay frames and cannot be checked against labels: not verified.)
+Remaining 4 wrong frames: all overlay visibility <= 0.14, rows off by 1-2.

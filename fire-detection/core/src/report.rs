@@ -29,8 +29,13 @@ pub fn format_row(n: u64, code: Option<SyncCode>, label: &LabelResult) -> String
     let id = field(code.map(|c| c.frame_id));
     match label {
         LabelResult::NotRequested => format!("{{\"n\":{n},\"tick\":{tick},\"f\":{id}}}"),
-        LabelResult::Missing => format!("{{\"n\":{n},\"tick\":{tick},\"f\":{id},\"tick_ok\":null,\"label\":null}}"),
-        LabelResult::Found { tick: label_tick, line } => {
+        LabelResult::Missing => {
+            format!("{{\"n\":{n},\"tick\":{tick},\"f\":{id},\"tick_ok\":null,\"label\":null}}")
+        }
+        LabelResult::Found {
+            tick: label_tick,
+            line,
+        } => {
             let ok = field(code.map(|c| tick_ok(c, *label_tick)));
             format!("{{\"n\":{n},\"tick\":{tick},\"f\":{id},\"tick_ok\":{ok},\"label\":{line}}}")
         }

@@ -9,10 +9,12 @@ interface Props {
   current: number;
   onSeek: (frame: number) => void;
   details?: FlagDetail[];
+  onHover?: (flag: Flag | null) => void;
+  onSelect?: (flag: Flag, openVideo: boolean) => void;
 }
 
 /** The phase flags, each clickable to jump to that frame. */
-export function FlagsPanel({ flags, fps, current, onSeek,details=[] }: Props) {
+export function FlagsPanel({ flags, fps, current, onSeek,details=[],onHover,onSelect }: Props) {
   return (
     <div className="flags">
       <div className="panel-title">
@@ -26,7 +28,10 @@ export function FlagsPanel({ flags, fps, current, onSeek,details=[] }: Props) {
           const text=flagText(f.kind,detail?.explanation);
           return (
             <li key={`${f.frame}-${f.kind}`} className={inside ? "inside" : ""}>
-              <button onClick={() => onSeek(f.frame)} title={`${text.hint} ${priorityHint(f.severity)}`} tabIndex={-1}>
+              <button onClick={(e) => onSelect ? onSelect(f, e.ctrlKey) : onSeek(f.frame)}
+                onMouseEnter={() => onHover?.(f)} onMouseLeave={() => onHover?.(null)}
+                onFocus={() => onHover?.(f)} onBlur={() => onHover?.(null)}
+                title={`${text.hint} ${priorityHint(f.severity)}${onSelect ? " Click to focus charts · Ctrl+click to open video." : ""}`}>
                 <span className={`sev ${f.severity}`} title={priorityHint(f.severity)}>{f.severity}</span>
                 <span className="kind">{text.name}</span>
                 <span className="where">

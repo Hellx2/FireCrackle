@@ -2,7 +2,12 @@ use studio_core::chart::decimate;
 use studio_core::phase::Point;
 
 fn pt(frame: u32, phase: f64) -> Point {
-    Point { frame, pts: frame as f64 / 20.0, step: (frame % 32) as u8, phase }
+    Point {
+        frame,
+        pts: frame as f64 / 20.0,
+        step: (frame % 32) as u8,
+        phase,
+    }
 }
 
 fn flat(n: u32, phase: f64) -> Vec<Point> {
@@ -39,7 +44,10 @@ fn the_output_keeps_frame_order_without_duplicates() {
     let p: Vec<Point> = (0..5_000).map(|f| pt(f, (f % 7) as f64)).collect();
     let d = decimate(&p, 200);
     let f = frames(&d);
-    assert!(f.windows(2).all(|w| w[0] < w[1]), "must be strictly increasing: {f:?}");
+    assert!(
+        f.windows(2).all(|w| w[0] < w[1]),
+        "must be strictly increasing: {f:?}"
+    );
 }
 
 #[test]
@@ -65,12 +73,17 @@ fn an_isolated_outlier_survives_decimation() {
     let mut p = flat(10_000, 5.0);
     p[6_543] = pt(6_543, 12.0);
     let d = decimate(&p, 300);
-    assert!(d.iter().any(|q| q.frame == 6_543), "the outlier was averaged away");
+    assert!(
+        d.iter().any(|q| q.frame == 6_543),
+        "the outlier was averaged away"
+    );
 }
 
 #[test]
 fn a_step_in_the_phase_stays_visible() {
-    let p: Vec<Point> = (0..9_000).map(|f| pt(f, if f < 4_500 { 2.0 } else { 9.0 })).collect();
+    let p: Vec<Point> = (0..9_000)
+        .map(|f| pt(f, if f < 4_500 { 2.0 } else { 9.0 }))
+        .collect();
     let d = decimate(&p, 300);
     assert!(d.iter().any(|q| q.phase == 2.0) && d.iter().any(|q| q.phase == 9.0));
 }
@@ -79,10 +92,15 @@ fn a_step_in_the_phase_stays_visible() {
 fn extremes_are_circular_not_numeric_at_the_seam() {
     // phases 31.9 and 0.1 are 0.2 ticks apart; with a numeric min/max the 31.9 point would look like a far
     // outlier and crowd out the real one at 6.0 in the same bucket.
-    let mut p: Vec<Point> = (0..3_000).map(|f| pt(f, if f % 2 == 0 { 31.9 } else { 0.1 })).collect();
+    let mut p: Vec<Point> = (0..3_000)
+        .map(|f| pt(f, if f % 2 == 0 { 31.9 } else { 0.1 }))
+        .collect();
     p[1_500] = pt(1_500, 6.0);
     let d = decimate(&p, 90);
-    assert!(d.iter().any(|q| q.frame == 1_500), "the real outlier must be kept");
+    assert!(
+        d.iter().any(|q| q.frame == 1_500),
+        "the real outlier must be kept"
+    );
 }
 
 #[test]
@@ -98,7 +116,11 @@ fn tiny_caps_stay_within_the_cap() {
         assert!(d.len() <= cap, "cap {cap} got {}", d.len());
         assert!(!d.is_empty());
     }
-    assert_eq!(decimate(&p, 2).iter().map(|q| q.frame).collect::<Vec<_>>(), vec![0, 999], "cap 2 keeps the ends");
+    assert_eq!(
+        decimate(&p, 2).iter().map(|q| q.frame).collect::<Vec<_>>(),
+        vec![0, 999],
+        "cap 2 keeps the ends"
+    );
 }
 
 #[test]

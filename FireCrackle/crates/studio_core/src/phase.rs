@@ -178,7 +178,13 @@ struct Arc {
 
 impl Arc {
     fn start(i: usize, phase: f64) -> Arc {
-        Arc { first: i, last: i, reference: phase, min: 0.0, max: 0.0 }
+        Arc {
+            first: i,
+            last: i,
+            reference: phase,
+            min: 0.0,
+            max: 0.0,
+        }
     }
 
     fn center(&self) -> f64 {
@@ -235,7 +241,12 @@ pub fn analyze(obs: &[FrameObs], cfg: &Config) -> Result<Analysis, PhaseError> {
                 if phase >= CIRCLE {
                     phase -= CIRCLE; // rem_euclid can round a tiny negative up to exactly 32
                 }
-                Some(Point { frame: o.frame, pts: o.pts, step: s, phase })
+                Some(Point {
+                    frame: o.frame,
+                    pts: o.pts,
+                    step: s,
+                    phase,
+                })
             }
             _ => None,
         })
@@ -269,9 +280,16 @@ pub fn analyze(obs: &[FrameObs], cfg: &Config) -> Result<Analysis, PhaseError> {
     // two runs are the same level when they fit one window together, or their centres differ by less than the
     // noise floor
     let same_level = |a: &Arc, b: &Arc| {
-        a.compatible(b, cfg.window_ticks) || signed_delta(b.center(), a.center()).abs() < cfg.min_shift_ticks
+        a.compatible(b, cfg.window_ticks)
+            || signed_delta(b.center(), a.center()).abs() < cfg.min_shift_ticks
     };
-    let severity_of = |delta: f64| if delta.abs() > cfg.max_lag_ticks { Severity::Hard } else { Severity::Soft };
+    let severity_of = |delta: f64| {
+        if delta.abs() > cfg.max_lag_ticks {
+            Severity::Hard
+        } else {
+            Severity::Soft
+        }
+    };
 
     let mut flags: Vec<Flag> = Vec::new();
     let mut base: Option<usize> = None; // the run that defines the current level
@@ -363,5 +381,13 @@ pub fn analyze(obs: &[FrameObs], cfg: &Config) -> Result<Analysis, PhaseError> {
             width: a.max - a.min,
         })
         .collect();
-    Ok(Analysis { points, flags, runs, reference_phase:None,flag_details:vec![],clock_residuals:vec![],lag_intervals:vec![] })
+    Ok(Analysis {
+        points,
+        flags,
+        runs,
+        reference_phase: None,
+        flag_details: vec![],
+        clock_residuals: vec![],
+        lag_intervals: vec![],
+    })
 }

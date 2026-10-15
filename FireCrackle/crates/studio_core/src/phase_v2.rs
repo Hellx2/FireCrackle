@@ -115,10 +115,10 @@ fn holds(obs: &[FrameObs], phases: &[f64], s: &Settings) -> Vec<LagInterval> {
 }
 fn validate(s: &Settings) -> Result<(), String> {
     for info in s.describe() {
-        if info.key.starts_with("phase.") || info.key.starts_with("phase_v2.") {
-            if !info.value.is_finite() || info.value < info.min || info.value > info.max {
-                return Err(format!("invalid setting {}", info.key));
-            }
+        if (info.key.starts_with("phase.") || info.key.starts_with("phase_v2."))
+            && (!info.value.is_finite() || info.value < info.min || info.value > info.max)
+        {
+            return Err(format!("invalid setting {}", info.key));
         }
     }
     Ok(())

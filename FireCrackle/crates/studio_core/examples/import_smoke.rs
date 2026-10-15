@@ -15,14 +15,27 @@ fn main() {
     let started = Instant::now();
     match import_video(&Tools::default(), Path::new(&video), &Settings::default()) {
         Ok(p) => {
-            println!("video    : {} ({} bytes, fingerprint {})", p.video_path, p.video_size, p.fingerprint);
-            println!("meta     : {}x{} {}/{} fps {}", p.meta.width, p.meta.height, p.meta.fps_num, p.meta.fps_den, p.meta.codec);
+            println!(
+                "video    : {} ({} bytes, fingerprint {})",
+                p.video_path, p.video_size, p.fingerprint
+            );
+            println!(
+                "meta     : {}x{} {}/{} fps {}",
+                p.meta.width, p.meta.height, p.meta.fps_num, p.meta.fps_den, p.meta.codec
+            );
             println!("index    : {:?}", p.index);
-            println!("warnings : {}", if p.warnings.is_empty() { "none" } else { "" });
+            println!(
+                "warnings : {}",
+                if p.warnings.is_empty() { "none" } else { "" }
+            );
             for w in &p.warnings {
                 println!("  - {w}");
             }
-            println!("imported {} frames in {:.2}s", p.frames.len(), started.elapsed().as_secs_f64());
+            println!(
+                "imported {} frames in {:.2}s",
+                p.frames.len(),
+                started.elapsed().as_secs_f64()
+            );
             if let Some(out) = args.next() {
                 p.save(Path::new(&out)).expect("save");
                 println!("saved {out}");

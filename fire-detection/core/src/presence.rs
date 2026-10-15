@@ -20,9 +20,12 @@ impl Palette {
         let mut colours: Vec<[u8; 3]> = Vec::new();
         for s in sheets {
             if s.len() % 4 != 0 {
-                return Err(format!("RGBA data must be a multiple of 4 bytes, got {}", s.len()));
+                return Err(format!(
+                    "RGBA data must be a multiple of 4 bytes, got {}",
+                    s.len()
+                ));
             }
-            for p in s.chunks_exact(4) {
+            for p in s.as_chunks::<4>().0 {
                 if p[3] != 0 && !colours.contains(&[p[0], p[1], p[2]]) {
                     colours.push([p[0], p[1], p[2]]);
                 }
@@ -55,15 +58,28 @@ impl Palette {
     }
 
     /// Per-pixel hit mask for rows `y0..y1` (row-major, `w * (y1 - y0)` entries).
-    pub fn mask(&self, rgb: &[u8], w: usize, h: usize, y0: usize, y1: usize) -> Result<Vec<bool>, String> {
+    pub fn mask(
+        &self,
+        rgb: &[u8],
+        w: usize,
+        h: usize,
+        y0: usize,
+        y1: usize,
+    ) -> Result<Vec<bool>, String> {
         if w == 0 || h == 0 || rgb.len() != w * h * 3 {
-            return Err(format!("frame must be {w}x{h} RGB24 ({} bytes), got {}", w * h * 3, rgb.len()));
+            return Err(format!(
+                "frame must be {w}x{h} RGB24 ({} bytes), got {}",
+                w * h * 3,
+                rgb.len()
+            ));
         }
         if y0 > y1 || y1 > h {
             return Err(format!("bad row range {y0}..{y1} for height {h}"));
         }
         Ok(rgb[y0 * w * 3..y1 * w * 3]
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| {
                 let i = bit(p[0] as usize, p[1] as usize, p[2] as usize);
                 (self.table[i >> 6] >> (i & 63)) & 1 == 1
@@ -77,15 +93,26 @@ impl Palette {
     }
 
     /// Same, for rows `y0..y1` only (to leave the sync strip out).
-    pub fn count_rows(&self, rgb: &[u8], w: usize, h: usize, y0: usize, y1: usize) -> Result<usize, String> {
+    pub fn count_rows(
+        &self,
+        rgb: &[u8],
+        w: usize,
+        h: usize,
+        y0: usize,
+        y1: usize,
+    ) -> Result<usize, String> {
         if w == 0 || h == 0 || rgb.len() != w * h * 3 {
-            return Err(format!("frame must be {w}x{h} RGB24 ({} bytes), got {}", w * h * 3, rgb.len()));
+            return Err(format!(
+                "frame must be {w}x{h} RGB24 ({} bytes), got {}",
+                w * h * 3,
+                rgb.len()
+            ));
         }
         if y0 > y1 || y1 > h {
             return Err(format!("bad row range {y0}..{y1} for height {h}"));
         }
         let mut n = 0usize;
-        for p in rgb[y0 * w * 3..y1 * w * 3].chunks_exact(3) {
+        for p in rgb[y0 * w * 3..y1 * w * 3].as_chunks::<3>().0 {
             let i = bit(p[0] as usize, p[1] as usize, p[2] as usize);
             n += ((self.table[i >> 6] >> (i & 63)) & 1) as usize;
         }

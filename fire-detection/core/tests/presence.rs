@@ -8,7 +8,9 @@ fn palette(d: f64) -> Palette {
 }
 
 fn rnd(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -48,7 +50,14 @@ fn every_palette_colour_counts() {
 #[test]
 fn neutral_and_cold_colours_do_not_count() {
     let p = palette(24.0);
-    for c in [[0, 0, 0], [90, 90, 90], [128, 128, 128], [20, 60, 200], [40, 160, 50], [110, 20, 20]] {
+    for c in [
+        [0, 0, 0],
+        [90, 90, 90],
+        [128, 128, 128],
+        [20, 60, 200],
+        [40, 160, 50],
+        [110, 20, 20],
+    ] {
         assert_eq!(p.count(&solid(10, 10, c), 10, 10).unwrap(), 0, "{c:?}");
     }
 }

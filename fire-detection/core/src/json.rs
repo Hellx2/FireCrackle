@@ -46,7 +46,10 @@ impl Value {
 }
 
 pub fn parse(text: &str) -> Result<Value, String> {
-    let mut p = Parser { s: text.as_bytes(), i: 0 };
+    let mut p = Parser {
+        s: text.as_bytes(),
+        i: 0,
+    };
     p.ws();
     let v = p.value(0)?;
     p.ws();
@@ -155,7 +158,7 @@ impl Parser<'_> {
 
     fn digits(&mut self) -> usize {
         let s = self.i;
-        while self.peek().map_or(false, |c| c.is_ascii_digit()) {
+        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
             self.i += 1;
         }
         self.i - s
@@ -190,7 +193,9 @@ impl Parser<'_> {
             }
         }
         let t = std::str::from_utf8(&self.s[start..self.i]).map_err(|e| e.to_string())?;
-        t.parse::<f64>().map(Value::Num).map_err(|e| format!("{e} at byte {start}"))
+        t.parse::<f64>()
+            .map(Value::Num)
+            .map_err(|e| format!("{e} at byte {start}"))
     }
 
     fn string(&mut self) -> Result<String, String> {
@@ -216,9 +221,11 @@ impl Parser<'_> {
                         b'u' => {
                             let hex = self.s.get(self.i..self.i + 4).ok_or("short \\u escape")?;
                             let hex = std::str::from_utf8(hex).map_err(|e| e.to_string())?;
-                            let cp = u32::from_str_radix(hex, 16).map_err(|_| "bad \\u escape".to_string())?;
+                            let cp = u32::from_str_radix(hex, 16)
+                                .map_err(|_| "bad \\u escape".to_string())?;
                             self.i += 4;
-                            let ch = char::from_u32(cp).ok_or("surrogate \\u escape not supported")?;
+                            let ch =
+                                char::from_u32(cp).ok_or("surrogate \\u escape not supported")?;
                             let mut b = [0u8; 4];
                             out.extend_from_slice(ch.encode_utf8(&mut b).as_bytes());
                         }

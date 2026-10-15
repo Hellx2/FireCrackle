@@ -1,11 +1,17 @@
-use fire_core::patch::{frame_patch_features, patch_truth, pool_patches, PatchGrid, PatchModel, PatchTruth, NFEAT, PATCH};
+use fire_core::patch::{
+    frame_patch_features, patch_truth, pool_patches, PatchGrid, PatchModel, PatchTruth, NFEAT,
+    PATCH,
+};
 use fire_core::presence::Palette;
 
 const S0: &[u8] = include_bytes!("../testdata/fire_0.rgba");
 const S1: &[u8] = include_bytes!("../testdata/fire_1.rgba");
 
 fn pals() -> (Palette, Palette) {
-    (Palette::from_rgba(&[S0, S1], 24.0).unwrap(), Palette::from_rgba(&[S0, S1], 8.0).unwrap())
+    (
+        Palette::from_rgba(&[S0, S1], 24.0).unwrap(),
+        Palette::from_rgba(&[S0, S1], 8.0).unwrap(),
+    )
 }
 
 fn solid(w: usize, h: usize, c: [u8; 3]) -> Vec<u8> {
@@ -18,7 +24,10 @@ fn feats(frame: &[u8], w: usize, h: usize) -> PatchGrid {
 }
 
 fn idx(name: &str) -> usize {
-    fire_core::patch::FEATURE_NAMES.iter().position(|n| *n == name).unwrap_or_else(|| panic!("no feature {name}"))
+    fire_core::patch::FEATURE_NAMES
+        .iter()
+        .position(|n| *n == name)
+        .unwrap_or_else(|| panic!("no feature {name}"))
 }
 
 fn fire_colour() -> [u8; 3] {
@@ -76,7 +85,11 @@ fn a_flat_fire_colour_patch() {
     let l = (0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32) / 255.0;
     assert!((f[idx("lum")] - l).abs() < 1e-3);
     let warm = (c[0] as f32 - c[2] as f32) / 255.0;
-    assert!((f[idx("warm")] - warm).abs() < 1e-3, "{} vs {warm}", f[idx("warm")]);
+    assert!(
+        (f[idx("warm")] - warm).abs() < 1e-3,
+        "{} vs {warm}",
+        f[idx("warm")]
+    );
 }
 
 #[test]
@@ -88,7 +101,11 @@ fn white_and_bright_shares() {
     let f = feats(&fr, 16, 16).feats[0];
     assert!((f[idx("white")] - 0.25).abs() < 1e-6);
     assert!((f[idx("dark")] - 0.75).abs() < 1e-6);
-    assert!((f[idx("pal")] - 0.25).abs() < 1e-6, "pure white is in the fire palette: {}", f[idx("pal")]);
+    assert!(
+        (f[idx("pal")] - 0.25).abs() < 1e-6,
+        "pure white is in the fire palette: {}",
+        f[idx("pal")]
+    );
     assert!((f[idx("bright")] - 0.25).abs() < 1e-6);
 }
 
@@ -102,14 +119,21 @@ fn a_checkerboard_has_maximal_texture() {
         }
     }
     let f = feats(&fr, 16, 16).feats[0];
-    assert!((f[idx("grad")] - 400.0 / 255.0).abs() < 0.01, "{}", f[idx("grad")]);
+    assert!(
+        (f[idx("grad")] - 400.0 / 255.0).abs() < 0.01,
+        "{}",
+        f[idx("grad")]
+    );
     assert_eq!(f[idx("big")], 1.0);
     assert!(f[idx("lumstd")] > 0.3);
 }
 
 #[test]
 fn saturation_of_grey_is_zero_and_of_pure_red_is_one() {
-    assert_eq!(feats(&solid(16, 16, [120, 120, 120]), 16, 16).feats[0][idx("sat")], 0.0);
+    assert_eq!(
+        feats(&solid(16, 16, [120, 120, 120]), 16, 16).feats[0][idx("sat")],
+        0.0
+    );
     assert!((feats(&solid(16, 16, [200, 0, 0]), 16, 16).feats[0][idx("sat")] - 1.0).abs() < 1e-6);
 }
 
@@ -184,7 +208,10 @@ fn any_box_can_make_a_positive() {
 
 #[test]
 fn degenerate_boxes_do_not_panic() {
-    let boxes = [([50.0, 50.0, 50.0, 50.0], 1.0), ([f64::NAN, 0.0, 1.0, 1.0], 1.0)];
+    let boxes = [
+        ([50.0, 50.0, 50.0, 50.0], 1.0),
+        ([f64::NAN, 0.0, 1.0, 1.0], 1.0),
+    ];
     let _ = patch_truth(&boxes, 48, 48);
     assert_eq!(patch_truth(&boxes, 900, 900), PatchTruth::Neg);
 }
@@ -221,10 +248,10 @@ fn malformed_models_are_errors() {
         "",
         "{}",
         r#"{"nodes":[]}"#,
-        r#"{"nodes":[{"f":0,"t":0.5,"l":1,"r":2}]}"#,                       // children out of range
-        r#"{"nodes":[{"f":0,"t":0.5,"l":0,"r":0}]}"#,                       // cycle
+        r#"{"nodes":[{"f":0,"t":0.5,"l":1,"r":2}]}"#, // children out of range
+        r#"{"nodes":[{"f":0,"t":0.5,"l":0,"r":0}]}"#, // cycle
         r#"{"nodes":[{"f":99,"t":0.5,"l":1,"r":2},{"leaf":0},{"leaf":1}]}"#, // feature out of range
-        r#"{"nodes":[{"f":0,"l":1,"r":2},{"leaf":0},{"leaf":1}]}"#,         // no threshold
+        r#"{"nodes":[{"f":0,"l":1,"r":2},{"leaf":0},{"leaf":1}]}"#, // no threshold
         r#"{"nodes":[{"leaf":"x"}]}"#,
     ] {
         assert!(PatchModel::from_json(bad).is_err(), "{bad}");
@@ -242,7 +269,13 @@ fn a_single_leaf_model_is_valid() {
 fn grid_of(rows: &[&str]) -> (Vec<bool>, usize, usize) {
     let h = rows.len();
     let w = rows[0].len();
-    (rows.iter().flat_map(|r| r.bytes().map(|c| c == b'#')).collect(), w, h)
+    (
+        rows.iter()
+            .flat_map(|r| r.bytes().map(|c| c == b'#'))
+            .collect(),
+        w,
+        h,
+    )
 }
 
 #[test]

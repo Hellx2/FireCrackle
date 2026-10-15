@@ -18,7 +18,10 @@ pub struct Packet {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IndexError {
     /// A line that is not `pts,dts,flags` (1-based line number).
-    Parse { line: usize, msg: String },
+    Parse {
+        line: usize,
+        msg: String,
+    },
     NoPackets,
     /// Packets exist but none has a presentation time.
     NoTimestamps,
@@ -71,7 +74,10 @@ pub fn parse_packets(text: &str) -> Result<Vec<Packet>, IndexError> {
         let err = |msg: String| IndexError::Parse { line: i + 1, msg };
         let fields: Vec<&str> = line.split(',').map(str::trim).collect();
         if fields.len() != 3 {
-            return Err(err(format!("expected pts,dts,flags but got {} field(s): {line:?}", fields.len())));
+            return Err(err(format!(
+                "expected pts,dts,flags but got {} field(s): {line:?}",
+                fields.len()
+            )));
         }
         let time = |field: &str| -> Result<Option<f64>, IndexError> {
             if field == "N/A" {
@@ -82,7 +88,11 @@ pub fn parse_packets(text: &str) -> Result<Vec<Packet>, IndexError> {
                 _ => Err(err(format!("not a time: {field:?}"))),
             }
         };
-        packets.push(Packet { pts: time(fields[0])?, dts: time(fields[1])?, key: fields[2].contains('K') });
+        packets.push(Packet {
+            pts: time(fields[0])?,
+            dts: time(fields[1])?,
+            key: fields[2].contains('K'),
+        });
     }
     Ok(packets)
 }
@@ -92,7 +102,10 @@ pub fn build_index(packets: &[Packet], cfg: &IndexConfig) -> Result<FrameIndex, 
     if packets.is_empty() {
         return Err(IndexError::NoPackets);
     }
-    let mut timed: Vec<(f64, bool)> = packets.iter().filter_map(|p| p.pts.map(|t| (t, p.key))).collect();
+    let mut timed: Vec<(f64, bool)> = packets
+        .iter()
+        .filter_map(|p| p.pts.map(|t| (t, p.key)))
+        .collect();
     let missing_pts = packets.len() - timed.len();
     if timed.is_empty() {
         return Err(IndexError::NoTimestamps);
@@ -100,8 +113,15 @@ pub fn build_index(packets: &[Packet], cfg: &IndexConfig) -> Result<FrameIndex, 
     // stable: packets with equal pts keep decode order
     timed.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("pts values are finite"));
 
-    let frames: Vec<FrameEntry> =
-        timed.iter().enumerate().map(|(n, &(pts, key))| FrameEntry { n: n as u32, pts, key }).collect();
+    let frames: Vec<FrameEntry> = timed
+        .iter()
+        .enumerate()
+        .map(|(n, &(pts, key))| FrameEntry {
+            n: n as u32,
+            pts,
+            key,
+        })
+        .collect();
 
     let intervals: Vec<f64> = frames.windows(2).map(|w| w[1].pts - w[0].pts).collect();
     let duplicate_pts = intervals.iter().filter(|&&d| d == 0.0).count();
@@ -109,12 +129,19 @@ pub fn build_index(packets: &[Packet], cfg: &IndexConfig) -> Result<FrameIndex, 
     positive.sort_by(|a, b| a.partial_cmp(b).expect("intervals are finite"));
     let median_interval = positive.get(positive.len() / 2).copied().unwrap_or(0.0);
     let irregular_intervals = if median_interval > 0.0 {
-        intervals.iter().filter(|&&d| (d - median_interval).abs() > cfg.irregular_deviation * median_interval).count()
+        intervals
+            .iter()
+            .filter(|&&d| (d - median_interval).abs() > cfg.irregular_deviation * median_interval)
+            .count()
     } else {
         0
     };
     let duration = frames[frames.len() - 1].pts - frames[0].pts;
-    let fps = if frames.len() >= 2 && duration > 0.0 { (frames.len() - 1) as f64 / duration } else { 0.0 };
+    let fps = if frames.len() >= 2 && duration > 0.0 {
+        (frames.len() - 1) as f64 / duration
+    } else {
+        0.0
+    };
     let max_gap = intervals.iter().copied().fold(0.0, f64::max);
     let vfr = irregular_intervals as f64 > cfg.vfr_fraction * intervals.len() as f64;
 
@@ -137,7 +164,11 @@ impl FrameIndex {
     pub fn keyframe_at_or_before(&self, n: u32) -> Option<u32> {
         let last = self.frames.len().checked_sub(1)?;
         let from = (n as usize).min(last);
-        self.frames[..=from].iter().rev().find(|f| f.key).map(|f| f.n)
+        self.frames[..=from]
+            .iter()
+            .rev()
+            .find(|f| f.key)
+            .map(|f| f.n)
     }
 
     /// Last frame whose pts is `<= t`; `None` if `t` is before the first frame or the index is empty.

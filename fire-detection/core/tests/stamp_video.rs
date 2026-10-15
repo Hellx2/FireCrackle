@@ -9,7 +9,13 @@ const DECODE: &str = env!("CARGO_BIN_EXE_fire-decode");
 
 fn have_ffmpeg() -> bool {
     ["ffmpeg", "ffprobe"].iter().all(|t| {
-        Command::new(t).arg("-version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
+        Command::new(t)
+            .arg("-version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
     })
 }
 
@@ -33,16 +39,28 @@ fn the_generated_video_decodes_back_to_its_ids_and_ticks() {
         .args(["--frames", "12", "--size", "1280x720", "--fps", "30"])
         .output()
         .unwrap();
-    assert!(gen.status.success(), "{}", String::from_utf8_lossy(&gen.stderr));
+    assert!(
+        gen.status.success(),
+        "{}",
+        String::from_utf8_lossy(&gen.stderr)
+    );
     assert!(video.is_file());
 
     let out = Command::new(DECODE).arg(&video).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let text = String::from_utf8_lossy(&out.stdout);
     let rows: Vec<&str> = text.lines().collect();
     assert_eq!(rows.len(), 12);
     for (i, row) in rows.iter().enumerate() {
-        assert_eq!(*row, format!("{{\"n\":{i},\"tick\":{},\"f\":{i}}}", 1000 + i / 3), "row {i}");
+        assert_eq!(
+            *row,
+            format!("{{\"n\":{i},\"tick\":{},\"f\":{i}}}", 1000 + i / 3),
+            "row {i}"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -59,8 +77,16 @@ fn bad_arguments_print_usage_and_exit_2() {
         vec!["out.mp4", "--frames"],
     ] {
         let o = Command::new(GEN).args(&args).output().unwrap();
-        assert_eq!(o.status.code(), Some(2), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
-        assert!(String::from_utf8_lossy(&o.stderr).contains("Usage"), "{args:?}");
+        assert_eq!(
+            o.status.code(),
+            Some(2),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&o.stderr).contains("Usage"),
+            "{args:?}"
+        );
     }
 }
 
@@ -77,6 +103,9 @@ fn an_unwritable_output_is_a_clean_error() {
         .unwrap();
     assert!(!o.status.success());
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.to_lowercase().contains("error") && !err.contains("panicked"), "{err}");
+    assert!(
+        err.to_lowercase().contains("error") && !err.contains("panicked"),
+        "{err}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -15,24 +15,47 @@ fn corners_match_hand_computed_values_fov_90_square() {
     // computed independently in python from the vanilla transform (rotate about Y, translate, perspective)
     let q = overlay_quads();
     let p = |quad: usize, i: usize| project(q[quad][i], 90.0, 100, 100).unwrap();
-    let want0 = [(35.707, 119.057), (150.995, 148.624), (150.995, 25.344), (35.707, 32.736)];
-    let want1 = [(-50.995, 148.624), (64.293, 119.057), (64.293, 32.736), (-50.995, 25.344)];
+    let want0 = [
+        (35.707, 119.057),
+        (150.995, 148.624),
+        (150.995, 25.344),
+        (35.707, 32.736),
+    ];
+    let want1 = [
+        (-50.995, 148.624),
+        (64.293, 119.057),
+        (64.293, 32.736),
+        (-50.995, 25.344),
+    ];
     for i in 0..4 {
         let (x, y) = p(0, i);
-        assert!(close(x, want0[i].0) && close(y, want0[i].1), "quad 0 corner {i}: {x},{y}");
+        assert!(
+            close(x, want0[i].0) && close(y, want0[i].1),
+            "quad 0 corner {i}: {x},{y}"
+        );
         let (x, y) = p(1, i);
-        assert!(close(x, want1[i].0) && close(y, want1[i].1), "quad 1 corner {i}: {x},{y}");
+        assert!(
+            close(x, want1[i].0) && close(y, want1[i].1),
+            "quad 1 corner {i}: {x},{y}"
+        );
     }
 }
 
 #[test]
 fn the_two_quads_mirror_each_other_about_the_screen_centre() {
     let q = overlay_quads();
-    for &(w, h, fov) in &[(1920usize, 1080usize, 70.0), (2560, 1440, 90.0), (800, 600, 110.0)] {
+    for &(w, h, fov) in &[
+        (1920usize, 1080usize, 70.0),
+        (2560, 1440, 90.0),
+        (800, 600, 110.0),
+    ] {
         for (i, j) in [(0usize, 1usize), (1, 0), (2, 3), (3, 2)] {
             let a = project(q[0][i], fov, w, h).unwrap();
             let b = project(q[1][j], fov, w, h).unwrap();
-            assert!(close(a.0, w as f64 - b.0) && close(a.1, b.1), "{w}x{h} fov {fov} corner {i}");
+            assert!(
+                close(a.0, w as f64 - b.0) && close(a.1, b.1),
+                "{w}x{h} fov {fov} corner {i}"
+            );
         }
     }
 }
@@ -41,7 +64,10 @@ fn the_two_quads_mirror_each_other_about_the_screen_centre() {
 fn the_overlay_sits_in_the_lower_part_of_the_screen() {
     let q = overlay_quads();
     let (w, h) = (1920usize, 1080usize);
-    let ys: Vec<f64> = q[0].iter().map(|&c| project(c, 70.0, w, h).unwrap().1).collect();
+    let ys: Vec<f64> = q[0]
+        .iter()
+        .map(|&c| project(c, 70.0, w, h).unwrap().1)
+        .collect();
     // the bottom edge is below the frame, the top edge is above the middle... and bottom corners are lower than top ones
     assert!(ys[0] > h as f64 && ys[1] > h as f64);
     assert!(ys[2] < ys[1] && ys[3] < ys[0]);
@@ -56,13 +82,18 @@ fn projection_rejects_points_behind_the_camera_and_bad_fov() {
     assert!(project([0.0, 0.0, -1.0], f64::NAN, 100, 100).is_none());
     assert!(project([0.0, 0.0, -1.0], 70.0, 0, 100).is_none());
     let (x, y) = project([0.0, 0.0, -1.0], 70.0, 200, 100).unwrap();
-    assert!(close(x, 100.0) && close(y, 50.0), "the optical axis hits the centre");
+    assert!(
+        close(x, 100.0) && close(y, 50.0),
+        "the optical axis hits the centre"
+    );
 }
 
 // ---- rendering a synthetic overlay with the same geometry (sub-sampled forward render) ----
 
 fn rnd(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -96,14 +127,17 @@ fn render(row: usize, w: usize, h: usize, fov: f64, gain: f64, bg_seed: u64) -> 
                         let (s, t) = (1.0 - u, 1.0 - v);
                         let mut p = [0.0; 3];
                         for k in 0..3 {
-                            p[k] = quad[0][k] + s * (quad[1][k] - quad[0][k]) + t * (quad[3][k] - quad[0][k]);
+                            p[k] = quad[0][k]
+                                + s * (quad[1][k] - quad[0][k])
+                                + t * (quad[3][k] - quad[0][k]);
                         }
                         if let Some((x, y)) = project(p, fov, w, h) {
                             let (xi, yi) = (x.floor(), y.floor());
                             if xi >= 0.0 && yi >= 0.0 && (xi as usize) < w && (yi as usize) < h {
                                 let o = (yi as usize * w + xi as usize) * 3;
                                 for k in 0..3 {
-                                    frame[o + k] = (S1[i + k] as f64 * gain).clamp(0.0, 255.0) as u8;
+                                    frame[o + k] =
+                                        (S1[i + k] as f64 * gain).clamp(0.0, 255.0) as u8;
                                 }
                             }
                         }
@@ -130,7 +164,13 @@ fn a_rendered_overlay_is_matched_to_its_row_for_every_row() {
             // a row whose visible part is identical to another is not an error
             wrong.push((row, r[0].row, r[0].score));
         }
-        assert!(r[0].z > 5.0, "row {row}: best z {} (r {}, {} samples)", r[0].z, r[0].score, r[0].samples);
+        assert!(
+            r[0].z > 5.0,
+            "row {row}: best z {} (r {}, {} samples)",
+            r[0].z,
+            r[0].score,
+            r[0].samples
+        );
     }
     assert!(wrong.len() <= 1, "misclassified rows: {wrong:?}");
 }
@@ -147,7 +187,11 @@ fn the_results_are_sorted_best_first_with_enough_samples() {
 fn a_dark_veil_keeps_the_row() {
     for gain in [0.6, 0.3] {
         let f = render(12, W, H, FOV, gain, 3);
-        assert_eq!(match_overlay(S1, &f, W, H, FOV).unwrap()[0].row, 12, "gain {gain}");
+        assert_eq!(
+            match_overlay(S1, &f, W, H, FOV).unwrap()[0].row,
+            12,
+            "gain {gain}"
+        );
     }
 }
 
@@ -173,14 +217,19 @@ fn a_frame_without_the_overlay_scores_low() {
     }
     // only ~10-45 texels per row are on screen (the overlay is mostly below the frame), so raw correlation is noisy.
     // z = atanh(r) * sqrt(n - 3) is ~N(0,1) on noise whatever n is: the best of 32 rows stays well under 4 sigma.
-    assert!(worst < 4.0, "noise should not look like the overlay: z = {worst}");
+    assert!(
+        worst < 4.0,
+        "noise should not look like the overlay: z = {worst}"
+    );
 }
 
 #[test]
 fn a_flat_frame_has_no_signal_and_no_nan() {
     let f = vec![80u8; W * H * 3];
     let r = match_overlay(S1, &f, W, H, FOV).unwrap();
-    assert!(r.iter().all(|s| !s.score.is_nan() && !s.z.is_nan() && s.score <= 0.0 && s.z <= 0.0));
+    assert!(r
+        .iter()
+        .all(|s| !s.score.is_nan() && !s.z.is_nan() && s.score <= 0.0 && s.z <= 0.0));
 }
 
 #[test]

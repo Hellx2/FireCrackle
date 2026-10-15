@@ -23,7 +23,10 @@ fn usage(why: &str) -> ! {
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 33) as u32
     }
 }
@@ -56,14 +59,28 @@ fn main() {
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--frames" => frames = it.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage("--frames needs a number")),
-            "--fps" => fps = it.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage("--fps needs a number")),
+            "--frames" => {
+                frames = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| usage("--frames needs a number"))
+            }
+            "--fps" => {
+                fps = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or_else(|| usage("--fps needs a number"))
+            }
             "--size" => {
                 let v = it.next().unwrap_or_else(|| usage("--size needs WxH"));
-                let (w, h) = v.split_once('x').unwrap_or_else(|| usage("--size must look like 1920x1080"));
+                let (w, h) = v
+                    .split_once('x')
+                    .unwrap_or_else(|| usage("--size must look like 1920x1080"));
                 size = (
-                    w.parse().unwrap_or_else(|_| usage("--size must look like 1920x1080")),
-                    h.parse().unwrap_or_else(|_| usage("--size must look like 1920x1080")),
+                    w.parse()
+                        .unwrap_or_else(|_| usage("--size must look like 1920x1080")),
+                    h.parse()
+                        .unwrap_or_else(|_| usage("--size must look like 1920x1080")),
                 );
             }
             s if s.starts_with("--") => usage(&format!("unknown option {s}")),
@@ -92,9 +109,31 @@ fn main() {
     }
 
     let mut child = match Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-s",
+        ])
         .arg(format!("{w}x{h}"))
-        .args(["-r", &fps.to_string(), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-pix_fmt", "yuv420p"])
+        .args([
+            "-r",
+            &fps.to_string(),
+            "-i",
+            "-",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "10",
+            "-pix_fmt",
+            "yuv420p",
+        ])
         .arg(&out)
         .stdin(Stdio::piped())
         .spawn()

@@ -39,7 +39,10 @@ fn diagonal_pixels_are_not_connected() {
 fn a_blob_touching_the_border_and_a_snake_are_one_blob() {
     let (m, w, h) = mask_from(&["####", "...#", "####", "#...", "####"]);
     let b = blob_stats(&m, w, h, 5).unwrap();
-    assert_eq!((b.blobs_ge_min, b.largest, b.total), (1, 4 + 1 + 4 + 1 + 4, 14));
+    assert_eq!(
+        (b.blobs_ge_min, b.largest, b.total),
+        (1, 4 + 1 + 4 + 1 + 4, 14)
+    );
 }
 
 #[test]
@@ -53,10 +56,13 @@ fn the_min_area_edge_is_inclusive() {
 
 #[test]
 fn empty_and_full_masks() {
-    let e = blob_stats(&vec![false; 12], 4, 3, 1).unwrap();
+    let e = blob_stats(&[false; 12], 4, 3, 1).unwrap();
     assert_eq!((e.total, e.blobs_ge_min, e.largest, e.in_big), (0, 0, 0, 0));
-    let f = blob_stats(&vec![true; 12], 4, 3, 1).unwrap();
-    assert_eq!((f.total, f.blobs_ge_min, f.largest, f.in_big), (12, 1, 12, 12));
+    let f = blob_stats(&[true; 12], 4, 3, 1).unwrap();
+    assert_eq!(
+        (f.total, f.blobs_ge_min, f.largest, f.in_big),
+        (12, 1, 12, 12)
+    );
 }
 
 #[test]
@@ -120,7 +126,10 @@ fn edge_stats_do_not_pair_across_row_ends_and_are_zero_not_nan_when_empty() {
 fn mean_luma_and_dark_share() {
     let rgb = [0u8, 0, 0, 255, 255, 255, 10, 10, 10, 200, 200, 200];
     let (mean, dark) = mean_luma_and_dark(&rgb, 4, 1, 30.0).unwrap();
-    assert!((mean - (0.0 + 255.0 + 10.0 + 200.0) / 4.0).abs() < 0.5, "{mean}");
+    assert!(
+        (mean - (0.0 + 255.0 + 10.0 + 200.0) / 4.0).abs() < 0.5,
+        "{mean}"
+    );
     assert_eq!(dark, 0.5);
     assert!(mean_luma_and_dark(&rgb, 3, 1, 30.0).is_err());
     assert!(mean_luma_and_dark(&[], 0, 0, 30.0).is_err());
@@ -135,14 +144,19 @@ fn forward(p: u8, a: f64, c: u8) -> u8 {
 #[test]
 fn alpha_zero_is_identity() {
     let rgb: Vec<u8> = (0..30).map(|i| (i * 8) as u8).collect();
-    assert_eq!(unveil_rows(&rgb, 5, 2, 0.0, 0.0, [16, 16, 16]).unwrap(), rgb);
+    assert_eq!(
+        unveil_rows(&rgb, 5, 2, 0.0, 0.0, [16, 16, 16]).unwrap(),
+        rgb
+    );
 }
 
 #[test]
 fn a_forward_veiled_frame_is_restored_within_quantisation() {
     let (w, h) = (6usize, 4usize);
     let (a0, a1) = (0.753, 0.816);
-    let orig: Vec<u8> = (0..w * h * 3).map(|i| ((i * 37) % 200 + 50) as u8).collect();
+    let orig: Vec<u8> = (0..w * h * 3)
+        .map(|i| ((i * 37) % 200 + 50) as u8)
+        .collect();
     let mut veiled = orig.clone();
     for y in 0..h {
         let a = a0 + (a1 - a0) * (y as f64 + 0.5) / h as f64;
@@ -154,7 +168,12 @@ fn a_forward_veiled_frame_is_restored_within_quantisation() {
         }
     }
     let back = unveil_rows(&veiled, w, h, a0, a1, [16, 16, 16]).unwrap();
-    let worst = back.iter().zip(&orig).map(|(b, o)| (*b as i32 - *o as i32).abs()).max().unwrap();
+    let worst = back
+        .iter()
+        .zip(&orig)
+        .map(|(b, o)| (*b as i32 - *o as i32).abs())
+        .max()
+        .unwrap();
     // 8-bit rounding of the forward step is magnified by 1/(1-a) <= 5.5
     assert!(worst <= 6, "worst error {worst}");
 }
@@ -191,19 +210,36 @@ fn unveiling_a_veiled_fire_colour_makes_the_palette_match_again() {
     const S0: &[u8] = include_bytes!("../testdata/fire_0.rgba");
     const S1: &[u8] = include_bytes!("../testdata/fire_1.rgba");
     let p = Palette::from_rgba(&[S0, S1], 24.0).unwrap();
-    let fire: Vec<[u8; 3]> = S0.chunks(4).filter(|c| c[3] != 0).map(|c| [c[0], c[1], c[2]]).collect();
+    let fire: Vec<[u8; 3]> = S0
+        .chunks(4)
+        .filter(|c| c[3] != 0)
+        .map(|c| [c[0], c[1], c[2]])
+        .collect();
     let (w, h) = (40usize, 10usize);
     let mut veiled = Vec::new();
     for i in 0..w * h {
         let c = fire[(i * 13) % fire.len()];
-        for k in 0..3 {
-            veiled.push(forward(c[k], 0.785, 16));
+        for channel in c {
+            veiled.push(forward(channel, 0.785, 16));
         }
     }
     let before = p.count(&veiled, w, h).unwrap();
-    let after = p.count(&unveil_rows(&veiled, w, h, 0.753, 0.816, [16, 16, 16]).unwrap(), w, h).unwrap();
-    assert!(before < w * h / 4, "veiled fire should not match the palette: {before}");
-    assert!(after as f64 > (w * h) as f64 * 0.8, "unveiled should: {after} of {}", w * h);
+    let after = p
+        .count(
+            &unveil_rows(&veiled, w, h, 0.753, 0.816, [16, 16, 16]).unwrap(),
+            w,
+            h,
+        )
+        .unwrap();
+    assert!(
+        before < w * h / 4,
+        "veiled fire should not match the palette: {before}"
+    );
+    assert!(
+        after as f64 > (w * h) as f64 * 0.8,
+        "unveiled should: {after} of {}",
+        w * h
+    );
 }
 
 // ---- opening (outlier removal) ----
@@ -264,7 +300,13 @@ fn a_block_in_the_corner_is_not_eroded_by_the_border() {
 fn a_one_pixel_line_is_removed_but_a_thick_shape_with_a_spur_loses_only_the_spur() {
     let (m, w, h) = mask_from(&["......", "######", "......"]);
     assert_eq!(count(&open_mask(&m, w, h, 1).unwrap()), 0);
-    let (m, w, h) = mask_from(&["..........", ".###......", ".######...", ".###......", ".........."]);
+    let (m, w, h) = mask_from(&[
+        "..........",
+        ".###......",
+        ".######...",
+        ".###......",
+        "..........",
+    ]);
     let o = open_mask(&m, w, h, 1).unwrap();
     // the 3x3 body stays, the 3-pixel spur (cols 4..6 of the middle row) goes
     assert_eq!(count(&o), 9);
@@ -281,10 +323,10 @@ fn two_blobs_joined_by_a_bridge_are_separated() {
 
 #[test]
 fn opening_empty_and_full_masks() {
-    assert_eq!(count(&open_mask(&vec![false; 20], 5, 4, 1).unwrap()), 0);
-    assert_eq!(count(&open_mask(&vec![true; 20], 5, 4, 1).unwrap()), 20);
+    assert_eq!(count(&open_mask(&[false; 20], 5, 4, 1).unwrap()), 0);
+    assert_eq!(count(&open_mask(&[true; 20], 5, 4, 1).unwrap()), 20);
     // a radius bigger than the mask: a full mask is still full (nothing but the border is in the way)
-    assert_eq!(count(&open_mask(&vec![true; 6], 3, 2, 5).unwrap()), 6);
+    assert_eq!(count(&open_mask(&[true; 6], 3, 2, 5).unwrap()), 6);
 }
 
 #[test]
@@ -299,8 +341,10 @@ fn opening_never_adds_pixels() {
     let (w, h) = (40usize, 30usize);
     let m: Vec<bool> = (0..w * h)
         .map(|_| {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            (seed >> 33) % 3 != 0
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            !(seed >> 33).is_multiple_of(3)
         })
         .collect();
     for r in 1..=2 {
@@ -330,7 +374,10 @@ fn a_single_pixel_blob() {
     let (labels, infos) = label_blobs(&m, w, h).unwrap();
     assert_eq!(infos.len(), 1);
     let b = infos[0];
-    assert_eq!((b.area, b.perimeter, b.x0, b.y0, b.x1, b.y1), (1, 4, 1, 1, 2, 2));
+    assert_eq!(
+        (b.area, b.perimeter, b.x0, b.y0, b.x1, b.y1),
+        (1, 4, 1, 1, 2, 2)
+    );
     assert_eq!(labels[4], 1);
     assert_eq!(labels.iter().filter(|&&l| l == 0).count(), 8);
 }
@@ -379,9 +426,30 @@ fn bbox_and_areas_are_exact_and_cover_the_mask() {
     let (m, w, h) = mask_from(&["##....", ".#..#.", ".#..##", "......"]);
     let (labels, infos) = label_blobs(&m, w, h).unwrap();
     assert_eq!(infos.len(), 2);
-    assert_eq!((infos[0].area, infos[0].x0, infos[0].y0, infos[0].x1, infos[0].y1), (4, 0, 0, 2, 3));
-    assert_eq!((infos[1].area, infos[1].x0, infos[1].y0, infos[1].x1, infos[1].y1), (3, 4, 1, 6, 3));
-    assert_eq!(infos.iter().map(|b| b.area).sum::<usize>(), m.iter().filter(|&&b| b).count());
+    assert_eq!(
+        (
+            infos[0].area,
+            infos[0].x0,
+            infos[0].y0,
+            infos[0].x1,
+            infos[0].y1
+        ),
+        (4, 0, 0, 2, 3)
+    );
+    assert_eq!(
+        (
+            infos[1].area,
+            infos[1].x0,
+            infos[1].y0,
+            infos[1].x1,
+            infos[1].y1
+        ),
+        (3, 4, 1, 6, 3)
+    );
+    assert_eq!(
+        infos.iter().map(|b| b.area).sum::<usize>(),
+        m.iter().filter(|&&b| b).count()
+    );
     assert!(labels.iter().zip(&m).all(|(l, b)| (*l > 0) == *b));
 }
 

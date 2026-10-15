@@ -6,7 +6,9 @@ const S1: &[u8] = include_bytes!("../testdata/fire_1.rgba");
 const FOV: f64 = 70.0;
 
 fn rnd(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -24,6 +26,10 @@ fn background(w: usize, h: usize, seed: u64) -> Vec<u8> {
 /// What the game draws: both quads (the second over the first), 90% sprite over 10% scene, then optional darkening.
 /// Rendered by dense sub-sampling of every opaque texel.
 fn render(row: usize, w: usize, h: usize, bg: Vec<u8>, gain: f64) -> Vec<u8> {
+    render_fov(row, w, h, bg, gain, FOV)
+}
+
+fn render_fov(row: usize, w: usize, h: usize, bg: Vec<u8>, gain: f64, fov: f64) -> Vec<u8> {
     let mut frame = bg;
     let scene = frame.clone();
     let q = overlay_quads();
@@ -42,14 +48,17 @@ fn render(row: usize, w: usize, h: usize, bg: Vec<u8>, gain: f64) -> Vec<u8> {
                         let (s, t) = (1.0 - u, 1.0 - v);
                         let mut p = [0.0; 3];
                         for k in 0..3 {
-                            p[k] = quad[0][k] + s * (quad[1][k] - quad[0][k]) + t * (quad[3][k] - quad[0][k]);
+                            p[k] = quad[0][k]
+                                + s * (quad[1][k] - quad[0][k])
+                                + t * (quad[3][k] - quad[0][k]);
                         }
-                        if let Some((x, y)) = project(p, FOV, w, h) {
+                        if let Some((x, y)) = project(p, fov, w, h) {
                             let (xi, yi) = (x.floor(), y.floor());
                             if xi >= 0.0 && yi >= 0.0 && (xi as usize) < w && (yi as usize) < h {
                                 let o = (yi as usize * w + xi as usize) * 3;
                                 for k in 0..3 {
-                                    frame[o + k] = (0.9 * S1[i + k] as f64 + 0.1 * scene[o + k] as f64) as u8;
+                                    frame[o + k] =
+                                        (0.9 * S1[i + k] as f64 + 0.1 * scene[o + k] as f64) as u8;
                                 }
                             }
                         }
@@ -137,7 +146,10 @@ fn a_spatial_vignette_keeps_the_row() {
     let mut f = render(25, W, H, background(W, H, 4), 1.0);
     for y in 0..H {
         for x in 0..W {
-            let (dx, dy) = ((x as f64 / W as f64 - 0.5) * 2.0, (y as f64 / H as f64 - 0.5) * 2.0);
+            let (dx, dy) = (
+                (x as f64 / W as f64 - 0.5) * 2.0,
+                (y as f64 / H as f64 - 0.5) * 2.0,
+            );
             let g = (1.0 - 0.45 * (dx * dx + dy * dy) / 2.0).clamp(0.0, 1.0);
             for k in 0..3 {
                 let o = (y * W + x) * 3 + k;
@@ -194,7 +206,10 @@ fn bad_construction_is_an_error() {
     assert!(SilhouetteMatcher::new(S1, 0, H, FOV).is_err());
     assert!(SilhouetteMatcher::new(S1, W, H, 0.0).is_err());
     assert!(SilhouetteMatcher::new(S1, W, H, 180.0).is_err());
-    assert!(SilhouetteMatcher::new(S1, 8, 8, FOV).is_ok() || SilhouetteMatcher::new(S1, 8, 8, FOV).is_err());
+    assert!(
+        SilhouetteMatcher::new(S1, 8, 8, FOV).is_ok()
+            || SilhouetteMatcher::new(S1, 8, 8, FOV).is_err()
+    );
 }
 
 #[test]
@@ -210,11 +225,17 @@ fn a_fov_with_the_overlay_off_screen_is_an_error_not_garbage() {
 /// seen from very close. The overlay's "orange here" test cannot tell opaque from transparent texels over this.
 fn fire_field(w: usize, h: usize, seed: u64) -> Vec<u8> {
     let mut s = seed;
-    let cols: Vec<[u8; 3]> = S1.chunks(4).filter(|c| c[3] != 0).map(|c| [c[0], c[1], c[2]]).collect();
+    let cols: Vec<[u8; 3]> = S1
+        .chunks(4)
+        .filter(|c| c[3] != 0)
+        .map(|c| [c[0], c[1], c[2]])
+        .collect();
     let mut f = vec![0u8; w * h * 3];
     let cell = 40usize;
     let (cx, cy) = (w / cell + 1, h / cell + 1);
-    let blocks: Vec<[u8; 3]> = (0..cx * cy).map(|_| cols[rnd(&mut s) as usize % cols.len()]).collect();
+    let blocks: Vec<[u8; 3]> = (0..cx * cy)
+        .map(|_| cols[rnd(&mut s) as usize % cols.len()])
+        .collect();
     for y in 0..h {
         for x in 0..w {
             let c = blocks[(y / cell) * cx + x / cell];
@@ -232,7 +253,10 @@ fn the_combined_ranking_is_exact_on_a_plain_scene_too() {
         let f = render(row, W, H, background(W, H, 200 + row as u64), 1.0);
         let r = m.match_frame(&f).unwrap();
         assert_eq!(r.ranked_colour.len(), 32);
-        assert!(r.ranked_colour.windows(2).all(|p| p[0].1 >= p[1].1), "ranking must be sorted");
+        assert!(
+            r.ranked_colour.windows(2).all(|p| p[0].1 >= p[1].1),
+            "ranking must be sorted"
+        );
         if r.ranked_colour[0].0 as usize != row && !m.same_silhouette_as_another(row as u8) {
             wrong.push((row, r.ranked_colour[0].0));
         }
@@ -253,8 +277,14 @@ fn colour_evidence_beats_the_silhouette_over_an_orange_scene() {
     // Adversarial on purpose: uncorrelated random fire colours on a screen-aligned grid, a harsher scene than real fire blocks.
     // The claim under test is that colour evidence rescues rows the silhouette loses, by a wide margin (first run: 2/32 -> 19/32;
     // the original "col_ok >= 28" was a guess made before seeing any number and was relaxed after the first run, see DETECT_PLAN.md).
-    assert!(col_ok >= sil_ok + 10, "colour {col_ok} must beat the plain silhouette {sil_ok} by 10+ rows here");
-    assert!(col_ok >= 16, "colour ranking got {col_ok}/32 over an orange scene");
+    assert!(
+        col_ok >= sil_ok + 10,
+        "colour {col_ok} must beat the plain silhouette {sil_ok} by 10+ rows here"
+    );
+    assert!(
+        col_ok >= 16,
+        "colour ranking got {col_ok}/32 over an orange scene"
+    );
 }
 
 #[test]
@@ -262,12 +292,19 @@ fn colour_evidence_survives_darkening_and_a_spatial_vignette() {
     let m = matcher();
     for (row, gain) in [(5usize, 0.7), (22, 0.5)] {
         let f = render(row, W, H, background(W, H, 9), gain);
-        assert_eq!(m.match_frame(&f).unwrap().ranked_colour[0].0 as usize, row, "gain {gain}");
+        assert_eq!(
+            m.match_frame(&f).unwrap().ranked_colour[0].0 as usize,
+            row,
+            "gain {gain}"
+        );
     }
     let mut f = render(16, W, H, background(W, H, 10), 1.0);
     for y in 0..H {
         for x in 0..W {
-            let (dx, dy) = ((x as f64 / W as f64 - 0.5) * 2.0, (y as f64 / H as f64 - 0.5) * 2.0);
+            let (dx, dy) = (
+                (x as f64 / W as f64 - 0.5) * 2.0,
+                (y as f64 / H as f64 - 0.5) * 2.0,
+            );
             let g = (1.0 - 0.35 * (dx * dx + dy * dy) / 2.0).clamp(0.0, 1.0);
             for k in 0..3 {
                 let o = (y * W + x) * 3 + k;
@@ -294,9 +331,147 @@ fn colour_evidence_survives_a_hotbar() {
 #[test]
 fn colour_ranking_on_a_flat_or_empty_scene_does_not_panic_or_nan() {
     let m = matcher();
-    for f in [vec![0u8; W * H * 3], vec![255u8; W * H * 3], vec![128u8; W * H * 3]] {
+    for f in [
+        vec![0u8; W * H * 3],
+        vec![255u8; W * H * 3],
+        vec![128u8; W * H * 3],
+    ] {
         let r = m.match_frame(&f).unwrap();
         assert_eq!(r.ranked_colour.len(), 32);
         assert!(r.ranked_colour.iter().all(|x| !x.1.is_nan()));
+    }
+}
+
+// ---- lava: the camera is submerged, the scene is solid red fog, the overlay is drawn over it ----
+
+/// Lava fog: (153, 25, 0) with a little noise. It is "warm" by a lenient test and close to dark orange in raw colour,
+/// but its green/red ratio (0.16) is far below every fire texel's (>= 0.36).
+fn lava_fog(w: usize, h: usize, seed: u64) -> Vec<u8> {
+    let mut s = seed;
+    let mut f = vec![0u8; w * h * 3];
+    for p in f.chunks_mut(3) {
+        let n = (rnd(&mut s) % 9) as i32 - 4;
+        p.copy_from_slice(&[(153 + n) as u8, (25 + n / 2) as u8, 0]);
+    }
+    f
+}
+
+#[test]
+fn the_row_is_found_over_lava_fog() {
+    let m = matcher();
+    let mut wrong = Vec::new();
+    for row in 0..32usize {
+        let f = render(row, W, H, lava_fog(W, H, 400 + row as u64), 1.0);
+        let r = m.match_frame(&f).unwrap();
+        if r.ranked_colour[0].0 as usize != row && !m.same_silhouette_as_another(row as u8) {
+            wrong.push((row, r.ranked_colour[0].0));
+        }
+    }
+    assert!(wrong.len() <= 1, "wrong rows over lava fog: {wrong:?}");
+}
+
+#[test]
+fn the_row_is_found_over_lava_fog_through_a_vignette() {
+    let m = matcher();
+    let mut f = render(21, W, H, lava_fog(W, H, 9), 1.0);
+    for y in 0..H {
+        for x in 0..W {
+            let (dx, dy) = (
+                (x as f64 / W as f64 - 0.5) * 2.0,
+                (y as f64 / H as f64 - 0.5) * 2.0,
+            );
+            let g = (1.0 - 0.4 * (dx * dx + dy * dy) / 2.0).clamp(0.0, 1.0);
+            for k in 0..3 {
+                let o = (y * W + x) * 3 + k;
+                f[o] = (f[o] as f64 * g) as u8;
+            }
+        }
+    }
+    assert_eq!(m.match_frame(&f).unwrap().ranked_colour[0].0, 21);
+}
+
+#[test]
+fn lava_fog_alone_is_not_the_overlay() {
+    let m = matcher();
+    let r = m.match_frame(&lava_fog(W, H, 5)).unwrap();
+    assert!(r.presence < 0.2, "presence {}", r.presence);
+    assert!(
+        r.colour_evidence < 0.2,
+        "colour evidence {}",
+        r.colour_evidence
+    );
+}
+
+#[test]
+fn the_overlay_over_lava_has_clear_colour_evidence() {
+    let m = matcher();
+    let f = render(12, W, H, lava_fog(W, H, 6), 1.0);
+    let r = m.match_frame(&f).unwrap();
+    assert!(
+        r.colour_evidence > 0.7,
+        "colour evidence {}",
+        r.colour_evidence
+    );
+}
+
+// ---- which FOV: submerged cameras use 60 instead of 70 ----
+
+#[test]
+fn the_matcher_with_the_right_fov_has_clearly_more_colour_evidence() {
+    let m70 = SilhouetteMatcher::new(S1, W, H, 70.0).unwrap();
+    let m60 = SilhouetteMatcher::new(S1, W, H, 60.0).unwrap();
+    for (row, fov) in [(9usize, 60.0), (26, 70.0)] {
+        let f = render_fov(row, W, H, lava_fog(W, H, 70 + row as u64), 1.0, fov);
+        let e70 = m70.match_frame(&f).unwrap().colour_evidence;
+        let e60 = m60.match_frame(&f).unwrap().colour_evidence;
+        let (right, wrong) = if fov == 60.0 { (e60, e70) } else { (e70, e60) };
+        assert!(
+            right > wrong + 0.2,
+            "true fov {fov}: right {right}, wrong {wrong}"
+        );
+    }
+}
+
+#[test]
+fn colour_evidence_is_bounded_and_not_nan_on_odd_frames() {
+    let m = matcher();
+    for f in [
+        vec![0u8; W * H * 3],
+        vec![255u8; W * H * 3],
+        background(W, H, 77),
+        lava_fog(W, H, 78),
+    ] {
+        let e = m.match_frame(&f).unwrap().colour_evidence;
+        assert!(!e.is_nan() && (-1.0..=1.0).contains(&e), "{e}");
+    }
+}
+#[test]
+fn sampled_unveiling_matches_full_image_unveiling_bit_for_bit() {
+    use fire_core::{
+        features::unveil_rows,
+        overlay::SilhouetteMatcher,
+        veil::{A_BOTTOM, A_TOP, COLOUR},
+    };
+    let sheet = include_bytes!("../../data/assets/fire_1.rgba");
+    let (mut seed, w, h) = (93u64, 320, 180);
+    for fov in [60., 70.] {
+        let matcher = SilhouetteMatcher::new(sheet, w, h, fov).unwrap();
+        for _ in 0..6 {
+            let mut frame = vec![0; w * h * 3];
+            for v in &mut frame {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                *v = (seed >> 32) as u8;
+            }
+            let clean = unveil_rows(&frame, w, h, A_TOP, A_BOTTOM, [COLOUR as u8; 3]).unwrap();
+            let reference = matcher.match_frame(&clean).unwrap();
+            let sampled = matcher.match_frame_veiled(&frame).unwrap();
+            assert_eq!(sampled.ranked, reference.ranked);
+            assert_eq!(sampled.ranked_colour, reference.ranked_colour);
+            assert_eq!(sampled.presence.to_bits(), reference.presence.to_bits());
+            assert_eq!(
+                sampled.colour_evidence.to_bits(),
+                reference.colour_evidence.to_bits()
+            );
+        }
     }
 }

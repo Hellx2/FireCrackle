@@ -1,0 +1,7 @@
+.match-controls { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-width: 0; max-width: 100%; overflow-x: auto; }
+.match-controls > *, .match-controls label { flex-shrink: 0; white-space: nowrap; }
+.match-hover { display: inline-flex; }
+.match-rank { width: 30px; height: 30px; font-weight: 700; }
+.match-rank[aria-pressed=true] { color: #61e9ff; border-color: #61e9ff; }
+.match-details { position: fixed; inset: auto; margin: 0; width: max-content; max-width: min(360px, calc(100vw - 16px)); padding: 12px 14px; border: 1px solid #45546c; border-radius: 8px; background: #18202c; color: #e7edf5; font: 12px/1.65 system-ui, sans-serif; white-space: pre-line; box-shadow: 0 8px 28px #0008; pointer-events: none; }
+.match-live-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

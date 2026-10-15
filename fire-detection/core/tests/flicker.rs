@@ -14,9 +14,19 @@ fn luma(c: &[u8; 3]) -> f64 {
 
 /// The darkest and brightest fire colours and their luma gap.
 fn two_fire_colours() -> ([u8; 3], [u8; 3], f64) {
-    let cols: Vec<[u8; 3]> = S0.chunks(4).filter(|c| c[3] != 0).map(|c| [c[0], c[1], c[2]]).collect();
-    let dark = *cols.iter().min_by(|a, b| luma(a).partial_cmp(&luma(b)).unwrap()).unwrap();
-    let bright = *cols.iter().max_by(|a, b| luma(a).partial_cmp(&luma(b)).unwrap()).unwrap();
+    let cols: Vec<[u8; 3]> = S0
+        .chunks(4)
+        .filter(|c| c[3] != 0)
+        .map(|c| [c[0], c[1], c[2]])
+        .collect();
+    let dark = *cols
+        .iter()
+        .min_by(|a, b| luma(a).partial_cmp(&luma(b)).unwrap())
+        .unwrap();
+    let bright = *cols
+        .iter()
+        .max_by(|a, b| luma(a).partial_cmp(&luma(b)).unwrap())
+        .unwrap();
     (dark, bright, luma(&bright) - luma(&dark))
 }
 
@@ -64,8 +74,14 @@ fn a_pixel_orange_in_only_one_frame_does_not_count() {
     let (dark, _, _) = two_fire_colours();
     let a = solid(4, 4, dark);
     let b = solid(4, 4, [10, 10, 200]);
-    assert!(flicker_mask(&a, &b, 4, 4, 0, &pal(), 10.0).unwrap().iter().all(|&x| !x));
-    assert!(flicker_mask(&b, &a, 4, 4, 0, &pal(), 10.0).unwrap().iter().all(|&x| !x));
+    assert!(flicker_mask(&a, &b, 4, 4, 0, &pal(), 10.0)
+        .unwrap()
+        .iter()
+        .all(|&x| !x));
+    assert!(flicker_mask(&b, &a, 4, 4, 0, &pal(), 10.0)
+        .unwrap()
+        .iter()
+        .all(|&x| !x));
 }
 
 #[test]
@@ -73,14 +89,30 @@ fn non_palette_changes_never_flicker() {
     let p = pal();
     let a = solid(4, 4, [0, 0, 0]);
     let b = solid(4, 4, [10, 10, 200]);
-    assert_eq!(p.count(&a, 4, 4).unwrap() + p.count(&b, 4, 4).unwrap(), 0, "premise: neither is fire coloured");
-    assert!(flicker_mask(&a, &b, 4, 4, 0, &p, 10.0).unwrap().iter().all(|&x| !x));
+    assert_eq!(
+        p.count(&a, 4, 4).unwrap() + p.count(&b, 4, 4).unwrap(),
+        0,
+        "premise: neither is fire coloured"
+    );
+    assert!(flicker_mask(&a, &b, 4, 4, 0, &p, 10.0)
+        .unwrap()
+        .iter()
+        .all(|&x| !x));
 }
 
 #[test]
 fn rows_above_y0_are_left_out_of_the_mask() {
     let (dark, bright, _) = two_fire_colours();
-    let m = flicker_mask(&solid(4, 6, dark), &solid(4, 6, bright), 4, 6, 2, &pal(), 60.0).unwrap();
+    let m = flicker_mask(
+        &solid(4, 6, dark),
+        &solid(4, 6, bright),
+        4,
+        6,
+        2,
+        &pal(),
+        60.0,
+    )
+    .unwrap();
     assert_eq!(m.len(), 4 * 4);
     assert!(m.iter().all(|&x| x));
 }
@@ -113,7 +145,10 @@ fn background_motion_ignores_palette_pixels() {
     let (dark, bright, _) = two_fire_colours();
     let p = pal();
     // all fire in both frames, changing a lot: no background pixels -> 0, not NaN
-    assert_eq!(bg_motion(&solid(4, 4, dark), &solid(4, 4, bright), 4, 4, 0, &p, 1).unwrap(), 0.0);
+    assert_eq!(
+        bg_motion(&solid(4, 4, dark), &solid(4, 4, bright), 4, 4, 0, &p, 1).unwrap(),
+        0.0
+    );
     // top half fire (changing), bottom half grey and unchanged -> 0
     let mut a = solid(4, 4, [30, 30, 30]);
     let mut b = a.clone();

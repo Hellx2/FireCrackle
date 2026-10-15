@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 const shapes = {
+  filter: <path d="M3 4h18l-7 8v7l-4 2v-9Z" />,
   folder: <><path d="M3 7V5h6l2 2h10v12H3Z" /><path d="M3 11h18" /></>,
   save: <><path d="M4 3h13l3 3v15H4Z" /><path d="M8 3v6h8V3M8 21v-8h8v8" /></>,
   import: <><path d="M12 3v12m-4-4 4 4 4-4M4 15v6h16v-6" /></>,
@@ -39,5 +40,6 @@ export function Icon({ name }: { name: IconName }) {
 }
 
 export function IconButton({ icon, label, children, className = "", title, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string }) {
-  return <button type="button" {...props} className={`icon-button ${children ? "with-text" : "icon-only"} ${className}`} aria-label={label} title={title ?? label}><Icon name={icon} />{children}</button>;
+  const hasText = children !== undefined && children !== null && children !== false;
+  return <button type="button" {...props} className={`icon-button ${hasText ? "with-text" : "icon-only"} ${className}`} aria-label={label} title={title ?? label}><Icon name={icon} />{children}</button>;
 }

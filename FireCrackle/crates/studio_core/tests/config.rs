@@ -103,10 +103,23 @@ fn describe_lists_every_setting_exactly_once_in_order() {
 fn every_setting_is_explained_and_consistent() {
     let s = Settings::default();
     for i in s.describe() {
-        assert!(i.explanation.len() >= 60, "{}: explanation too thin: {:?}", i.key, i.explanation);
+        assert!(
+            i.explanation.len() >= 60,
+            "{}: explanation too thin: {:?}",
+            i.key,
+            i.explanation
+        );
         assert!(!i.label.is_empty(), "{}", i.key);
-        assert!(i.min <= i.default && i.default <= i.max, "{}: default outside range", i.key);
-        assert_eq!(i.value, i.default, "{}: a fresh Settings holds the default", i.key);
+        assert!(
+            i.min <= i.default && i.default <= i.max,
+            "{}: default outside range",
+            i.key
+        );
+        assert_eq!(
+            i.value, i.default,
+            "{}: a fresh Settings holds the default",
+            i.key
+        );
         assert_eq!(s.get(i.key), Some(i.value), "{}", i.key);
         if i.integer {
             assert_eq!(i.default.fract(), 0.0, "{}", i.key);
@@ -249,8 +262,10 @@ fn an_older_or_partial_settings_file_falls_back_to_defaults() {
 
 #[test]
 fn an_old_settings_file_with_removed_strip_fields_still_loads() {
-    let s: Settings =
-        serde_json::from_str(r#"{"strip":{"max_ticks_per_frame":7},"phase":{"max_ticks_per_frame":9,"min_run":4}}"#).unwrap();
+    let s: Settings = serde_json::from_str(
+        r#"{"strip":{"max_ticks_per_frame":7},"phase":{"max_ticks_per_frame":9,"min_run":4}}"#,
+    )
+    .unwrap();
     assert_eq!(s.phase.min_run, 4);
 }
 
@@ -259,8 +274,14 @@ fn an_old_settings_file_with_removed_strip_fields_still_loads() {
 #[test]
 fn unknown_keys_are_rejected() {
     let mut s = Settings::default();
-    assert_eq!(s.set("phase.nope", 1.0), Err(SettingError::UnknownKey("phase.nope".into())));
-    assert_eq!(s.reset("nope"), Err(SettingError::UnknownKey("nope".into())));
+    assert_eq!(
+        s.set("phase.nope", 1.0),
+        Err(SettingError::UnknownKey("phase.nope".into()))
+    );
+    assert_eq!(
+        s.reset("nope"),
+        Err(SettingError::UnknownKey("nope".into()))
+    );
     assert_eq!(s.get("nope"), None);
 }
 
@@ -325,7 +346,10 @@ fn out_of_range_values_are_rejected_and_change_nothing() {
         ("timeline.drag_threshold_px", 0.0),
         ("timeline.drag_threshold_px", 101.0),
     ] {
-        assert!(matches!(s.set(k, v), Err(SettingError::OutOfRange { .. })), "{k} = {v}");
+        assert!(
+            matches!(s.set(k, v), Err(SettingError::OutOfRange { .. })),
+            "{k} = {v}"
+        );
     }
     assert_eq!(s, before);
 }
@@ -334,7 +358,10 @@ fn out_of_range_values_are_rejected_and_change_nothing() {
 fn non_finite_values_are_rejected() {
     let mut s = Settings::default();
     for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-        assert!(matches!(s.set("phase.tick_rate", v), Err(SettingError::NotFinite(_))));
+        assert!(matches!(
+            s.set("phase.tick_rate", v),
+            Err(SettingError::NotFinite(_))
+        ));
     }
     assert_eq!(s, Settings::default());
 }
@@ -342,13 +369,28 @@ fn non_finite_values_are_rejected() {
 #[test]
 fn integer_settings_reject_fractions() {
     let mut s = Settings::default();
-    assert!(matches!(s.set("phase.min_run", 2.5), Err(SettingError::NotAnInteger(_))));
-    assert!(matches!(s.set("project.fingerprint_window_bytes", 5000.5), Err(SettingError::NotAnInteger(_))));
+    assert!(matches!(
+        s.set("phase.min_run", 2.5),
+        Err(SettingError::NotAnInteger(_))
+    ));
+    assert!(matches!(
+        s.set("project.fingerprint_window_bytes", 5000.5),
+        Err(SettingError::NotAnInteger(_))
+    ));
     assert_eq!(s, Settings::default());
     // fractional settings accept fractions
-    assert!(matches!(s.set("decode.cache_mb", 100.5), Err(SettingError::NotAnInteger(_))));
-    assert!(matches!(s.set("decode.jpeg_quality", 3.5), Err(SettingError::NotAnInteger(_))));
-    assert!(matches!(s.set("label.advance_to_unlabelled", 0.5), Err(SettingError::NotAnInteger(_))));
+    assert!(matches!(
+        s.set("decode.cache_mb", 100.5),
+        Err(SettingError::NotAnInteger(_))
+    ));
+    assert!(matches!(
+        s.set("decode.jpeg_quality", 3.5),
+        Err(SettingError::NotAnInteger(_))
+    ));
+    assert!(matches!(
+        s.set("label.advance_to_unlabelled", 0.5),
+        Err(SettingError::NotAnInteger(_))
+    ));
     assert!(s.set("phase.tick_rate", 19.97).is_ok());
     assert!(s.set("timeline.zoom_factor", 1.3).is_ok());
     assert!(s.set("index.irregular_deviation", 0.3).is_ok());

@@ -13,7 +13,10 @@ fn scalars() {
 
 #[test]
 fn string_escapes() {
-    assert_eq!(parse(r#""a\"b\\c\nd\te""#).unwrap(), Value::Str("a\"b\\c\nd\te".into()));
+    assert_eq!(
+        parse(r#""a\"b\\c\nd\te""#).unwrap(),
+        Value::Str("a\"b\\c\nd\te".into())
+    );
     assert_eq!(parse(r#""\u0041\u00e9""#).unwrap(), Value::Str("Aé".into()));
 }
 
@@ -21,9 +24,15 @@ fn string_escapes() {
 fn arrays_and_objects_nest() {
     let v = parse(r#"{"a":[1,2,[3,-4.5]],"b":{"c":"x","d":[]},"e":null}"#).unwrap();
     assert_eq!(v.get("a").unwrap().arr().unwrap().len(), 3);
-    assert_eq!(v.get("a").unwrap().arr().unwrap()[2].arr().unwrap()[1].num(), Some(-4.5));
+    assert_eq!(
+        v.get("a").unwrap().arr().unwrap()[2].arr().unwrap()[1].num(),
+        Some(-4.5)
+    );
     assert_eq!(v.get("b").unwrap().get("c").unwrap().str(), Some("x"));
-    assert_eq!(v.get("b").unwrap().get("d").unwrap().arr().unwrap().len(), 0);
+    assert_eq!(
+        v.get("b").unwrap().get("d").unwrap().arr().unwrap().len(),
+        0
+    );
     assert!(v.get("e").unwrap() == &Value::Null);
     assert!(v.get("missing").is_none());
 }
@@ -45,19 +54,45 @@ fn a_real_label_row_parses() {
     let f = &v.get("label").unwrap().get("fires").unwrap().arr().unwrap()[0];
     assert_eq!(f.get("src").unwrap().str(), Some("block"));
     assert_eq!(f.get("box").unwrap().arr().unwrap()[0].num(), Some(838.5));
-    assert_eq!(f.get("parts").unwrap().arr().unwrap()[0].get("row").unwrap().num(), Some(7.0));
+    assert_eq!(
+        f.get("parts").unwrap().arr().unwrap()[0]
+            .get("row")
+            .unwrap()
+            .num(),
+        Some(7.0)
+    );
 }
 
 #[test]
 fn null_box_parses_as_null() {
-    assert_eq!(parse(r#"{"box":null}"#).unwrap().get("box").unwrap(), &Value::Null);
+    assert_eq!(
+        parse(r#"{"box":null}"#).unwrap().get("box").unwrap(),
+        &Value::Null
+    );
 }
 
 #[test]
 fn bad_input_is_an_error_not_a_panic() {
     for s in [
-        "", "{", "[1,", "{\"a\"}", "{\"a\":}", "[1 2]", "\"abc", "tru", "nul", "01x", "{\"a\":1,}", "[1,]",
-        "1 2", "{\"a\":1} x", "\"\\u12\"", "\"\\q\"", "-", "[", "}",
+        "",
+        "{",
+        "[1,",
+        "{\"a\"}",
+        "{\"a\":}",
+        "[1 2]",
+        "\"abc",
+        "tru",
+        "nul",
+        "01x",
+        "{\"a\":1,}",
+        "[1,]",
+        "1 2",
+        "{\"a\":1} x",
+        "\"\\u12\"",
+        "\"\\q\"",
+        "-",
+        "[",
+        "}",
     ] {
         assert!(parse(s).is_err(), "should fail: {s:?}");
     }

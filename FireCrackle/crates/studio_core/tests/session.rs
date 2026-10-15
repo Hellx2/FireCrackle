@@ -8,9 +8,21 @@ use studio_core::session::*;
 // ------------------------------------------------------------ helpers
 
 fn project(n: usize, fps: f64) -> Project {
-    let pk: Vec<Packet> = (0..n).map(|i| Packet { pts: Some(i as f64 / fps), dts: None, key: i == 0 }).collect();
+    let pk: Vec<Packet> = (0..n)
+        .map(|i| Packet {
+            pts: Some(i as f64 / fps),
+            dts: None,
+            key: i == 0,
+        })
+        .collect();
     let idx = build_index(&pk, &IndexConfig::default()).unwrap();
-    let meta = VideoMeta { width: 1920, height: 1080, fps_num: fps as u32, fps_den: 1, codec: "h264".into() };
+    let meta = VideoMeta {
+        width: 1920,
+        height: 1080,
+        fps_num: fps as u32,
+        fps_den: 1,
+        codec: "h264".into(),
+    };
     Project::assemble("v.mkv", 1, "1:4096:0".into(), meta, &idx)
 }
 
@@ -25,7 +37,11 @@ fn session(n: usize) -> Session {
 }
 
 fn fire(sheet: u8, row: u8, mirrored: bool) -> Label {
-    Label::Fire { sheet, row, mirrored }
+    Label::Fire {
+        sheet,
+        row,
+        mirrored,
+    }
 }
 
 // ================================================================ RowTyper
@@ -68,7 +84,11 @@ fn a_row_above_31_is_rejected_and_clears_the_buffer() {
     t.push(3);
     assert_eq!(t.push(2), TyperResult::Rejected);
     assert_eq!(t.pending(), None);
-    assert_eq!(t.push(1), TyperResult::Pending(1), "a fresh start afterwards");
+    assert_eq!(
+        t.push(1),
+        TyperResult::Pending(1),
+        "a fresh start afterwards"
+    );
 }
 
 #[test]
@@ -111,13 +131,24 @@ fn a_fully_labelled_or_fresh_session_starts_at_the_beginning() {
     assert_eq!(session(10).current(), 0);
     let mut store = LabelStore::new(3);
     store.fill_range(0, 2, Label::Skip).unwrap();
-    assert_eq!(Session::new(project(3, 20.0), store, Settings::default()).unwrap().current(), 0);
+    assert_eq!(
+        Session::new(project(3, 20.0), store, Settings::default())
+            .unwrap()
+            .current(),
+        0
+    );
 }
 
 #[test]
 fn a_store_that_does_not_match_the_project_is_refused() {
     let r = Session::new(project(10, 20.0), LabelStore::new(9), Settings::default());
-    assert!(matches!(r, Err(SessionError::FrameCountMismatch { project: 10, store: 9 })));
+    assert!(matches!(
+        r,
+        Err(SessionError::FrameCountMismatch {
+            project: 10,
+            store: 9
+        })
+    ));
 }
 
 // ============================================================ navigation
@@ -180,8 +211,18 @@ fn a_label_is_set_on_the_current_frame_and_the_playhead_advances() {
     let mut s = session(10);
     s.go(Move::To(5));
     let a = s.pick_row(7).unwrap();
-    assert_eq!(a, Applied { frame: 5, now_at: 6 });
-    assert_eq!(s.store().get(5), fire(1, 7, false), "default pick: sheet 1, normal");
+    assert_eq!(
+        a,
+        Applied {
+            frame: 5,
+            now_at: 6
+        }
+    );
+    assert_eq!(
+        s.store().get(5),
+        fire(1, 7, false),
+        "default pick: sheet 1, normal"
+    );
     assert_eq!(s.current(), 6);
 }
 
@@ -217,7 +258,11 @@ fn advance_to_unlabelled_skips_what_is_already_done() {
     s.go(Move::To(5));
     assert_eq!(s.pick_row(1).unwrap().now_at, 8);
     s.go(Move::To(11));
-    assert_eq!(s.pick_row(1).unwrap().now_at, 11, "nothing unlabelled after: stay");
+    assert_eq!(
+        s.pick_row(1).unwrap().now_at,
+        11,
+        "nothing unlabelled after: stay"
+    );
 }
 
 #[test]
@@ -234,15 +279,36 @@ fn clearing_a_label_does_not_advance() {
 #[test]
 fn no_fire_and_skip_advance_like_a_fire_label() {
     let mut s = session(10);
-    assert_eq!(s.apply(Label::NoFire).unwrap(), Applied { frame: 0, now_at: 1 });
-    assert_eq!(s.apply(Label::Skip).unwrap(), Applied { frame: 1, now_at: 2 });
-    assert_eq!((s.store().get(0), s.store().get(1)), (Label::NoFire, Label::Skip));
+    assert_eq!(
+        s.apply(Label::NoFire).unwrap(),
+        Applied {
+            frame: 0,
+            now_at: 1
+        }
+    );
+    assert_eq!(
+        s.apply(Label::Skip).unwrap(),
+        Applied {
+            frame: 1,
+            now_at: 2
+        }
+    );
+    assert_eq!(
+        (s.store().get(0), s.store().get(1)),
+        (Label::NoFire, Label::Skip)
+    );
 }
 
 #[test]
 fn the_pick_state_chooses_sheet_and_mirror_for_typed_rows() {
     let mut s = session(10);
-    assert_eq!(s.pick(), PickState { sheet: 1, mirrored: false });
+    assert_eq!(
+        s.pick(),
+        PickState {
+            sheet: 1,
+            mirrored: false
+        }
+    );
     s.toggle_sheet();
     assert_eq!(s.pick().sheet, 0);
     s.toggle_sheet();
@@ -260,16 +326,34 @@ fn the_pick_state_chooses_sheet_and_mirror_for_typed_rows() {
 fn clicking_a_cell_sets_the_pick_and_the_label() {
     let mut s = session(10);
     let a = s.click_cell(0, 7, true).unwrap();
-    assert_eq!(a, Applied { frame: 0, now_at: 1 });
+    assert_eq!(
+        a,
+        Applied {
+            frame: 0,
+            now_at: 1
+        }
+    );
     assert_eq!(s.store().get(0), fire(0, 7, true));
-    assert_eq!(s.pick(), PickState { sheet: 0, mirrored: true });
+    assert_eq!(
+        s.pick(),
+        PickState {
+            sheet: 0,
+            mirrored: true
+        }
+    );
 }
 
 #[test]
 fn an_invalid_row_or_sheet_changes_nothing() {
     let mut s = session(10);
-    assert_eq!(s.pick_row(32).unwrap_err(), SessionError::Label(LabelError::InvalidRow(32)));
-    assert_eq!(s.click_cell(2, 0, false).unwrap_err(), SessionError::Label(LabelError::InvalidSheet(2)));
+    assert_eq!(
+        s.pick_row(32).unwrap_err(),
+        SessionError::Label(LabelError::InvalidRow(32))
+    );
+    assert_eq!(
+        s.click_cell(2, 0, false).unwrap_err(),
+        SessionError::Label(LabelError::InvalidSheet(2))
+    );
     assert_eq!(s.current(), 0);
     assert_eq!(s.store().labelled_count(), 0);
     assert!(s.take_log().is_empty());
@@ -282,9 +366,19 @@ fn an_invalid_row_or_sheet_changes_nothing() {
 fn typing_two_digits_labels_the_frame() {
     let mut s = session(10);
     assert_eq!(s.type_digit(1).unwrap(), TypeOutcome::Pending(1));
-    assert_eq!(s.store().labelled_count(), 0, "nothing is labelled until the row is complete");
+    assert_eq!(
+        s.store().labelled_count(),
+        0,
+        "nothing is labelled until the row is complete"
+    );
     match s.type_digit(2).unwrap() {
-        TypeOutcome::Committed(a) => assert_eq!(a, Applied { frame: 0, now_at: 1 }),
+        TypeOutcome::Committed(a) => assert_eq!(
+            a,
+            Applied {
+                frame: 0,
+                now_at: 1
+            }
+        ),
         other => panic!("{other:?}"),
     }
     assert_eq!(s.store().get(0), fire(1, 12, false));
@@ -293,7 +387,10 @@ fn typing_two_digits_labels_the_frame() {
 #[test]
 fn a_digit_from_four_up_labels_immediately() {
     let mut s = session(10);
-    assert!(matches!(s.type_digit(5).unwrap(), TypeOutcome::Committed(_)));
+    assert!(matches!(
+        s.type_digit(5).unwrap(),
+        TypeOutcome::Committed(_)
+    ));
     assert_eq!(s.store().get(0), fire(1, 5, false));
 }
 
@@ -334,7 +431,11 @@ fn a_rejected_row_leaves_the_buffer_fresh() {
     s.type_digit(3).unwrap();
     assert_eq!(s.type_digit(2).unwrap(), TypeOutcome::Rejected);
     assert_eq!(s.type_digit(1).unwrap(), TypeOutcome::Pending(1));
-    assert_eq!(s.type_digit(12).unwrap(), TypeOutcome::Rejected, "not a digit");
+    assert_eq!(
+        s.type_digit(12).unwrap(),
+        TypeOutcome::Rejected,
+        "not a digit"
+    );
 }
 
 #[test]
@@ -354,8 +455,14 @@ fn nothing_is_suggested_without_a_labelled_fire_frame() {
     assert!(s.suggestion().is_none());
     s.apply(Label::NoFire).unwrap();
     s.apply(Label::Skip).unwrap();
-    assert!(s.suggestion().is_none(), "no-fire and skip frames carry no sprite");
-    assert!(matches!(s.accept_suggestion(), Err(SessionError::NoSuggestion)));
+    assert!(
+        s.suggestion().is_none(),
+        "no-fire and skip frames carry no sprite"
+    );
+    assert!(matches!(
+        s.accept_suggestion(),
+        Err(SessionError::NoSuggestion)
+    ));
 }
 
 #[test]
@@ -366,7 +473,13 @@ fn a_whole_number_of_ticks_gives_one_certain_row() {
     s.go(Move::To(3));
     assert_eq!(
         s.suggestion(),
-        Some(Suggestion { sheet: 1, mirrored: true, row: 8, alt_row: None, from_frame: 0 })
+        Some(Suggestion {
+            sheet: 1,
+            mirrored: true,
+            row: 8,
+            alt_row: None,
+            from_frame: 0
+        })
     );
 }
 
@@ -418,7 +531,11 @@ fn a_label_after_the_playhead_also_gives_a_suggestion_looking_backwards() {
     t.click_cell(1, 10, false).unwrap();
     t.go(Move::To(2));
     let b = t.suggestion().unwrap();
-    assert_eq!((b.row, b.alt_row), (10, Some(9)), "0 ticks earlier is the likelier");
+    assert_eq!(
+        (b.row, b.alt_row),
+        (10, Some(9)),
+        "0 ticks earlier is the likelier"
+    );
 }
 
 #[test]
@@ -469,7 +586,13 @@ fn accepting_a_suggestion_labels_the_frame_and_takes_over_the_pick() {
     let a = s.accept_suggestion().unwrap();
     assert_eq!((a.frame, a.now_at), (3, 4));
     assert_eq!(s.store().get(3), fire(0, 8, true));
-    assert_eq!(s.pick(), PickState { sheet: 0, mirrored: true });
+    assert_eq!(
+        s.pick(),
+        PickState {
+            sheet: 0,
+            mirrored: true
+        }
+    );
 }
 
 // ============================================================= fill / undo
@@ -532,7 +655,9 @@ fn analysis_is_recomputed_after_a_label_changes() {
     let mut s = labelled_game(600);
     assert!(s.flags().is_empty());
     s.go(Move::To(300));
-    let Label::Fire { row, .. } = s.store().get(300) else { panic!() };
+    let Label::Fire { row, .. } = s.store().get(300) else {
+        panic!()
+    };
     s.pick_row((row + 5) % 32).unwrap();
     let flagged: Vec<u32> = s.flags().iter().map(|f| f.frame).collect();
     assert_eq!(flagged, vec![300]);
@@ -552,11 +677,64 @@ fn analysis_ignores_non_fire_labels() {
 }
 
 #[test]
+fn predicted_labels_do_not_supply_phase_evidence_or_flags() {
+    let mut store = LabelStore::new(100);
+    for f in 0..100 {
+        // Dense, contradictory predictions must not outweigh independent anchors.
+        store
+            .set_predicted(f, fire(1, ((f + 12) % 32) as u8, false))
+            .unwrap();
+    }
+    let mut s = Session::new(project(100, 20.0), store, Settings::default()).unwrap();
+    assert!(s.analysis().points.is_empty());
+    assert!(s.analysis().runs.is_empty());
+    assert!(s.flags().is_empty());
+    for f in [0, 40, 80] {
+        s.go(Move::To(f));
+        s.pick_row((f % 32) as u8).unwrap();
+    }
+    assert_eq!(
+        s.analysis()
+            .points
+            .iter()
+            .map(|p| p.frame)
+            .collect::<Vec<_>>(),
+        vec![0, 40, 80]
+    );
+    assert!(s.flags().is_empty());
+    assert_eq!(s.store().labelled_count(), 100, "predictions stay saved");
+    assert!(s.store().is_predicted(41));
+}
+
+#[test]
+fn manually_confirming_a_prediction_refreshes_phase_evidence() {
+    let mut s = session(10);
+    s.pick_row(0).unwrap();
+    s.accept_suggestion().unwrap();
+    assert!(s.store().is_predicted(1));
+    assert_eq!(s.analysis().points.len(), 1);
+    let label = s.store().get(1);
+    s.go(Move::To(1));
+    s.apply(label).unwrap();
+    assert!(!s.store().is_predicted(1));
+    assert_eq!(
+        s.analysis().points.len(),
+        2,
+        "same row with independent provenance invalidates cache"
+    );
+    assert!(s.undo());
+    assert!(s.store().is_predicted(1));
+    assert_eq!(s.analysis().points.len(), 1);
+}
+
+#[test]
 fn next_and_previous_flag_jump_between_flagged_frames() {
     let mut s = labelled_game(600);
     for f in [150u32, 450] {
         s.go(Move::To(f));
-        let Label::Fire { row, .. } = s.store().get(f) else { panic!() };
+        let Label::Fire { row, .. } = s.store().get(f) else {
+            panic!()
+        };
         s.pick_row((row + 6) % 32).unwrap();
     }
     s.go(Move::Home);
@@ -574,7 +752,10 @@ fn every_change_is_queued_as_a_log_line_exactly_once() {
     let mut s = session(10);
     s.pick_row(4).unwrap();
     s.apply(Label::Skip).unwrap();
-    assert_eq!(s.take_log(), vec![log_line(0, fire(1, 4, false)), log_line(1, Label::Skip)]);
+    assert_eq!(
+        s.take_log(),
+        vec![log_line(0, fire(1, 4, false)), log_line(1, Label::Skip)]
+    );
     assert!(s.take_log().is_empty(), "taken lines are not repeated");
 }
 
@@ -597,7 +778,11 @@ fn fill_range_queues_only_the_changed_frames_in_order() {
     s.fill_range(2, 5, Label::Skip).unwrap();
     assert_eq!(
         s.take_log(),
-        vec![log_line(2, Label::Skip), log_line(4, Label::Skip), log_line(5, Label::Skip)]
+        vec![
+            log_line(2, Label::Skip),
+            log_line(4, Label::Skip),
+            log_line(5, Label::Skip)
+        ]
     );
 }
 

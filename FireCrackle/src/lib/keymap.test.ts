@@ -41,6 +41,8 @@ describe("default bindings", () => {
   const cases: Array<[KeyInfo, Action]> = [
     [key("ArrowRight"), { type: "step", frames: 1 }],
     [key("ArrowLeft"), { type: "step", frames: -1 }],
+    [key("ArrowUp"), { type: "stepPhase", dir: -1 }],
+    [key("ArrowDown"), { type: "stepPhase", dir: 1 }],
     [key("ArrowRight", { shiftKey: true }), { type: "bigStep", dir: 1 }],
     [key("ArrowLeft", { shiftKey: true }), { type: "bigStep", dir: -1 }],
     [key("Home"), { type: "home" }],
@@ -49,8 +51,8 @@ describe("default bindings", () => {
     [key("j"), { type: "shuttle", dir: -1 }],
     [key("k"), { type: "shuttle", dir: 0 }],
     [key("l"), { type: "shuttle", dir: 1 }],
-    [key("s"), { type: "toggleSheet" }],
-    [key("m"), { type: "toggleMirror" }],
+    [key("t"), { type: "toggleSheet" }],
+    [key("r"), { type: "toggleMirror" }],
     [key("Enter"), { type: "acceptSuggestion" }],
     [key("Backspace"), { type: "clear" }],
     [key("x"), { type: "noFire" }],
@@ -75,7 +77,7 @@ describe("default bindings", () => {
   });
 
   it("works with caps lock (upper-case letters)", () => {
-    expect(actionFor(key("S"))).toEqual({ type: "toggleSheet" });
+    expect(actionFor(key("T"))).toEqual({ type: "toggleSheet" });
     expect(actionFor(key("N", { shiftKey: true }))).toEqual({ type: "nextUnlabelled", dir: -1 });
   });
 
@@ -91,14 +93,25 @@ describe("default bindings", () => {
 });
 
 describe("what must not fire", () => {
-  it("ignores everything while typing in a text field", () => {
-    for (const k of ["ArrowRight", "s", "5", " ", "Backspace", "Enter", "Escape"]) {
+  it("leaves other typing keys alone in text fields", () => {
+    for (const k of ["s", "5", " ", "Backspace", "Escape"]) {
       expect(actionFor(key(k, { targetEditable: true })), k).toBeNull();
     }
   });
 
+  it("keeps confirm and frame navigation global while editing", () => {
+    for (const targetEditable of [false, true]) {
+      expect(actionFor(key("Enter", {targetEditable}))).toEqual({type:"acceptSuggestion"});
+      expect(actionFor(key("Enter", {targetEditable,shiftKey:true}))).toEqual({type:"acceptSuggestion"});
+      expect(actionFor(key("ArrowRight", {targetEditable}))).toEqual({type:"step",frames:1});
+      expect(actionFor(key("ArrowLeft", {targetEditable,shiftKey:true}))).toEqual({type:"bigStep",dir:-1});
+    }
+  });
+
   it("ignores keys that are not bound", () => {
-    for (const k of ["q", "a", "F5", "Tab", "PageDown", "ArrowUp", "ArrowDown", "Shift", "Control", "Dead"]) {
+    expect(actionFor(key("m"))).toBeNull();
+    expect(actionFor(key("s"))).toBeNull();
+    for (const k of ["q", "a", "F5", "Tab", "PageDown", "Shift", "Control", "Dead"]) {
       expect(actionFor(key(k)), k).toBeNull();
     }
   });

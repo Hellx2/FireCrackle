@@ -53,6 +53,7 @@ export function toUiAction(a: Action): UiAction | null {
     case "nextFlag":
       return { type: "nextFlag", dir: a.dir };
     case "playPause":
+    case "stepPhase":
     case "shuttle":
       return null;
   }

@@ -19,6 +19,14 @@ runs/
 # Local tooling state
 .board/
 .claude/settings.local.json
+.claude/
+.agents/
+.codex/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # Large media / archives
 *.mp4
@@ -28,7 +36,19 @@ runs/
 *.webm
 *.zip
 *.7z
+*.rar
+*.exe
+*.dll
 
 # Large generated caches
 *.pkl
 fire-detection/data/debug/
+fire-detection/data/joined/
+*.firecrackle/
+
+# Upstream game/mapping artifacts belong only in local build caches.
+*.class
+*.tiny
+*.mapping
+*.jar
+!fire-detection/mod/gradle/wrapper/gradle-wrapper.jar

@@ -24,7 +24,9 @@ const BIG_STEP: f64 = 30.0;
 
 fn check_dims(len: usize, per_px: usize, w: usize, h: usize, what: &str) -> Result<(), String> {
     if w == 0 || h == 0 || len != w * h * per_px {
-        return Err(format!("{what} must hold {w}x{h}x{per_px} values, got {len}"));
+        return Err(format!(
+            "{what} must hold {w}x{h}x{per_px} values, got {len}"
+        ));
     }
     Ok(())
 }
@@ -78,7 +80,12 @@ pub fn blob_stats(mask: &[bool], w: usize, h: usize, min_area: usize) -> Result<
 }
 
 /// Pixel-art roughness inside the mask: how much luma jumps between horizontal neighbours that are both masked.
-pub fn mask_edge_stats(mask: &[bool], luma: &[f64], w: usize, h: usize) -> Result<EdgeStats, String> {
+pub fn mask_edge_stats(
+    mask: &[bool],
+    luma: &[f64],
+    w: usize,
+    h: usize,
+) -> Result<EdgeStats, String> {
     check_dims(mask.len(), 1, w, h, "mask")?;
     check_dims(luma.len(), 1, w, h, "luma")?;
     let (mut pairs, mut sum, mut big) = (0usize, 0.0f64, 0usize);
@@ -98,14 +105,23 @@ pub fn mask_edge_stats(mask: &[bool], luma: &[f64], w: usize, h: usize) -> Resul
     if pairs == 0 {
         return Ok(EdgeStats::default());
     }
-    Ok(EdgeStats { pairs, mean_abs_diff: sum / pairs as f64, share_big: big as f64 / pairs as f64 })
+    Ok(EdgeStats {
+        pairs,
+        mean_abs_diff: sum / pairs as f64,
+        share_big: big as f64 / pairs as f64,
+    })
 }
 
 /// Mean luma (0..255) and the share of pixels with luma below `dark_below`.
-pub fn mean_luma_and_dark(rgb: &[u8], w: usize, h: usize, dark_below: f64) -> Result<(f64, f64), String> {
+pub fn mean_luma_and_dark(
+    rgb: &[u8],
+    w: usize,
+    h: usize,
+    dark_below: f64,
+) -> Result<(f64, f64), String> {
     check_dims(rgb.len(), 3, w, h, "frame")?;
     let (mut sum, mut dark) = (0.0f64, 0usize);
-    for p in rgb.chunks_exact(3) {
+    for p in rgb.as_chunks::<3>().0 {
         let l = 0.299 * p[0] as f64 + 0.587 * p[1] as f64 + 0.114 * p[2] as f64;
         sum += l;
         if l < dark_below {
@@ -118,7 +134,14 @@ pub fn mean_luma_and_dark(rgb: &[u8], w: usize, h: usize, dark_below: f64) -> Re
 
 /// Undoes a GUI background veil: `out = c * a + p * (1 - a)` with `a` growing linearly from `a_top` (top of the frame)
 /// to `a_bottom`, sampled at each row's centre. Returns `p = (out - c * a) / (1 - a)`, clamped to 0..255.
-pub fn unveil_rows(rgb: &[u8], w: usize, h: usize, a_top: f64, a_bottom: f64, c: [u8; 3]) -> Result<Vec<u8>, String> {
+pub fn unveil_rows(
+    rgb: &[u8],
+    w: usize,
+    h: usize,
+    a_top: f64,
+    a_bottom: f64,
+    c: [u8; 3],
+) -> Result<Vec<u8>, String> {
     check_dims(rgb.len(), 3, w, h, "frame")?;
     for a in [a_top, a_bottom] {
         if !(0.0..1.0).contains(&a) {
@@ -129,7 +152,7 @@ pub fn unveil_rows(rgb: &[u8], w: usize, h: usize, a_top: f64, a_bottom: f64, c:
     for y in 0..h {
         let a = a_top + (a_bottom - a_top) * (y as f64 + 0.5) / h as f64;
         let inv = 1.0 / (1.0 - a);
-        for px in rgb[y * w * 3..(y + 1) * w * 3].chunks_exact(3) {
+        for px in rgb[y * w * 3..(y + 1) * w * 3].as_chunks::<3>().0 {
             for k in 0..3 {
                 let v = (px[k] as f64 - c[k] as f64 * a) * inv;
                 out.push(v.round().clamp(0.0, 255.0) as u8);
@@ -151,7 +174,13 @@ pub fn open_mask(mask: &[bool], w: usize, h: usize, r: usize) -> Result<Vec<bool
 }
 
 /// For every pixel: `keep(set pixels in the clipped (2r+1)^2 window, window cells inside the frame)`.
-fn window_filter(mask: &[bool], w: usize, h: usize, r: usize, keep: impl Fn(u32, u32) -> bool) -> Vec<bool> {
+fn window_filter(
+    mask: &[bool],
+    w: usize,
+    h: usize,
+    r: usize,
+    keep: impl Fn(u32, u32) -> bool,
+) -> Vec<bool> {
     let stride = w + 1;
     let mut integral = vec![0u32; stride * (h + 1)];
     for y in 0..h {
@@ -198,7 +227,14 @@ pub fn label_blobs(mask: &[bool], w: usize, h: usize) -> Result<(Vec<u32>, Vec<B
             continue;
         }
         let id = infos.len() as u32 + 1;
-        let mut info = BlobInfo { area: 0, x0: w, y0: h, x1: 0, y1: 0, perimeter: 0 };
+        let mut info = BlobInfo {
+            area: 0,
+            x0: w,
+            y0: h,
+            x1: 0,
+            y1: 0,
+            perimeter: 0,
+        };
         labels[start] = id;
         stack.push(start);
         while let Some(i) = stack.pop() {

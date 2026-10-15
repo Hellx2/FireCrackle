@@ -23,7 +23,13 @@ fn fake_jpeg(entropy: &[u8]) -> Vec<u8> {
 
 fn have_tools() -> bool {
     ["ffmpeg", "ffprobe"].iter().all(|t| {
-        Command::new(t).arg("-version").stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false)
+        Command::new(t)
+            .arg("-version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
     })
 }
 
@@ -37,8 +43,29 @@ fn scratch(name: &str) -> PathBuf {
 /// Frame `i` is a horizontal gradient whose mean brightness is `6 + 4 i + 3.5`: the picture says which frame it is.
 fn make_video(path: &Path, n: usize, w: usize, h: usize, fps: u32, extra: &[&str]) {
     let mut child = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s", &format!("{w}x{h}")])
-        .args(["-r", &fps.to_string(), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "10"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-s",
+            &format!("{w}x{h}"),
+        ])
+        .args([
+            "-r",
+            &fps.to_string(),
+            "-i",
+            "-",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "10",
+        ])
         .args(["-pix_fmt", "yuv420p"])
         .args(extra)
         .arg(path)
@@ -58,10 +85,22 @@ fn make_video(path: &Path, n: usize, w: usize, h: usize, fps: u32, extra: &[&str
         }
     }
     drop(child.stdin.take());
-    assert!(child.wait().unwrap().success(), "ffmpeg failed to encode the test video");
+    assert!(
+        child.wait().unwrap().success(),
+        "ffmpeg failed to encode the test video"
+    );
 }
 
-const GOP: &[&str] = &["-bf", "2", "-g", "30", "-keyint_min", "30", "-sc_threshold", "0"];
+const GOP: &[&str] = &[
+    "-bf",
+    "2",
+    "-g",
+    "30",
+    "-keyint_min",
+    "30",
+    "-sc_threshold",
+    "0",
+];
 
 fn video(name: &str, n: usize, extra: &[&str]) -> (PathBuf, PathBuf, FrameIndex) {
     let dir = scratch(name);
@@ -72,12 +111,26 @@ fn video(name: &str, n: usize, extra: &[&str]) -> (PathBuf, PathBuf, FrameIndex)
 }
 
 fn job_for(idx: &FrameIndex, want: u32, back: u32, ahead: u32) -> DecodeJob {
-    let cfg = DecodeConfig { window_back: back, window_ahead: ahead, ..DecodeConfig::default() };
-    plan(idx, &FrameCache::new(u64::MAX / 4), want, &cfg).unwrap().job.unwrap()
+    let cfg = DecodeConfig {
+        window_back: back,
+        window_ahead: ahead,
+        ..DecodeConfig::default()
+    };
+    plan(idx, &FrameCache::new(u64::MAX / 4), want, &cfg)
+        .unwrap()
+        .job
+        .unwrap()
 }
 
 fn decode(v: &Path, idx: &FrameIndex, job: &DecodeJob) -> Result<Vec<DecodedFrame>, DecodeError> {
-    decode_job(&Tools::default(), v, idx, job, &DecodeConfig::default(), &AtomicBool::new(false))
+    decode_job(
+        &Tools::default(),
+        v,
+        idx,
+        job,
+        &DecodeConfig::default(),
+        &AtomicBool::new(false),
+    )
 }
 
 /// Mean brightness of a decoded JPEG, and its size.
@@ -101,7 +154,13 @@ fn frame_of(jpeg: &[u8]) -> i64 {
 fn one_picture_is_one_range() {
     let j = fake_jpeg(&[1, 2, 3, 4]);
     let s = split_jpegs(&j);
-    assert_eq!(s, Split { frames: vec![0..j.len()], incomplete_tail: 0 });
+    assert_eq!(
+        s,
+        Split {
+            frames: std::iter::once(0..j.len()).collect(),
+            incomplete_tail: 0
+        }
+    );
 }
 
 #[test]
@@ -111,7 +170,14 @@ fn concatenated_pictures_are_split_exactly() {
     let c = fake_jpeg(&[]);
     let all: Vec<u8> = [a.clone(), b.clone(), c.clone()].concat();
     let s = split_jpegs(&all);
-    assert_eq!(s.frames, vec![0..a.len(), a.len()..a.len() + b.len(), a.len() + b.len()..all.len()]);
+    assert_eq!(
+        s.frames,
+        vec![
+            0..a.len(),
+            a.len()..a.len() + b.len(),
+            a.len() + b.len()..all.len()
+        ]
+    );
     assert_eq!(s.incomplete_tail, 0);
 }
 
@@ -170,9 +236,19 @@ fn a_truncated_last_picture_is_reported_as_an_incomplete_tail() {
 
 #[test]
 fn empty_and_garbage_input_have_no_pictures() {
-    assert_eq!(split_jpegs(&[]), Split { frames: vec![], incomplete_tail: 0 });
+    assert_eq!(
+        split_jpegs(&[]),
+        Split {
+            frames: vec![],
+            incomplete_tail: 0
+        }
+    );
     let s = split_jpegs(&[1, 2, 3, 4, 5, 0xFF, 0x00, 7]);
-    assert_eq!((s.frames.len(), s.incomplete_tail), (0, 0), "nothing started, nothing incomplete");
+    assert_eq!(
+        (s.frames.len(), s.incomplete_tail),
+        (0, 0),
+        "nothing started, nothing incomplete"
+    );
 }
 
 #[test]
@@ -200,7 +276,10 @@ fn showinfo_lines_give_the_frame_times_in_order() {
 #[test]
 fn showinfo_with_no_frame_lines_is_empty_and_unreadable_times_are_skipped() {
     assert!(parse_showinfo("").is_empty());
-    assert!(parse_showinfo("random text pts_time:7\n").is_empty(), "only showinfo frame lines count");
+    assert!(
+        parse_showinfo("random text pts_time:7\n").is_empty(),
+        "only showinfo frame lines count"
+    );
     let t = "[Parsed_showinfo_1 @ 0x1] n: 0 pts: N/A pts_time:N/A duration: 1\n[Parsed_showinfo_1 @ 0x1] n: 1 pts: 5 pts_time:0.5 duration: 1\n";
     assert_eq!(parse_showinfo(t), vec![0.5]);
 }
@@ -219,7 +298,11 @@ fn the_seek_is_a_little_before_the_keyframe() {
 fn a_keyframe_at_the_start_of_the_file_needs_no_seek() {
     assert_eq!(seek_arg(0.0, 0.5), None);
     assert_eq!(seek_arg(0.0003, 0.5), None);
-    assert_eq!(seek_arg(0.0005, 0.5), None, "exactly zero after the back-off");
+    assert_eq!(
+        seek_arg(0.0005, 0.5),
+        None,
+        "exactly zero after the back-off"
+    );
     assert_eq!(seek_arg(-0.033, 0.5), None);
     assert!(seek_arg(0.001, 0.5).is_some());
 }
@@ -237,9 +320,17 @@ fn a_window_decodes_to_the_right_pictures_in_order() {
     let job = job_for(&idx, 40, 5, 5);
     assert_eq!((job.first, job.last, job.keyframe), (35, 45, 30));
     let frames = decode(&v, &idx, &job).unwrap();
-    assert_eq!(frames.iter().map(|f| f.frame).collect::<Vec<_>>(), (35..=45).collect::<Vec<u32>>());
+    assert_eq!(
+        frames.iter().map(|f| f.frame).collect::<Vec<_>>(),
+        (35..=45).collect::<Vec<u32>>()
+    );
     for f in &frames {
-        assert_eq!(frame_of(&f.jpeg), f.frame as i64, "picture of frame {}", f.frame);
+        assert_eq!(
+            frame_of(&f.jpeg),
+            f.frame as i64,
+            "picture of frame {}",
+            f.frame
+        );
         assert_eq!(&f.jpeg[..2], &[0xFF, 0xD8]);
         assert_eq!(&f.jpeg[f.jpeg.len() - 2..], &[0xFF, 0xD9]);
     }
@@ -253,10 +344,16 @@ fn the_first_and_the_last_frames_of_the_video_decode() {
     }
     let (dir, v, idx) = video("ends", 60, GOP);
     let head = decode(&v, &idx, &job_for(&idx, 0, 3, 6)).unwrap();
-    assert_eq!(head.iter().map(|f| f.frame).collect::<Vec<_>>(), (0..=6).collect::<Vec<u32>>());
+    assert_eq!(
+        head.iter().map(|f| f.frame).collect::<Vec<_>>(),
+        (0..=6).collect::<Vec<u32>>()
+    );
     assert!(head.iter().all(|f| frame_of(&f.jpeg) == f.frame as i64));
     let tail = decode(&v, &idx, &job_for(&idx, 59, 6, 3)).unwrap();
-    assert_eq!(tail.iter().map(|f| f.frame).collect::<Vec<_>>(), (53..=59).collect::<Vec<u32>>());
+    assert_eq!(
+        tail.iter().map(|f| f.frame).collect::<Vec<_>>(),
+        (53..=59).collect::<Vec<u32>>()
+    );
     assert!(tail.iter().all(|f| frame_of(&f.jpeg) == f.frame as i64));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -266,14 +363,50 @@ fn videos_with_and_without_b_frames_both_stay_aligned() {
     if !have_tools() {
         return;
     }
-    for (name, extra) in [("nob", vec!["-bf", "0", "-g", "30", "-keyint_min", "30", "-sc_threshold", "0"]), ("b3", vec!["-bf", "3", "-g", "20", "-keyint_min", "20", "-sc_threshold", "0"])] {
+    for (name, extra) in [
+        (
+            "nob",
+            vec![
+                "-bf",
+                "0",
+                "-g",
+                "30",
+                "-keyint_min",
+                "30",
+                "-sc_threshold",
+                "0",
+            ],
+        ),
+        (
+            "b3",
+            vec![
+                "-bf",
+                "3",
+                "-g",
+                "20",
+                "-keyint_min",
+                "20",
+                "-sc_threshold",
+                "0",
+            ],
+        ),
+    ] {
         let (dir, v, idx) = video(name, 60, &extra);
         for want in [1u32, 19, 20, 21, 33, 58] {
             let job = job_for(&idx, want, 4, 4);
             let frames = decode(&v, &idx, &job).unwrap();
-            assert_eq!(frames.len() as u32, job.last - job.first + 1, "{name} want {want}");
+            assert_eq!(
+                frames.len() as u32,
+                job.last - job.first + 1,
+                "{name} want {want}"
+            );
             for f in &frames {
-                assert_eq!(frame_of(&f.jpeg), f.frame as i64, "{name} want {want} frame {}", f.frame);
+                assert_eq!(
+                    frame_of(&f.jpeg),
+                    f.frame as i64,
+                    "{name} want {want} frame {}",
+                    f.frame
+                );
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -286,8 +419,15 @@ fn a_single_frame_job_returns_just_that_frame() {
         return;
     }
     let (dir, v, idx) = video("single", 60, GOP);
-    let cfg = DecodeConfig { window_back: 0, window_ahead: 0, ..DecodeConfig::default() };
-    let job = plan(&idx, &FrameCache::new(1 << 30), 47, &cfg).unwrap().job.unwrap();
+    let cfg = DecodeConfig {
+        window_back: 0,
+        window_ahead: 0,
+        ..DecodeConfig::default()
+    };
+    let job = plan(&idx, &FrameCache::new(1 << 30), 47, &cfg)
+        .unwrap()
+        .job
+        .unwrap();
     assert_eq!((job.first, job.last, job.keyframe), (47, 47, 30));
     let frames = decode(&v, &idx, &job).unwrap();
     assert_eq!(frames.len(), 1);
@@ -300,7 +440,11 @@ fn a_video_that_does_not_start_at_time_zero_decodes() {
     if !have_tools() {
         return;
     }
-    let (dir, v, idx) = video("offset", 40, &["-bf", "2", "-g", "30", "-output_ts_offset", "1.5"]);
+    let (dir, v, idx) = video(
+        "offset",
+        40,
+        &["-bf", "2", "-g", "30", "-output_ts_offset", "1.5"],
+    );
     assert!(idx.frames[0].pts > 1.0, "start {}", idx.frames[0].pts);
     let frames = decode(&v, &idx, &job_for(&idx, 5, 5, 5)).unwrap();
     assert_eq!(frames.first().map(|f| f.frame), Some(0));
@@ -315,11 +459,33 @@ fn the_width_is_capped_and_the_aspect_kept() {
     }
     let (dir, v, idx) = video("width", 40, GOP);
     let job = job_for(&idx, 10, 1, 1);
-    let small = DecodeConfig { max_width: 320, ..DecodeConfig::default() };
-    let f = decode_job(&Tools::default(), &v, &idx, &job, &small, &AtomicBool::new(false)).unwrap();
+    let small = DecodeConfig {
+        max_width: 320,
+        ..DecodeConfig::default()
+    };
+    let f = decode_job(
+        &Tools::default(),
+        &v,
+        &idx,
+        &job,
+        &small,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert_eq!(mean_and_size(&f[0].jpeg).1, (320, 180));
-    let big = DecodeConfig { max_width: 4000, ..DecodeConfig::default() };
-    let g = decode_job(&Tools::default(), &v, &idx, &job, &big, &AtomicBool::new(false)).unwrap();
+    let big = DecodeConfig {
+        max_width: 4000,
+        ..DecodeConfig::default()
+    };
+    let g = decode_job(
+        &Tools::default(),
+        &v,
+        &idx,
+        &job,
+        &big,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert_eq!(mean_and_size(&g[0].jpeg).1, (640, 360), "never scaled up");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -348,7 +514,14 @@ fn a_cancelled_decode_returns_cancelled() {
     }
     let (dir, v, idx) = video("cancel", 60, GOP);
     let cancel = AtomicBool::new(true);
-    let r = decode_job(&Tools::default(), &v, &idx, &job_for(&idx, 40, 5, 5), &DecodeConfig::default(), &cancel);
+    let r = decode_job(
+        &Tools::default(),
+        &v,
+        &idx,
+        &job_for(&idx, 40, 5, 5),
+        &DecodeConfig::default(),
+        &cancel,
+    );
     assert_eq!(r, Err(DecodeError::Cancelled));
     cancel.store(false, Ordering::SeqCst);
     let _ = std::fs::remove_dir_all(&dir);
@@ -357,15 +530,37 @@ fn a_cancelled_decode_returns_cancelled() {
 #[test]
 fn a_missing_ffmpeg_is_a_typed_error() {
     let (idx, job) = fabricated();
-    let tools = Tools { ffmpeg: "definitely-not-ffmpeg-xyz".into(), ffprobe: "x".into() };
-    let r = decode_job(&tools, Path::new("whatever.mkv"), &idx, &job, &DecodeConfig::default(), &AtomicBool::new(false));
+    let tools = Tools {
+        ffmpeg: "definitely-not-ffmpeg-xyz".into(),
+        ffprobe: "x".into(),
+    };
+    let r = decode_job(
+        &tools,
+        Path::new("whatever.mkv"),
+        &idx,
+        &job,
+        &DecodeConfig::default(),
+        &AtomicBool::new(false),
+    );
     assert!(matches!(r, Err(DecodeError::ToolMissing(_))), "{r:?}");
 }
 
 fn fabricated() -> (FrameIndex, DecodeJob) {
-    let frames: Vec<FrameEntry> = (0..60).map(|n| FrameEntry { n, pts: n as f64 / 30.0, key: n % 30 == 0 }).collect();
-    let pk: Vec<studio_core::index::Packet> =
-        frames.iter().map(|f| studio_core::index::Packet { pts: Some(f.pts), dts: None, key: f.key }).collect();
+    let frames: Vec<FrameEntry> = (0..60)
+        .map(|n| FrameEntry {
+            n,
+            pts: n as f64 / 30.0,
+            key: n % 30 == 0,
+        })
+        .collect();
+    let pk: Vec<studio_core::index::Packet> = frames
+        .iter()
+        .map(|f| studio_core::index::Packet {
+            pts: Some(f.pts),
+            dts: None,
+            key: f.key,
+        })
+        .collect();
     let idx = studio_core::index::build_index(&pk, &IndexConfig::default()).unwrap();
     let job = job_for(&idx, 40, 5, 5);
     (idx, job)
@@ -375,12 +570,49 @@ fn fabricated() -> (FrameIndex, DecodeJob) {
 fn a_job_that_does_not_fit_the_index_is_refused() {
     let (idx, good) = fabricated();
     let none = AtomicBool::new(false);
-    let run = |job: DecodeJob| decode_job(&Tools::default(), Path::new("x.mkv"), &idx, &job, &DecodeConfig::default(), &none);
-    assert!(matches!(run(DecodeJob { first: 20, last: 10, ..good }), Err(DecodeError::BadJob(_))));
-    assert!(matches!(run(DecodeJob { last: 60, ..good }), Err(DecodeError::BadJob(_))));
-    assert!(matches!(run(DecodeJob { keyframe: good.first + 1, ..good }), Err(DecodeError::BadJob(_))));
-    assert!(matches!(run(DecodeJob { decode_count: good.decode_count + 1, ..good }), Err(DecodeError::BadJob(_))));
-    assert!(matches!(run(DecodeJob { decode_count: 0, ..good }), Err(DecodeError::BadJob(_))));
+    let run = |job: DecodeJob| {
+        decode_job(
+            &Tools::default(),
+            Path::new("x.mkv"),
+            &idx,
+            &job,
+            &DecodeConfig::default(),
+            &none,
+        )
+    };
+    assert!(matches!(
+        run(DecodeJob {
+            first: 20,
+            last: 10,
+            ..good
+        }),
+        Err(DecodeError::BadJob(_))
+    ));
+    assert!(matches!(
+        run(DecodeJob { last: 60, ..good }),
+        Err(DecodeError::BadJob(_))
+    ));
+    assert!(matches!(
+        run(DecodeJob {
+            keyframe: good.first + 1,
+            ..good
+        }),
+        Err(DecodeError::BadJob(_))
+    ));
+    assert!(matches!(
+        run(DecodeJob {
+            decode_count: good.decode_count + 1,
+            ..good
+        }),
+        Err(DecodeError::BadJob(_))
+    ));
+    assert!(matches!(
+        run(DecodeJob {
+            decode_count: 0,
+            ..good
+        }),
+        Err(DecodeError::BadJob(_))
+    ));
 }
 
 #[test]
@@ -392,10 +624,24 @@ fn an_index_longer_than_the_file_is_a_short_read() {
     // pretend the video has 40 more frames than it really has
     let mut frames = idx.frames.clone();
     for k in 0..40u32 {
-        frames.push(FrameEntry { n: 60 + k, pts: idx.frames[59].pts + (k + 1) as f64 / 30.0, key: false });
+        frames.push(FrameEntry {
+            n: 60 + k,
+            pts: idx.frames[59].pts + (k + 1) as f64 / 30.0,
+            key: false,
+        });
     }
-    let long = FrameIndex { frames, summary: idx.summary.clone() };
-    let job = DecodeJob { keyframe: 30, seek_pts: long.frames[30].pts, first: 58, last: 70, decode_count: 41, slow: false };
+    let long = FrameIndex {
+        frames,
+        summary: idx.summary.clone(),
+    };
+    let job = DecodeJob {
+        keyframe: 30,
+        seek_pts: long.frames[30].pts,
+        first: 58,
+        last: 70,
+        decode_count: 41,
+        slow: false,
+    };
     match decode(&v, &long, &job) {
         Err(DecodeError::ShortRead { expected, got }) => assert_eq!((expected, got), (41, 30)),
         other => panic!("{other:?}"),
@@ -414,18 +660,39 @@ fn an_index_that_lost_a_frame_is_caught_as_misaligned_not_shown_wrongly() {
     for (i, f) in frames.iter_mut().enumerate() {
         f.n = i as u32;
     }
-    let skewed = FrameIndex { frames, summary: idx.summary.clone() };
+    let skewed = FrameIndex {
+        frames,
+        summary: idx.summary.clone(),
+    };
     let job = job_for(&skewed, 45, 8, 4);
     match decode(&v, &skewed, &job) {
-        Err(DecodeError::Misaligned { frame, expected_pts, got_pts }) => {
+        Err(DecodeError::Misaligned {
+            frame,
+            expected_pts,
+            got_pts,
+        }) => {
             assert_eq!(frame, 45);
-            assert!((got_pts - expected_pts).abs() > 0.02, "{expected_pts} vs {got_pts}");
+            assert!(
+                (got_pts - expected_pts).abs() > 0.02,
+                "{expected_pts} vs {got_pts}"
+            );
         }
         other => panic!("{other:?}"),
     }
     // a huge tolerance accepts it: the check is a setting, not a hard-coded rule
-    let lax = DecodeConfig { align_tolerance: 10.0, ..DecodeConfig::default() };
-    assert!(decode_job(&Tools::default(), &v, &skewed, &job, &lax, &AtomicBool::new(false)).is_ok());
+    let lax = DecodeConfig {
+        align_tolerance: 10.0,
+        ..DecodeConfig::default()
+    };
+    assert!(decode_job(
+        &Tools::default(),
+        &v,
+        &skewed,
+        &job,
+        &lax,
+        &AtomicBool::new(false)
+    )
+    .is_ok());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -438,8 +705,24 @@ fn the_jpeg_quality_setting_changes_the_size() {
     let v = dir.join("noise.mkv");
     // pseudo-random noise frames: size depends strongly on the quantiser
     let mut child = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "gray", "-s", "320x180", "-r", "30", "-i", "-"])
-        .args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "8", "-pix_fmt", "yuv420p"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+            "-s",
+            "320x180",
+            "-r",
+            "30",
+            "-i",
+            "-",
+        ])
+        .args([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "8", "-pix_fmt", "yuv420p",
+        ])
         .arg(&v)
         .stdin(Stdio::piped())
         .spawn()
@@ -464,8 +747,21 @@ fn the_jpeg_quality_setting_changes_the_size() {
     let (_, idx) = probe(&Tools::default(), &v, &IndexConfig::default()).unwrap();
     let job = job_for(&idx, 2, 0, 0);
     let size = |q: u32| {
-        let c = DecodeConfig { jpeg_quality: q, ..DecodeConfig::default() };
-        decode_job(&Tools::default(), &v, &idx, &job, &c, &AtomicBool::new(false)).unwrap()[0].jpeg.len()
+        let c = DecodeConfig {
+            jpeg_quality: q,
+            ..DecodeConfig::default()
+        };
+        decode_job(
+            &Tools::default(),
+            &v,
+            &idx,
+            &job,
+            &c,
+            &AtomicBool::new(false),
+        )
+        .unwrap()[0]
+            .jpeg
+            .len()
     };
     assert!(size(2) > size(31) * 2, "q2 {} vs q31 {}", size(2), size(31));
     let _ = std::fs::remove_dir_all(&dir);

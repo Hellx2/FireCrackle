@@ -2,6 +2,7 @@
 //! service. The Tauri layer is a thin shim over this; the UI sends a `UiAction` and gets a `View` back.
 
 use crate::autosave::{AutosaveError, AutosaveLog};
+use crate::chart::decimate;
 use crate::config::{DecodeConfig, SettingError, SettingInfo, Settings};
 use crate::decode_plan::{plan, DecodeJob, FrameCache, PlanError};
 use crate::frames::{decode_job, DecodeError, DecodedFrame};
@@ -9,10 +10,10 @@ use crate::import::{import_video, ImportError, Tools};
 use crate::index::FrameIndex;
 use crate::label::Label;
 use crate::lane::{buckets, Bucket};
-use crate::chart::decimate;
 use crate::phase::{Flag, Point, Run};
 use crate::project::{Project, ProjectError};
 use crate::session::{Move, PickState, Session, SessionError, Suggestion};
+use crate::thumbs::{generate, nearest, Thumb, ThumbError, ThumbKey, ThumbPlan, ThumbStore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,20 @@ use std::thread::JoinHandle;
 
 /// Where decoded frames come from. The real one is ffmpeg; tests use a fake that counts calls.
 pub trait FrameSource: Send + Sync {
-    fn decode(&self, job: &DecodeJob, cancel: &AtomicBool) -> Result<Vec<DecodedFrame>, DecodeError>;
+    fn decode(
+        &self,
+        job: &DecodeJob,
+        cancel: &AtomicBool,
+    ) -> Result<Vec<DecodedFrame>, DecodeError>;
+
+    /// One pass producing the timeline thumbnails the plan asks for. Sources that cannot say so.
+    fn thumbnails(
+        &self,
+        _plan: &ThumbPlan,
+        _cancel: &AtomicBool,
+    ) -> Result<Vec<Thumb>, ThumbError> {
+        Err(ThumbError::Unsupported)
+    }
 }
 
 /// The ffmpeg-backed source for one video.
@@ -37,9 +51,29 @@ pub struct FfmpegSource {
 }
 
 impl FrameSource for FfmpegSource {
-    fn decode(&self, job: &DecodeJob, cancel: &AtomicBool) -> Result<Vec<DecodedFrame>, DecodeError> {
+    fn decode(
+        &self,
+        job: &DecodeJob,
+        cancel: &AtomicBool,
+    ) -> Result<Vec<DecodedFrame>, DecodeError> {
         let cfg = *self.cfg.lock().expect("decode settings lock");
         decode_job(&self.tools, &self.video, &self.index, job, &cfg, cancel)
+    }
+
+    fn thumbnails(&self, plan: &ThumbPlan, cancel: &AtomicBool) -> Result<Vec<Thumb>, ThumbError> {
+        let tolerance = self
+            .cfg
+            .lock()
+            .expect("decode settings lock")
+            .align_tolerance;
+        generate(
+            &self.tools,
+            &self.video,
+            &self.index,
+            plan,
+            tolerance,
+            cancel,
+        )
     }
 }
 
@@ -74,7 +108,8 @@ impl Inner {
     fn insert(&self, frames: Vec<DecodedFrame>, last: Option<u32>) -> Option<Arc<Vec<u8>>> {
         let mut st = self.state.lock().expect("frame cache lock");
         let mut keep: Option<Arc<Vec<u8>>> = None;
-        let (mut first_pass, mut second_pass): (Vec<DecodedFrame>, Vec<DecodedFrame>) = (Vec::new(), Vec::new());
+        let (mut first_pass, mut second_pass): (Vec<DecodedFrame>, Vec<DecodedFrame>) =
+            (Vec::new(), Vec::new());
         for f in frames {
             if Some(f.frame) == last {
                 second_pass.push(f);
@@ -105,24 +140,42 @@ pub struct FrameService {
 
 impl FrameService {
     /// Cache capacity comes from `cfg.cache_mb`.
-    pub fn new(index: Arc<FrameIndex>, source: Arc<dyn FrameSource>, cfg: DecodeConfig) -> FrameService {
+    pub fn new(
+        index: Arc<FrameIndex>,
+        source: Arc<dyn FrameSource>,
+        cfg: DecodeConfig,
+    ) -> FrameService {
         let cap = cfg.cache_mb as u64 * 1024 * 1024;
         FrameService::build(index, source, cfg, cap, true)
     }
 
     /// Like `new` with an explicit capacity in bytes (tests use tiny caches).
-    pub fn with_capacity(index: Arc<FrameIndex>, source: Arc<dyn FrameSource>, cfg: DecodeConfig, cap_bytes: u64) -> FrameService {
+    pub fn with_capacity(
+        index: Arc<FrameIndex>,
+        source: Arc<dyn FrameSource>,
+        cfg: DecodeConfig,
+        cap_bytes: u64,
+    ) -> FrameService {
         FrameService::build(index, source, cfg, cap_bytes, false)
     }
 
-    fn build(index: Arc<FrameIndex>, source: Arc<dyn FrameSource>, cfg: DecodeConfig, cap: u64, from_cfg: bool) -> FrameService {
+    fn build(
+        index: Arc<FrameIndex>,
+        source: Arc<dyn FrameSource>,
+        cfg: DecodeConfig,
+        cap: u64,
+        from_cfg: bool,
+    ) -> FrameService {
         FrameService {
             inner: Arc::new(Inner {
                 index,
                 source,
                 cfg: Mutex::new(cfg),
                 capacity_from_cfg: from_cfg,
-                state: Mutex::new(State { cache: FrameCache::new(cap), data: HashMap::new() }),
+                state: Mutex::new(State {
+                    cache: FrameCache::new(cap),
+                    data: HashMap::new(),
+                }),
                 busy: AtomicBool::new(false),
                 worker: Mutex::new(None),
                 never_cancelled: AtomicBool::new(false),
@@ -161,10 +214,15 @@ impl FrameService {
                 continue; // evicted between planning and reading: plan again
             }
             let job = plan.job.expect("a missing frame always has a job");
-            let decoded = inner.source.decode(&job, &inner.never_cancelled).map_err(FrameError::Decode)?;
-            return inner
-                .insert(decoded, Some(frame))
-                .ok_or_else(|| FrameError::Decode(DecodeError::BadStream(format!("the decode did not contain frame {frame}"))));
+            let decoded = inner
+                .source
+                .decode(&job, &inner.never_cancelled)
+                .map_err(FrameError::Decode)?;
+            return inner.insert(decoded, Some(frame)).ok_or_else(|| {
+                FrameError::Decode(DecodeError::BadStream(format!(
+                    "the decode did not contain frame {frame}"
+                )))
+            });
         }
     }
 
@@ -178,7 +236,9 @@ impl FrameService {
             let cfg = *inner.cfg.lock().expect("decode config lock");
             let job = {
                 let st = inner.state.lock().expect("frame cache lock");
-                plan(&inner.index, &st.cache, around, &cfg).ok().and_then(|p| p.job)
+                plan(&inner.index, &st.cache, around, &cfg)
+                    .ok()
+                    .and_then(|p| p.job)
             };
             if let Some(job) = job {
                 // a failed prefetch is not an error: the next request plans again
@@ -201,11 +261,21 @@ impl FrameService {
 
     /// Cached frames, ascending.
     pub fn cached_frames(&self) -> Vec<u32> {
-        self.inner.state.lock().expect("frame cache lock").cache.frames()
+        self.inner
+            .state
+            .lock()
+            .expect("frame cache lock")
+            .cache
+            .frames()
     }
 
     pub fn used_bytes(&self) -> u64 {
-        self.inner.state.lock().expect("frame cache lock").cache.used_bytes()
+        self.inner
+            .state
+            .lock()
+            .expect("frame cache lock")
+            .cache
+            .used_bytes()
     }
 
     /// New window sizes and capacity apply from the next request on (a smaller cache evicts at once).
@@ -258,6 +328,7 @@ pub struct View {
     pub pts: f64,
     pub fps: f64,
     pub label: Label,
+    pub label_sources: Vec<crate::label::LabelSource>,
     pub pick: PickState,
     /// First digit of a two-digit row typed so far.
     pub typed_pending: Option<u8>,
@@ -278,6 +349,7 @@ pub enum WorkspaceError {
     Session(SessionError),
     Frame(FrameError),
     Setting(SettingError),
+    Thumb(ThumbError),
     Io(String),
     /// An action the UI should not have sent (cell outside the grid, ...).
     BadAction(String),
@@ -289,6 +361,7 @@ const COLUMNS: [(u8, bool); 4] = [(0, false), (1, false), (0, true), (1, true)];
 /// What the Phase tab draws.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct PhaseChart {
+    pub label_sources: std::collections::BTreeMap<u32, Vec<crate::label::LabelSource>>,
     pub points: Vec<Point>,
     pub runs: Vec<Run>,
     pub flags: Vec<Flag>,
@@ -301,11 +374,53 @@ pub struct PhaseChart {
     pub lag_intervals: Vec<crate::phase_v2::LagInterval>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThumbState {
+    /// Nothing usable stored and nothing running (not started yet, or stale after a settings change).
+    Idle,
+    Running,
+    Ready,
+    Failed,
+    /// `timeline.thumbs_enabled` is off.
+    Disabled,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ThumbStatus {
+    pub state: ThumbState,
+    /// Thumbnails available (when ready).
+    pub count: usize,
+    pub error: Option<String>,
+}
+
+/// Progress of the background thumbnail job, shared with its thread.
+#[derive(Default)]
+struct ThumbShared {
+    cancel: AtomicBool,
+    run: Mutex<ThumbRun>,
+}
+
+#[derive(Default, Clone, PartialEq)]
+enum ThumbRun {
+    #[default]
+    Idle,
+    Running,
+    Failed(String),
+}
+
 pub struct Workspace {
     dir: PathBuf,
     session: Session,
     log: AutosaveLog,
     frames: FrameService,
+    source: Arc<dyn FrameSource>,
+    index: Arc<FrameIndex>,
+    thumb_store: Arc<ThumbStore>,
+    thumb_shared: Arc<ThumbShared>,
+    thumb_job: Mutex<Option<JoinHandle<()>>>,
+    /// The frames of the valid store, cached under the key they were read for.
+    thumb_frames: Mutex<Option<(ThumbKey, Vec<u32>)>>,
     /// Shared with the ffmpeg source (absent when the source is supplied by a test).
     decode_cfg: Option<Arc<Mutex<DecodeConfig>>>,
     warnings: Vec<String>,
@@ -318,7 +433,10 @@ fn io_err(e: std::io::Error) -> WorkspaceError {
 
 /// Write a file atomically (temp file in the same folder, then rename).
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), WorkspaceError> {
-    let mut name = path.file_name().ok_or_else(|| WorkspaceError::Io("no file name".into()))?.to_os_string();
+    let mut name = path
+        .file_name()
+        .ok_or_else(|| WorkspaceError::Io("no file name".into()))?
+        .to_os_string();
     name.push(".tmp");
     let tmp = path.with_file_name(name);
     let result = std::fs::write(&tmp, bytes).and_then(|_| std::fs::rename(&tmp, path));
@@ -332,8 +450,15 @@ impl Workspace {
     /// Open (or create) the project for `video`: `<video>.firecrackle/` holds `project.json`, `labels.jsonl` and
     /// `settings.json`. An existing project is loaded instead of re-imported; a replaced video or a label log of
     /// another video is refused.
-    pub fn open(tools: &Tools, video: &Path, defaults: &Settings) -> Result<Workspace, WorkspaceError> {
-        let mut name = video.file_name().ok_or_else(|| WorkspaceError::Io("the video path has no file name".into()))?.to_os_string();
+    pub fn open(
+        tools: &Tools,
+        video: &Path,
+        defaults: &Settings,
+    ) -> Result<Workspace, WorkspaceError> {
+        let mut name = video
+            .file_name()
+            .ok_or_else(|| WorkspaceError::Io("the video path has no file name".into()))?
+            .to_os_string();
         name.push(".firecrackle");
         let dir = video.with_file_name(name);
         std::fs::create_dir_all(&dir).map_err(io_err)?;
@@ -390,13 +515,17 @@ impl Workspace {
             Ok(bytes) => match serde_json::from_slice::<Settings>(&bytes) {
                 Ok(s) => s,
                 Err(e) => {
-                    warnings.push(format!("settings.json could not be read ({e}); using the default settings."));
+                    warnings.push(format!(
+                        "settings.json could not be read ({e}); using the default settings."
+                    ));
                     *defaults
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => *defaults,
             Err(e) => {
-                warnings.push(format!("settings.json could not be read ({e}); using the default settings."));
+                warnings.push(format!(
+                    "settings.json could not be read ({e}); using the default settings."
+                ));
                 *defaults
             }
         };
@@ -404,9 +533,12 @@ impl Workspace {
             *h.lock().expect("decode settings lock") = settings.decode;
         }
 
-        let (log, store, report) =
-            AutosaveLog::open(&dir.join("labels.jsonl"), project.frames.len() as u32, &settings.autosave)
-                .map_err(WorkspaceError::Autosave)?;
+        let (log, store, report) = AutosaveLog::open(
+            &dir.join("labels.jsonl"),
+            project.frames.len() as u32,
+            &settings.autosave,
+        )
+        .map_err(WorkspaceError::Autosave)?;
         if report.torn_tail_repaired {
             warnings.push(
                 "The label log ended in a partial line (a crash while saving?). The partial line was removed; \\
@@ -416,17 +548,49 @@ impl Workspace {
         }
 
         let index = Arc::new(project.frame_index());
-        let frames = FrameService::new(index, source, settings.decode);
+        let frames = FrameService::new(index.clone(), source.clone(), settings.decode);
         let session = Session::new(project, store, settings).map_err(WorkspaceError::Session)?;
-        Ok(Workspace { dir: dir.to_path_buf(), session, log, frames, decode_cfg, warnings, save_error: None })
+        Ok(Workspace {
+            dir: dir.to_path_buf(),
+            session,
+            log,
+            frames,
+            source,
+            index,
+            thumb_store: Arc::new(ThumbStore::new(&dir.join("thumbs"))),
+            thumb_shared: Arc::new(ThumbShared::default()),
+            thumb_job: Mutex::new(None),
+            thumb_frames: Mutex::new(None),
+            decode_cfg,
+            warnings,
+            save_error: None,
+        })
     }
 
     pub fn dir(&self) -> &Path {
         &self.dir
     }
 
+    pub fn automation_project(&self) -> Project {
+        self.session.project().clone()
+    }
+
+    pub fn add_auto_predictions(
+        &mut self,
+        rows: &[(u32, u8)],
+    ) -> Result<(View, usize), WorkspaceError> {
+        let added = self
+            .session
+            .add_auto_predictions(rows)
+            .map_err(WorkspaceError::Session)?;
+        self.flush();
+        Ok((self.view(), added))
+    }
+
     pub fn export_labels(&self) -> String {
-        self.session.store().export_json(&self.session.project().fingerprint)
+        self.session
+            .store()
+            .export_json(&self.session.project().fingerprint)
     }
 
     pub fn export_labels_to(&mut self, path: &Path) -> Result<View, WorkspaceError> {
@@ -436,7 +600,9 @@ impl Workspace {
     }
 
     pub fn import_labels(&mut self, text: &str) -> Result<View, WorkspaceError> {
-        self.session.import_labels(text).map_err(WorkspaceError::Session)?;
+        self.session
+            .import_labels(text)
+            .map_err(WorkspaceError::Session)?;
         self.flush();
         Ok(self.view())
     }
@@ -459,6 +625,7 @@ impl Workspace {
             pts,
             fps,
             label: self.session.label(),
+            label_sources: self.session.store().sources(current).into_iter().collect(),
             pick: self.session.pick(),
             typed_pending: self.session.typed_pending(),
             suggestion: self.session.suggestion(),
@@ -478,21 +645,28 @@ impl Workspace {
             match dir {
                 d if d > 0 => Ok(true),
                 d if d < 0 => Ok(false),
-                _ => Err(WorkspaceError::BadAction(format!("{what} needs a direction (+1 or -1)"))),
+                _ => Err(WorkspaceError::BadAction(format!(
+                    "{what} needs a direction (+1 or -1)"
+                ))),
             }
         };
         match action {
-            UiAction::ManualStep {frames} => { self.session.manual_advance(frames).map_err(session_err)?; }
-            UiAction::ManualBigStep {dir} => {
-                let forward=direction(dir,"a manual big step")?;
-                self.session.manual_advance(if forward {big} else {-big}).map_err(session_err)?;
+            UiAction::ManualStep { frames } => {
+                self.session.manual_advance(frames).map_err(session_err)?;
+            }
+            UiAction::ManualBigStep { dir } => {
+                let forward = direction(dir, "a manual big step")?;
+                self.session
+                    .manual_advance(if forward { big } else { -big })
+                    .map_err(session_err)?;
             }
             UiAction::Step { frames } => {
                 self.session.go(Move::Frames(frames));
             }
             UiAction::BigStep { dir } => {
                 let forward = direction(dir, "a big step")?;
-                self.session.go(Move::Frames(if forward { big } else { -big }));
+                self.session
+                    .go(Move::Frames(if forward { big } else { -big }));
             }
             UiAction::Home => {
                 self.session.go(Move::Home);
@@ -505,11 +679,19 @@ impl Workspace {
             }
             UiAction::NextUnlabelled { dir } => {
                 let forward = direction(dir, "next unlabelled")?;
-                self.session.go(if forward { Move::NextUnlabelled } else { Move::PrevUnlabelled });
+                self.session.go(if forward {
+                    Move::NextUnlabelled
+                } else {
+                    Move::PrevUnlabelled
+                });
             }
             UiAction::NextFlag { dir } => {
                 let forward = direction(dir, "next flag")?;
-                self.session.go(if forward { Move::NextFlag } else { Move::PrevFlag });
+                self.session.go(if forward {
+                    Move::NextFlag
+                } else {
+                    Move::PrevFlag
+                });
             }
             UiAction::ToggleSheet => self.session.toggle_sheet(),
             UiAction::ToggleMirror => self.session.toggle_mirror(),
@@ -536,12 +718,18 @@ impl Workspace {
                 self.session.undo();
             }
             UiAction::ClickCell { col, row } => {
-                let (sheet, mirrored) = *COLUMNS.get(col as usize).ok_or_else(|| bad("the picker has only 4 columns"))?;
+                let (sheet, mirrored) = *COLUMNS
+                    .get(col as usize)
+                    .ok_or_else(|| bad("the picker has only 4 columns"))?;
                 let row = u8::try_from(row).map_err(|_| bad("row out of range"))?;
-                self.session.click_cell(sheet, row, mirrored).map_err(session_err)?;
+                self.session
+                    .click_cell(sheet, row, mirrored)
+                    .map_err(session_err)?;
             }
             UiAction::FillRange { start, end, label } => {
-                self.session.fill_range(start, end, label).map_err(session_err)?;
+                self.session
+                    .fill_range(start, end, label)
+                    .map_err(session_err)?;
             }
         }
         self.flush();
@@ -581,19 +769,156 @@ impl Workspace {
 
     /// Everything the Phase tab draws: the phase series (reduced to at most `max_points`), the runs and the flags.
     pub fn phase_chart(&mut self, max_points: usize) -> PhaseChart {
+        self.phase_chart_source(max_points, None)
+    }
+
+    pub fn phase_chart_source(
+        &mut self,
+        max_points: usize,
+        source: Option<crate::label::LabelSource>,
+    ) -> PhaseChart {
         let tick_rate = self.session.settings().phase.tick_rate;
         let window_ticks = self.session.settings().phase.window_ticks;
-        let a = self.session.analysis();
+        let a = match source {
+            Some(source) => self.session.analysis_for_source(source),
+            None => self.session.analysis().clone(),
+        };
+        let label_sources = a
+            .points
+            .iter()
+            .map(|p| {
+                (
+                    p.frame,
+                    self.session.store().sources(p.frame).into_iter().collect(),
+                )
+            })
+            .collect();
         PhaseChart {
+            label_sources,
             points: decimate(&a.points, max_points),
             runs: a.runs.clone(),
             flags: a.flags.clone(),
             tick_rate,
             window_ticks,
-            reference_phase:a.reference_phase,
-            flag_details:a.flag_details.clone(),
-            clock_residuals:a.clock_residuals.clone(),
-            lag_intervals:a.lag_intervals.clone(),
+            reference_phase: a.reference_phase,
+            flag_details: a.flag_details.clone(),
+            clock_residuals: a.clock_residuals.clone(),
+            lag_intervals: a.lag_intervals.clone(),
+        }
+    }
+
+    // ------------------------------------------------------------ thumbnails
+
+    fn thumb_plan(&self) -> (ThumbPlan, ThumbKey) {
+        let plan = ThumbPlan::new(&self.index, &self.session.settings().timeline);
+        let key = plan.key(&self.session.project().fingerprint);
+        (plan, key)
+    }
+
+    /// The frames of the stored thumbnails if the store is valid for `key` (cached per key).
+    fn stored_thumbs(&self, key: &ThumbKey) -> Option<Vec<u32>> {
+        let mut cached = self.thumb_frames.lock().expect("thumbnail cache lock");
+        if let Some((k, frames)) = cached.as_ref() {
+            if k == key {
+                return Some(frames.clone());
+            }
+        }
+        let frames = self.thumb_store.frames(key)?;
+        *cached = Some((key.clone(), frames.clone()));
+        Some(frames)
+    }
+
+    pub fn thumbs_status(&self) -> ThumbStatus {
+        let status = |state, count, error| ThumbStatus {
+            state,
+            count,
+            error,
+        };
+        if !self.session.settings().timeline.thumbs_enabled {
+            return status(ThumbState::Disabled, 0, None);
+        }
+        let run = self
+            .thumb_shared
+            .run
+            .lock()
+            .expect("thumbnail state lock")
+            .clone();
+        if run == ThumbRun::Running {
+            return status(ThumbState::Running, 0, None);
+        }
+        let (_, key) = self.thumb_plan();
+        if let Some(frames) = self.stored_thumbs(&key) {
+            return status(ThumbState::Ready, frames.len(), None);
+        }
+        match run {
+            ThumbRun::Failed(msg) => status(ThumbState::Failed, 0, Some(msg)),
+            _ => status(ThumbState::Idle, 0, None),
+        }
+    }
+
+    /// Make sure thumbnails exist: nothing when disabled, already stored, or already running; otherwise start the
+    /// background pass. Returns the status right after.
+    pub fn thumbs_start(&mut self) -> ThumbStatus {
+        let current = self.thumbs_status();
+        if matches!(
+            current.state,
+            ThumbState::Disabled | ThumbState::Running | ThumbState::Ready
+        ) {
+            return current;
+        }
+        let (plan, key) = self.thumb_plan();
+        {
+            let mut run = self.thumb_shared.run.lock().expect("thumbnail state lock");
+            *run = ThumbRun::Running;
+        }
+        self.thumb_shared.cancel.store(false, Ordering::SeqCst);
+        let (source, store, shared) = (
+            self.source.clone(),
+            self.thumb_store.clone(),
+            self.thumb_shared.clone(),
+        );
+        let handle = std::thread::spawn(move || {
+            let outcome = match source.thumbnails(&plan, &shared.cancel) {
+                Ok(thumbs) => store.save(&key, &thumbs),
+                Err(e) => Err(e),
+            };
+            let mut run = shared.run.lock().expect("thumbnail state lock");
+            *run = match outcome {
+                Ok(()) | Err(ThumbError::Cancelled) => ThumbRun::Idle,
+                Err(e) => ThumbRun::Failed(format!("{e:?}")),
+            };
+        });
+        *self.thumb_job.lock().expect("thumbnail job lock") = Some(handle);
+        self.thumbs_status()
+    }
+
+    /// Wait for a running thumbnail pass (tests).
+    pub fn wait_thumbs(&self) {
+        let handle = self.thumb_job.lock().expect("thumbnail job lock").take();
+        if let Some(h) = handle {
+            let _ = h.join();
+        }
+    }
+
+    /// For each wanted frame, the frame of the nearest stored thumbnail (`None` while there are none).
+    pub fn thumb_nearest(&self, frames: &[u32]) -> Vec<Option<u32>> {
+        let (_, key) = self.thumb_plan();
+        match self.stored_thumbs(&key) {
+            Some(stored) => frames.iter().map(|&f| nearest(&stored, f)).collect(),
+            None => vec![None; frames.len()],
+        }
+    }
+
+    /// The JPEG of a stored thumbnail (a frame returned by `thumb_nearest`).
+    pub fn thumb_jpeg(&self, frame: u32) -> Result<Vec<u8>, WorkspaceError> {
+        let (_, key) = self.thumb_plan();
+        match self.stored_thumbs(&key) {
+            Some(stored) if stored.binary_search(&frame).is_ok() => {
+                self.thumb_store.get(frame).map_err(WorkspaceError::Thumb)
+            }
+            _ => Err(WorkspaceError::Thumb(ThumbError::Io(format!(
+                "there is no thumbnail for frame {frame}"
+            )))),
         }
     }
 
@@ -622,5 +947,12 @@ impl Workspace {
 
     pub fn wait_idle(&self) {
         self.frames.wait_idle();
+    }
+}
+
+impl Drop for Workspace {
+    /// A running thumbnail pass is cancelled (ffmpeg is killed); it is not waited for.
+    fn drop(&mut self) {
+        self.thumb_shared.cancel.store(true, Ordering::SeqCst);
     }
 }

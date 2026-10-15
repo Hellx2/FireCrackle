@@ -12,6 +12,7 @@ vi.mock("react", async original => ({
 }));
 import { Picker } from "./Picker";
 import type { View } from "../lib/api";
+import type { Label } from "../lib/grid";
 
 type Element = ReactElement<Record<string, any>>;
 function all(node: Element, test: (e: Element) => boolean): Element[] {
@@ -19,15 +20,17 @@ function all(node: Element, test: (e: Element) => boolean): Element[] {
   return [...(test(node) ? [node] : []), ...children.flatMap(child => all(child, test))];
 }
 const onCell = vi.fn();
+const onNoFire = vi.fn();
 const view = { label: "unset", suggestion: null } as View;
 let cleanup: Array<void | (() => void)> = [];
-function render() {
+function render(candidate:Label = {fire: {sheet: 1, row: 0, mirrored: false}}) {
   hooks.si = hooks.ri = 0; hooks.effects = [];
-  const tree = Picker({ view, cell: 40, onCell, candidate: {fire: {sheet: 1, row: 0, mirrored: false}} });
+  const tree = Picker({ view, cell: 40, onCell, onNoFire, candidate });
   return {
     cells: all(tree, e => e.type === "button" && e.props.className?.startsWith("cell")),
     input: (side: string) => all(tree, e => e.props["aria-label"] === `${side} edge fire pixels`)[0],
     reset: all(tree, e => e.props.label === "Clear edge pixel filters")[0],
+    noFire: all(tree, e => e.props["aria-label"] === "Choose no fire")[0],
   };
 }
 beforeEach(() => {
@@ -45,6 +48,30 @@ beforeEach(() => {
     let sheet = 0;
     return { getContext: () => ({ drawImage: (image: {source: string}) => { sheet = image.source.includes("fire_0") ? 0 : 1; }, getImageData: () => ({data: data[sheet]}) }) };
   } });
+});
+it("offers a compact No fire choice alongside filters without occupying a sprite cell", () => {
+  const ui = render("no_fire");
+  expect(ui.cells).toHaveLength(128);
+  expect(ui.noFire.props["aria-pressed"]).toBe(true);
+  expect(ui.noFire.props.title).toContain("Confirm/Enter");
+  onNoFire.mockClear();
+  ui.noFire.props.onClick();
+  expect(onNoFire).toHaveBeenCalledOnce();
+});
+it("right-click toggles a visual/manual exclusion while left-click remains available", () => {
+  let ui=render();
+  const event={preventDefault:vi.fn(),stopPropagation:vi.fn()};
+  onCell.mockClear();
+  ui.cells[0].props.onContextMenu(event);
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(onCell).not.toHaveBeenCalled();
+  ui=render();
+  expect(ui.cells[0].props.className).toContain("manual-filter-miss");
+  expect(ui.cells[0].props.disabled).toBeUndefined();
+  ui.cells[0].props.onClick({ctrlKey:false});
+  expect(onCell).toHaveBeenCalledOnce();
+  ui.cells[0].props.onContextMenu(event);
+  expect(render().cells[0].props.className).not.toContain("manual-filter-miss");
 });
 afterEach(() => { cleanup.forEach(stop => stop?.()); cleanup = []; vi.unstubAllGlobals(); });
 

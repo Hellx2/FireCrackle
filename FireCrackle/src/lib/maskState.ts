@@ -1,14 +1,14 @@
 import { DEFAULT_QUAD, validQuad, type ManualQuad } from "./quadMask";
 
 export interface MaskState {
-  hudEnabled: boolean; hudRow: number; hudFov: number;
+  hudEnabled: boolean; hudRow: number; hudFov: number; hudOpacity: number;
   manualEnabled: boolean; manualQuad: ManualQuad; manualSheet: 0 | 1;
   manualRow: number; manualMirrored: boolean; manualOpacity: number; pixelGrid: boolean;
   compressionEnabled: boolean; compressionHeight: number; compressionQuality: number;
 }
 export const MASK_STATE_KEY = "firecrackle.masks.v1";
 export const DEFAULT_MASK_STATE: MaskState = {
-  hudEnabled: false, hudRow: 0, hudFov: 70, manualEnabled: false, manualQuad: DEFAULT_QUAD,
+  hudEnabled: false, hudRow: 0, hudFov: 70, hudOpacity: 1, manualEnabled: false, manualQuad: DEFAULT_QUAD,
   manualSheet: 1, manualRow: 0, manualMirrored: false, manualOpacity: 0.6, pixelGrid: false,
   compressionEnabled: false, compressionHeight: 1080, compressionQuality: 0.45,
 };
@@ -25,7 +25,8 @@ export function readMaskState(storage?: StorageReader): MaskState {
       if (Number.isInteger(saved[key]) && saved[key] >= 0 && saved[key] < 32) result[key] = saved[key];
     if ([60, 70].includes(saved.hudFov)) result.hudFov = saved.hudFov;
     if ([0, 1].includes(saved.manualSheet)) result.manualSheet = saved.manualSheet;
-    if (Number.isFinite(saved.manualOpacity) && saved.manualOpacity >= 0 && saved.manualOpacity <= 1) result.manualOpacity = saved.manualOpacity;
+    for (const key of ["hudOpacity", "manualOpacity"] as const)
+      if (Number.isFinite(saved[key]) && saved[key] >= 0 && saved[key] <= 1) result[key] = saved[key];
     if ([360, 480, 720, 1080, 1440, 2160].includes(saved.compressionHeight)) result.compressionHeight = saved.compressionHeight;
     if ([0.05, 0.15, 0.45, 0.8].includes(saved.compressionQuality)) result.compressionQuality = saved.compressionQuality;
     if (Array.isArray(saved.manualQuad) && saved.manualQuad.length === 4 && saved.manualQuad.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every(n => typeof n === "number" && Number.isFinite(n))) && validQuad(saved.manualQuad))

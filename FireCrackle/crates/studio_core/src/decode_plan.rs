@@ -19,7 +19,12 @@ pub struct FrameCache {
 
 impl FrameCache {
     pub fn new(cap_bytes: u64) -> FrameCache {
-        FrameCache { cap_bytes, used: 0, sizes: HashMap::new(), order: Vec::new() }
+        FrameCache {
+            cap_bytes,
+            used: 0,
+            sizes: HashMap::new(),
+            order: Vec::new(),
+        }
     }
 
     /// Insert or replace a frame (it becomes the most recently used). Returns the frames evicted to stay within
@@ -68,6 +73,10 @@ impl FrameCache {
 
     pub fn len(&self) -> usize {
         self.sizes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sizes.is_empty()
     }
 
     pub fn used_bytes(&self) -> u64 {
@@ -135,7 +144,12 @@ pub enum PlanError {
 /// - `want` missing: decode the missing run around it, within the window `[want - back, want + ahead]`.
 /// - `want` cached: prefetch only when the cached frames ahead (or behind) are under `prefetch_fraction` of the
 ///   window on that side, and then fetch the whole missing run, so playback does not start ffmpeg per frame.
-pub fn plan(index: &FrameIndex, cache: &FrameCache, want: u32, cfg: &DecodeConfig) -> Result<Plan, PlanError> {
+pub fn plan(
+    index: &FrameIndex,
+    cache: &FrameCache,
+    want: u32,
+    cfg: &DecodeConfig,
+) -> Result<Plan, PlanError> {
     let n = index.frames.len();
     if n == 0 {
         return Err(PlanError::EmptyIndex);
@@ -167,7 +181,10 @@ pub fn plan(index: &FrameIndex, cache: &FrameCache, want: u32, cfg: &DecodeConfi
         while b < hi && !cache.contains(b + 1) {
             b += 1;
         }
-        return Ok(Plan { want_cached: false, job: Some(job(a, b)) });
+        return Ok(Plan {
+            want_cached: false,
+            job: Some(job(a, b)),
+        });
     }
 
     // the wanted frame is cached: top the window up only when a side has run low
@@ -182,7 +199,10 @@ pub fn plan(index: &FrameIndex, cache: &FrameCache, want: u32, cfg: &DecodeConfi
         while b < hi && !cache.contains(b + 1) {
             b += 1;
         }
-        return Ok(Plan { want_cached: true, job: Some(job(a, b)) });
+        return Ok(Plan {
+            want_cached: true,
+            job: Some(job(a, b)),
+        });
     }
 
     let behind_target = want - lo;
@@ -196,7 +216,13 @@ pub fn plan(index: &FrameIndex, cache: &FrameCache, want: u32, cfg: &DecodeConfi
         while a > lo && !cache.contains(a - 1) {
             a -= 1;
         }
-        return Ok(Plan { want_cached: true, job: Some(job(a, b)) });
+        return Ok(Plan {
+            want_cached: true,
+            job: Some(job(a, b)),
+        });
     }
-    Ok(Plan { want_cached: true, job: None })
+    Ok(Plan {
+        want_cached: true,
+        job: None,
+    })
 }

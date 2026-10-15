@@ -1,7 +1,13 @@
-// Geometry for the Phase tab's charts. Pure functions only (tested in chart.test.ts); the canvas code lives in
-// components/PhaseChart.tsx.
+// Pure geometry for the Phase tab's charts; canvas painting lives in phaseChartCanvas.ts.
 
-import type { Flag } from "./api";
+import type { Flag, LabelSource } from "./api";
+import { clampViewport, type FrameRange, type Viewport } from "./timeline";
+
+/** Center a flagged interval with context, including single-frame flags and video edges. */
+export function focusChartRange(range: FrameRange, total: number, width: number, fps: number): Viewport {
+  const span = Math.min(Math.max(total, 1), Math.max(fps * 3, (range.last - range.first + 1) * 1.5));
+  return clampViewport({ start: (range.first + range.last) / 2 - span / 2, pxPerFrame: width / span }, width, total);
+}
 
 const CIRCLE = 32;
 const HALF = CIRCLE / 2;
@@ -24,6 +30,7 @@ export interface ChartRun {
 }
 
 export interface PhaseChart {
+  label_sources?:Record<number,LabelSource[]>;
   points: ChartPoint[];
   runs: ChartRun[];
   flags: Flag[];

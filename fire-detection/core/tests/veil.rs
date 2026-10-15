@@ -7,8 +7,55 @@ use fire_core::veil::{detect_veil, A_BOTTOM, A_TOP};
 const W: usize = 320;
 const H: usize = 180;
 
+#[test]
+fn optimized_bounds_and_short_circuit_match_exhaustive_original() {
+    fn reference(rgb: &[u8], w: usize, h: usize, y0: usize) -> bool {
+        let lo = 16. * A_TOP - 2.;
+        let margin = ((w as f64 * 0.2).floor() as usize).max(1).min(w / 2);
+        let (mut inside, mut total) = (0usize, 0usize);
+        for y in y0..h {
+            let a = A_TOP + (A_BOTTOM - A_TOP) * (y as f64 + 0.5) / h as f64;
+            let hi = 16. * a + 255. * (1. - a) + 2.;
+            for x in (0..margin).chain(w - margin..w) {
+                total += 1;
+                let i = (y * w + x) * 3;
+                if rgb[i..i + 3]
+                    .iter()
+                    .all(|&c| c as f64 >= lo && c as f64 <= hi)
+                {
+                    inside += 1;
+                }
+            }
+        }
+        inside as f64 >= 0.9 * total as f64
+    }
+    let mut seed = 1123;
+    for (w, h) in [(1, 9), (2, 11), (7, 17), (80, 45), (320, 180)] {
+        for percent in [0, 10, 89, 90, 91, 100] {
+            let mut f = vec![0; w * h * 3];
+            for px in f.chunks_mut(3) {
+                let good = rnd(&mut seed) % 100 < percent;
+                px.fill(if good {
+                    16 + (rnd(&mut seed) % 30) as u8
+                } else {
+                    (rnd(&mut seed) % 256) as u8
+                });
+            }
+            for y0 in [0, h / 2] {
+                assert_eq!(
+                    detect_veil(&f, w, h, y0).unwrap(),
+                    reference(&f, w, h, y0),
+                    "{w}x{h}, {percent}%, y0={y0}"
+                );
+            }
+        }
+    }
+}
+
 fn rnd(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -18,7 +65,9 @@ fn scene(seed: u64, lo: u8, hi: u8) -> Vec<u8> {
     let mut f = vec![0u8; W * H * 3];
     for y in 0..H {
         for x in 0..W {
-            let base = lo as f64 + (hi - lo) as f64 * (0.5 + 0.5 * ((x as f64 / 23.0).sin() * (y as f64 / 17.0).cos()));
+            let base = lo as f64
+                + (hi - lo) as f64
+                    * (0.5 + 0.5 * ((x as f64 / 23.0).sin() * (y as f64 / 17.0).cos()));
             for k in 0..3 {
                 let v = base + (rnd(&mut s) % 21) as f64 - 10.0 + k as f64 * 4.0;
                 f[(y * W + x) * 3 + k] = v.clamp(lo as f64, hi as f64) as u8;
@@ -135,8 +184,14 @@ fn the_sync_strip_rows_are_ignored() {
             }
         }
     }
-    assert!(!detect_veil(&f, W, H, 0).unwrap(), "premise: 13% bad pixels break the veil test");
-    assert!(detect_veil(&f, W, H, 24).unwrap(), "with y0 = 24 the strip is skipped");
+    assert!(
+        !detect_veil(&f, W, H, 0).unwrap(),
+        "premise: 13% bad pixels break the veil test"
+    );
+    assert!(
+        detect_veil(&f, W, H, 24).unwrap(),
+        "with y0 = 24 the strip is skipped"
+    );
 }
 
 // ---- errors ----
@@ -152,4 +207,86 @@ fn bad_input_is_an_error() {
 #[test]
 fn a_tiny_frame_does_not_panic() {
     let _ = detect_veil(&[20u8; 3 * 4 * 4], 4, 4, 0);
+}
+
+// ---- a big GUI panel in the middle (inventory, creative inventory, crafting) ----
+
+fn with_centre_panel(mut f: Vec<u8>, x0: usize, x1: usize, y0: usize, y1: usize, v: u8) -> Vec<u8> {
+    for y in y0..y1 {
+        for x in x0..x1 {
+            for k in 0..3 {
+                f[(y * W + x) * 3 + k] = v;
+            }
+        }
+    }
+    f
+}
+
+#[test]
+fn a_big_inventory_panel_over_the_veil_does_not_hide_it() {
+    // vanilla inventory: 176x166 GUI px; at GUI scale 3 on a 1920x1080 screen that is 27% x 46% of the frame (12% of the pixels)
+    let f = with_centre_panel(
+        veil(&scene(21, 0, 255)),
+        W * 365 / 1000,
+        W * 635 / 1000,
+        H * 27 / 100,
+        H * 73 / 100,
+        198,
+    );
+    assert!(detect_veil(&f, W, H, 0).unwrap());
+}
+
+#[test]
+fn a_wide_creative_panel_over_the_veil_does_not_hide_it() {
+    // creative inventory: 195x136 GUI px, about 30% x 38% of the frame, plus a tab strip: well over 10% of the pixels
+    let f = with_centre_panel(
+        veil(&scene(22, 0, 255)),
+        W * 35 / 100,
+        W * 65 / 100,
+        H * 22 / 100,
+        H * 78 / 100,
+        190,
+    );
+    assert!(detect_veil(&f, W, H, 0).unwrap());
+}
+
+#[test]
+fn a_bright_centre_panel_on_an_unveiled_scene_is_still_not_a_veil() {
+    let f = with_centre_panel(
+        scene(23, 0, 255),
+        W * 35 / 100,
+        W * 65 / 100,
+        H * 22 / 100,
+        H * 78 / 100,
+        190,
+    );
+    assert!(!detect_veil(&f, W, H, 0).unwrap());
+}
+
+#[test]
+fn only_the_margins_count_so_a_veil_in_the_middle_alone_is_not_enough() {
+    // a normal scene whose centre happens to be veil-dark (a dark room in the middle) must not be called veiled
+    let mut f = scene(24, 0, 255);
+    let dark = veil(&scene(25, 0, 255));
+    for y in 0..H {
+        for x in W * 20 / 100..W * 80 / 100 {
+            f[(y * W + x) * 3..(y * W + x) * 3 + 3]
+                .copy_from_slice(&dark[(y * W + x) * 3..(y * W + x) * 3 + 3]);
+        }
+    }
+    assert!(!detect_veil(&f, W, H, 0).unwrap());
+}
+
+#[test]
+fn chat_over_the_left_margin_and_a_hotbar_do_not_hide_the_veil() {
+    let mut f = veil(&scene(26, 0, 255));
+    // chat box in the bottom-left corner: bright text lines over a dark box, about 8% of the left margin band
+    for y in H * 70 / 100..H * 90 / 100 {
+        for x in 0..W * 18 / 100 {
+            if (y + x) % 5 == 0 {
+                f[(y * W + x) * 3..(y * W + x) * 3 + 3].copy_from_slice(&[240, 240, 240]);
+            }
+        }
+    }
+    assert!(detect_veil(&f, W, H, 0).unwrap());
 }

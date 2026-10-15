@@ -16,6 +16,11 @@ import { parallelizeQuad } from "../lib/quadTransform";
 import { QuadMatchControls } from "./QuadMatchControls";
 import { VideoRuler } from "./VideoRuler";
 import { DEFAULT_RULER, readRuler, rulerUnit, scaleRulerUnit, writeRuler, type RulerState } from "../lib/ruler";
+import type { AtlasEdges, EdgeFilter } from "../lib/atlasFilter";
+import { AnimationControls } from "./AnimationControls";
+import { readPreferences, writePreferences } from "../lib/preferences";
+import { readVideoView, writeVideoView } from "../lib/viewState";
+import { OpacityControl } from "./OpacityControl";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -36,16 +41,21 @@ function labelClass(label: Label): string {
 }
 
 interface Props {
+  atlasEdges?: AtlasEdges | null;
+  onAnimationStart?: () => void;
+  videoKey?: string;
+  atlasFilter?: EdgeFilter;
   backend: Backend;
   view: View;
   onError: (message: string) => void;
   previewRef?: Ref<VideoPreviewHandle>;
   onPreviewChange?: (sprite:PreviewSprite|null)=>void;
   onMatchCandidate?: (sprite:PreviewSprite)=>void;
+  onStep?: (frames: number) => void;
 }
 
 /** The current frame, with its number, time and label over it. */
-export function VideoPane({ backend, view, onError, previewRef, onPreviewChange, onMatchCandidate }: Props) {
+export function VideoPane({ backend, view, onError, previewRef, onPreviewChange, onMatchCandidate, onStep, atlasFilter, videoKey, atlasEdges = null, onAnimationStart }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
@@ -66,20 +76,24 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   const [compressionEnabled, setCompressionEnabled] = useState(saved.compressionEnabled);
   const [compressionHeight, setCompressionHeight] = useState(saved.compressionHeight);
   const [compressionQuality, setCompressionQuality] = useState(saved.compressionQuality);
+  const [hudOpacity, setHudOpacity] = useState(saved.hudOpacity);
   useEffect(() => {
-    writeMaskState({ hudEnabled, hudRow, hudFov, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality });
-  }, [hudEnabled, hudRow, hudFov, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality]);
+    writeMaskState({ hudEnabled, hudRow, hudFov, hudOpacity, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality });
+  }, [hudEnabled, hudRow, hudFov, hudOpacity, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality]);
   useEffect(() => {
-    if (!manualEnabled) return;
+    if (!manualEnabled && !hudEnabled) return;
     const key = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (e.key.toLowerCase() !== "p" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat || target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? "")) return;
+      const shortcut = e.key.toLowerCase();
+      if (!["p", "e"].includes(shortcut) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat || target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? "")) return;
+      if (shortcut === "p" && !manualEnabled) return;
       e.preventDefault();
-      setManualQuad(parallelizeQuad);
+      if (shortcut === "e") (manualEnabled ? setManualOpacity : setHudOpacity)(current => current > 0 ? 0 : 1);
+      else setManualQuad(parallelizeQuad);
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
-  }, [manualEnabled]);
+  }, [manualEnabled, hudEnabled]);
   useEffect(()=> {
     onPreviewChange?.(manualEnabled?{sheet:manualSheet,row:manualRow,mirrored:manualMirrored}
       :hudEnabled?{sheet:1,row:hudRow,mirrored:false}:null);
@@ -94,8 +108,14 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   useEffect(() => { writeRuler(ruler); }, [ruler]);
   const resizeRulerUnit = (pixels: number) => setRuler(current => ({ ...current, points: scaleRulerUnit(current.points, pixels, imageSize.width, imageSize.height) }));
   const [rulerSelected, setRulerSelected] = useState(false);
+  const [matchingEnabled, setMatchingEnabled] = useState(saved.manualEnabled && readPreferences().matchOpen);
+  useEffect(() => { writePreferences({ matchOpen: matchingEnabled }); }, [matchingEnabled]);
+  const [animationOpen, setAnimationOpen] = useState(saved.manualEnabled && readPreferences().animationOpen);
+  const [animationStop, setAnimationStop] = useState(0);
+  useEffect(() => { writePreferences({ animationOpen }); }, [animationOpen]);
 
   function selectPreview(sprite: PreviewSprite): boolean {
+    setAnimationStop(value => value + 1);
     const mode = manualEnabled ? "manual" : hudEnabled ? "firstPerson" : "none";
     const next = previewSprite(mode, sprite);
     if (!next) return false;
@@ -141,7 +161,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
 
   // zoom (wheel, around the cursor) and pan (left-drag) of the picture
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const [xf, setXf] = useState<ViewXform>(IDENTITY);
+  const [xf, setXf] = useState<ViewXform>(readVideoView(videoKey));
+  useEffect(() => { writeVideoView(videoKey, xf); }, [videoKey, xf]);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const boxOf = (): Box => {
     const r = frameRef.current?.getBoundingClientRect();
@@ -203,7 +224,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           style={{ transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.scale})` }}
         >
           {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
-          {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} pixelGrid={pixelGrid} />}
+          {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={hudOpacity} pixelGrid={pixelGrid} />}
           {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale}
             placementEnabled={!ruler.enabled || !rulerSelected} frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
@@ -224,13 +245,26 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
       <div className="hud-controls video-tools" role="group" aria-label="Video tools" onKeyDown={(e) => e.stopPropagation()}>
         <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} aria-expanded={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
         <IconButton icon="fire" label="Toggle first-person fire" aria-pressed={hudEnabled} aria-expanded={hudEnabled} onClick={() => {
+          setAnimationOpen(false);
+          setMatchingEnabled(false);
           setHudEnabled(!hudEnabled);
           if (!hudEnabled) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); }
         }}>First-person fire</IconButton>
         <IconButton icon="quad" label="Toggle manual fire quad mask" aria-pressed={manualEnabled} aria-expanded={manualEnabled} onClick={() => {
           setManualEnabled(!manualEnabled);
+          if (manualEnabled) setMatchingEnabled(false);
+          if (manualEnabled) setAnimationOpen(false);
           if (!manualEnabled) { setHudEnabled(false); const next = framePreview(view); if (next) { setManualSheet(next.sheet); setManualRow(next.row); setManualMirrored(next.mirrored); } }
         }}>Quad mask</IconButton>
+        <IconButton icon="zoomIn" label="Toggle sprite matching tool" aria-pressed={matchingEnabled} aria-expanded={matchingEnabled} onClick={() => {
+          if (!matchingEnabled) setAnimationOpen(false);
+          setMatchingEnabled(!matchingEnabled);
+          if (!matchingEnabled) { setManualEnabled(true); setHudEnabled(false); }
+        }}>Match</IconButton>
+        <IconButton icon="play" label="Toggle sprite animation tool" aria-pressed={animationOpen} aria-expanded={animationOpen} onClick={() => {
+          setAnimationOpen(!animationOpen);
+          if (!animationOpen) { setManualEnabled(true); setHudEnabled(false); }
+        }}>Animation</IconButton>
       </div>
       {ruler.enabled && <div className="hud-controls ruler-controls" aria-label="Ruler settings" onKeyDown={(e) => e.stopPropagation()}>
           <label><input type="checkbox" checked={ruler.locked} onChange={e => setRuler(current => ({ ...current, locked: e.target.checked }))} /> Lock unit</label>
@@ -246,6 +280,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           <IconButton icon="right" label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))} />
           <IconButton icon="copy" label="Use frame label for first-person preview" disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} />
           <label>FOV <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>70° · normal</option><option value={60}>60° · submerged</option></select></label>
+          <OpacityControl groupLabel="First-person opacity" toggleLabel="Toggle first-person opacity"
+            sliderLabel="First-person fire opacity" value={hudOpacity} onChange={setHudOpacity} />
           <span className="hud-hint">Ctrl+click atlas to preview · follows the next frame's guess</span>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
       </div>}
@@ -255,14 +291,11 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           <label>Row <input aria-label="Manual mask row" type="number" min={0} max={31} value={manualRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setManualRow(n); }} /></label>
           <IconButton icon="right" label="Next manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, 1))} />
           <label><input type="checkbox" checked={manualMirrored} onChange={(e) => setManualMirrored(e.target.checked)} /> Mirrored</label>
-          <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
+          <OpacityControl groupLabel="Mask opacity" toggleLabel="Toggle manual mask opacity"
+            sliderLabel="Manual mask opacity" value={manualOpacity} onChange={setManualOpacity} />
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <IconButton icon="reset" label="Reset quad corners" onClick={() => setManualQuad(DEFAULT_QUAD)} />
           <IconButton icon="parallel" label="Make quad a parallelogram" title="Make a parallelogram · P · keeps the center" onClick={() => setManualQuad(parallelizeQuad)} />
-          {url&&<QuadMatchControls frameUrl={url} quad={manualQuad} disabled={shown!==view.current} onPreview={candidate=> {
-            setManualSheet(candidate.sheet);setManualRow(candidate.row);setManualMirrored(candidate.mirrored);setManualQuad(candidate.quad);
-            onMatchCandidate?.({sheet:candidate.sheet,row:candidate.row,mirrored:candidate.mirrored});
-          }} />}
           <label title="FFmpeg encodes all 32 fire rows at their video-relative pixel size on white, using H.264 at 60 fps. Only the extracted fire is displayed. This is a real codec stress test, not YouTube's exact encoding recipe."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> FFmpeg compression</label>
           {compressionEnabled && <>
             <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
@@ -277,7 +310,21 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           <IconButton icon="copy" label="Use frame label for manual mask" disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }} />
           <span className="hud-hint">Shift: resize / rotate · P: parallelogram · Ctrl+drag: move all · select corner + Alt+click: place</span>
       </div>}
+      {animationOpen && manualEnabled && <div className="hud-controls" aria-label="Sprite animation settings" onKeyDown={e => e.stopPropagation()}>
+        <AnimationControls current={{sheet:manualSheet,row:manualRow,mirrored:manualMirrored}} edges={atlasEdges} filter={atlasFilter} frame={view.current} stopToken={animationStop} disabled={shown !== view.current || !url}
+          onStart={() => { setMatchingEnabled(false); onAnimationStart?.(); }} onPreview={sprite => { setManualSheet(sprite.sheet); setManualRow(sprite.row); setManualMirrored(sprite.mirrored); }} />
+      </div>}
+      {matchingEnabled && <div className="hud-controls" aria-label="Sprite matching settings" onKeyDown={e=>e.stopPropagation()}>
+        {url ? <QuadMatchControls frameUrl={url} quad={manualQuad} filter={atlasFilter} disabled={shown!==view.current} onPreview={candidate=> {
+          setManualSheet(candidate.sheet);setManualRow(candidate.row);setManualMirrored(candidate.mirrored);setManualQuad(candidate.quad);
+          onMatchCandidate?.({sheet:candidate.sheet,row:candidate.row,mirrored:candidate.mirrored});
+        }} /> : <span className="hud-hint">Open a video to match sprites</span>}
+      </div>}
       <div className="video-meta">
+        <span className="frame-step-controls" role="group" aria-label="Frame navigation">
+          <IconButton icon="left" label="Previous frame" disabled={!onStep || view.current <= 0} onClick={() => onStep?.(-1)} />
+          <IconButton icon="right" label="Next frame" disabled={!onStep || view.current >= view.frame_count - 1} onClick={() => onStep?.(1)} />
+        </span>
         <span>
           frame <b>{view.current}</b> / {view.frame_count - 1}
         </span>

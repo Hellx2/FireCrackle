@@ -30,4 +30,13 @@ describe("saved mask state", () => {
     expect(readMaskState({ getItem: () => { throw Error("blocked"); } })).toEqual(DEFAULT_MASK_STATE);
     expect(writeMaskState(DEFAULT_MASK_STATE, { setItem: () => { throw Error("full"); } })).toBe(false);
   });
+  it("restores first-person opacity independently and defaults older saves to full opacity", () => {
+    const storage = memory();
+    storage.setItem(MASK_STATE_KEY, JSON.stringify({manualOpacity: 0.25}));
+    expect(readMaskState(storage).hudOpacity).toBe(1);
+    writeMaskState({...DEFAULT_MASK_STATE, hudOpacity: 0, manualOpacity: 0.25}, storage);
+    expect(readMaskState(storage)).toMatchObject({hudOpacity: 0, manualOpacity: 0.25});
+    storage.setItem(MASK_STATE_KEY, JSON.stringify({hudOpacity: -1}));
+    expect(readMaskState(storage).hudOpacity).toBe(1);
+  });
 });

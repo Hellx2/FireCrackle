@@ -1,0 +1,16 @@
+name: Bug report
+description: Describe a reproducible problem in FireCrackle or the research tools.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version and operating system
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, expected behavior and actual behavior
+      description: Include a screenshot if useful. Do not attach private recordings, credentials or personal project files.
+    validations:
+      required: true

@@ -11,7 +11,9 @@ fn templates() -> Templates {
 
 /// Cheap deterministic noise.
 fn rnd(seed: &mut u64) -> u32 {
-    *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *seed = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (*seed >> 33) as u32
 }
 
@@ -61,7 +63,12 @@ fn render(c: Candidate, s: usize, gain: f64, noise: u32, at: (usize, usize)) -> 
             maxy = maxy.max(at.1 + (ty + 1) * s);
         }
     }
-    Scene { frame, w, h, bbox: [minx as f64, miny as f64, maxx as f64, maxy as f64] }
+    Scene {
+        frame,
+        w,
+        h,
+        bbox: [minx as f64, miny as f64, maxx as f64, maxy as f64],
+    }
 }
 
 fn cand(sheet: u8, mirror: bool, row: u8) -> Candidate {
@@ -93,9 +100,18 @@ fn indistinguishable(t: &Templates) -> Vec<Candidate> {
 fn there_are_128_candidates() {
     let t = templates();
     assert_eq!(t.candidates().len(), 128);
-    assert_eq!(classify(&t, &render(cand(0, false, 3), 3, 1.0, 0, (20, 20)).frame, 200, 160, [20.0, 20.0, 60.0, 60.0])
+    assert_eq!(
+        classify(
+            &t,
+            &render(cand(0, false, 3), 3, 1.0, 0, (20, 20)).frame,
+            200,
+            160,
+            [20.0, 20.0, 60.0, 60.0]
+        )
         .unwrap()
-        .len(), 128);
+        .len(),
+        128
+    );
 }
 
 #[test]
@@ -127,8 +143,16 @@ fn mirrored_is_told_apart_from_normal() {
         if dups.contains(&n) || dups.contains(&m) || t.same_pixels(n, m) {
             continue; // a left-right symmetric frame
         }
-        assert_eq!(best(&t, &render(m, 3, 1.0, 0, (10, 10))), m, "row {row} mirrored");
-        assert_eq!(best(&t, &render(n, 3, 1.0, 0, (10, 10))), n, "row {row} normal");
+        assert_eq!(
+            best(&t, &render(m, 3, 1.0, 0, (10, 10))),
+            m,
+            "row {row} mirrored"
+        );
+        assert_eq!(
+            best(&t, &render(n, 3, 1.0, 0, (10, 10))),
+            n,
+            "row {row} normal"
+        );
         checked += 1;
     }
     assert!(checked >= 20, "only {checked} asymmetric rows");
@@ -197,7 +221,12 @@ fn moderate_noise_keeps_the_answer() {
 fn a_box_partly_off_the_frame_is_clamped_not_rejected() {
     let t = templates();
     let sc = render(cand(0, false, 2), 3, 1.0, 0, (30, 20));
-    let b = [sc.bbox[0] - 500.0, sc.bbox[1], sc.bbox[2], sc.bbox[3] + 500.0];
+    let b = [
+        sc.bbox[0] - 500.0,
+        sc.bbox[1],
+        sc.bbox[2],
+        sc.bbox[3] + 500.0,
+    ];
     assert!(classify(&t, &sc.frame, sc.w, sc.h, b).is_ok());
 }
 
@@ -205,7 +234,11 @@ fn a_box_partly_off_the_frame_is_clamped_not_rejected() {
 fn a_one_pixel_wide_box_does_not_panic_or_produce_nan() {
     let t = templates();
     let sc = render(cand(0, false, 2), 3, 1.0, 0, (30, 20));
-    for b in [[50.0, 30.0, 51.0, 31.0], [50.0, 30.0, 51.5, 60.0], [50.2, 30.3, 50.9, 30.8]] {
+    for b in [
+        [50.0, 30.0, 51.0, 31.0],
+        [50.0, 30.0, 51.5, 60.0],
+        [50.2, 30.3, 50.9, 30.8],
+    ] {
         let r = classify(&t, &sc.frame, sc.w, sc.h, b).unwrap();
         assert_eq!(r.len(), 128);
         assert!(r.iter().all(|s| !s.score.is_nan()));
@@ -244,7 +277,14 @@ fn bad_boxes_are_errors() {
 #[test]
 fn a_frame_of_the_wrong_length_is_an_error() {
     let t = templates();
-    assert!(classify(&t, &vec![0u8; 64 * 64 * 3 - 1], 64, 64, [0.0, 0.0, 10.0, 10.0]).is_err());
+    assert!(classify(
+        &t,
+        &vec![0u8; 64 * 64 * 3 - 1],
+        64,
+        64,
+        [0.0, 0.0, 10.0, 10.0]
+    )
+    .is_err());
     assert!(classify(&t, &vec![0u8; 64 * 64], 64, 64, [0.0, 0.0, 10.0, 10.0]).is_err());
 }
 

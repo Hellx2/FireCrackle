@@ -27,7 +27,10 @@ pub enum ThumbError {
     /// The output is not what the plan asked for (counts, order, duplicates).
     BadStream(String),
     /// A picture's timestamp matches no frame of the index.
-    Misaligned { pts: f64, nearest_frame: u32 },
+    Misaligned {
+        pts: f64,
+        nearest_frame: u32,
+    },
     /// The frame source cannot make thumbnails.
     Unsupported,
 }
@@ -53,12 +56,22 @@ impl ThumbPlan {
     pub fn new(index: &FrameIndex, cfg: &TimelineConfig) -> ThumbPlan {
         let count = keyframes(index).len();
         let stride = stride(count, cfg.thumb_max_count);
-        ThumbPlan { stride, width: cfg.thumb_width_px, quality: cfg.thumb_quality, frames: selected(index, stride) }
+        ThumbPlan {
+            stride,
+            width: cfg.thumb_width_px,
+            quality: cfg.thumb_quality,
+            frames: selected(index, stride),
+        }
     }
 
     /// The cache key this plan produces for a video with `fingerprint`.
     pub fn key(&self, fingerprint: &str) -> ThumbKey {
-        ThumbKey { fingerprint: fingerprint.to_string(), width: self.width, quality: self.quality, stride: self.stride }
+        ThumbKey {
+            fingerprint: fingerprint.to_string(),
+            width: self.width,
+            quality: self.quality,
+            stride: self.stride,
+        }
     }
 }
 
@@ -78,7 +91,10 @@ pub fn stride(keyframe_count: usize, max_count: u32) -> u32 {
 
 /// Every `stride`-th keyframe, starting with the first.
 pub fn selected(index: &FrameIndex, stride: u32) -> Vec<u32> {
-    keyframes(index).into_iter().step_by(stride.max(1) as usize).collect()
+    keyframes(index)
+        .into_iter()
+        .step_by(stride.max(1) as usize)
+        .collect()
 }
 
 /// Map the timestamps of the pictures ffmpeg produced (absolute, in output order) to index frames. Every time must
@@ -95,7 +111,9 @@ pub fn assign(index: &FrameIndex, times: &[f64], tolerance: f64) -> Result<Vec<u
             return Err(ThumbError::BadStream(format!("a picture has the time {t}")));
         }
         if prev.is_some_and(|p| t <= p) {
-            return Err(ThumbError::BadStream(format!("picture times do not increase at {t:.6}")));
+            return Err(ThumbError::BadStream(format!(
+                "picture times do not increase at {t:.6}"
+            )));
         }
         prev = Some(t);
         let after = index.frames.partition_point(|f| f.pts <= t);
@@ -120,10 +138,15 @@ pub fn assign(index: &FrameIndex, times: &[f64], tolerance: f64) -> Result<Vec<u
         };
         let frame = index.frames[i].n;
         if (t - pts).abs() > tolerance * interval.max(1e-6) {
-            return Err(ThumbError::Misaligned { pts: t, nearest_frame: frame });
+            return Err(ThumbError::Misaligned {
+                pts: t,
+                nearest_frame: frame,
+            });
         }
         if out.last() == Some(&frame) {
-            return Err(ThumbError::BadStream(format!("two pictures map to frame {frame}")));
+            return Err(ThumbError::BadStream(format!(
+                "two pictures map to frame {frame}"
+            )));
         }
         out.push(frame);
     }
@@ -144,7 +167,11 @@ pub fn nearest(frames: &[u32], frame: u32) -> Option<u32> {
     }
     let before = frames[after - 1];
     let next = frames[after];
-    Some(if frame - before <= next - frame { before } else { next })
+    Some(if frame - before <= next - frame {
+        before
+    } else {
+        next
+    })
 }
 
 // ============================================================ the cache
@@ -176,11 +203,17 @@ fn io(e: std::io::Error) -> ThumbError {
 
 impl ThumbStore {
     pub fn new(dir: &Path) -> ThumbStore {
-        ThumbStore { dir: dir.to_path_buf() }
+        ThumbStore {
+            dir: dir.to_path_buf(),
+        }
     }
 
     fn staging(&self) -> PathBuf {
-        let mut name = self.dir.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+        let mut name = self
+            .dir
+            .file_name()
+            .map(|n| n.to_os_string())
+            .unwrap_or_default();
         name.push(".tmp");
         self.dir.with_file_name(name)
     }
@@ -202,7 +235,10 @@ impl ThumbStore {
             for t in thumbs {
                 std::fs::write(staging.join(format!("{}.jpg", t.frame)), &t.jpeg).map_err(io)?;
             }
-            let meta = Meta { key: key.clone(), frames: thumbs.iter().map(|t| t.frame).collect() };
+            let meta = Meta {
+                key: key.clone(),
+                frames: thumbs.iter().map(|t| t.frame).collect(),
+            };
             let json = serde_json::to_vec(&meta).map_err(|e| ThumbError::Io(e.to_string()))?;
             std::fs::write(staging.join("meta.json"), json).map_err(io)
         })();
@@ -229,7 +265,11 @@ impl ThumbStore {
         if &meta.key != key || meta.frames.is_empty() {
             return None;
         }
-        if !meta.frames.iter().all(|f| self.dir.join(format!("{f}.jpg")).is_file()) {
+        if !meta
+            .frames
+            .iter()
+            .all(|f| self.dir.join(format!("{f}.jpg")).is_file())
+        {
             return None;
         }
         let mut frames = meta.frames;
@@ -246,9 +286,17 @@ impl ThumbStore {
 // ============================================================ ffmpeg
 
 /// Run `cmd` to the end, collecting stdout and stderr; `cancel` kills it.
-fn run(mut cmd: Command, tool: &std::ffi::OsStr, cancel: &AtomicBool) -> Result<(std::process::ExitStatus, Vec<u8>, String), ThumbError> {
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| ThumbError::ToolMissing(format!("could not run {tool:?}: {e}")))?;
+fn run(
+    mut cmd: Command,
+    tool: &std::ffi::OsStr,
+    cancel: &AtomicBool,
+) -> Result<(std::process::ExitStatus, Vec<u8>, String), ThumbError> {
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ThumbError::ToolMissing(format!("could not run {tool:?}: {e}")))?;
     let mut err_pipe = child.stderr.take().expect("stderr was piped");
     let err_thread = std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -304,17 +352,29 @@ pub fn generate(
     filter.push_str(&format!("scale=w=min({}\\,iw):h=-2,showinfo", plan.width));
 
     let mut cmd = Command::new(&tools.ffmpeg);
-    cmd.args(["-nostdin", "-hide_banner", "-loglevel", "info", "-nostats", "-skip_frame", "nokey", "-i"])
-        .arg(video)
-        .args(["-fps_mode", "passthrough", "-vf"])
-        .arg(filter)
-        .args(["-f", "image2pipe", "-c:v", "mjpeg", "-q:v"])
-        .arg(plan.quality.to_string())
-        .arg("-");
+    cmd.args([
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-nostats",
+        "-skip_frame",
+        "nokey",
+        "-i",
+    ])
+    .arg(video)
+    .args(["-fps_mode", "passthrough", "-vf"])
+    .arg(filter)
+    .args(["-f", "image2pipe", "-c:v", "mjpeg", "-q:v"])
+    .arg(plan.quality.to_string())
+    .arg("-");
     let (status, bytes, stderr) = run(cmd, &tools.ffmpeg, cancel)?;
     if !status.success() {
         let tail: Vec<&str> = stderr.lines().rev().take(3).collect();
-        return Err(ThumbError::FfmpegFailed(format!("{status}: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" | "))));
+        return Err(ThumbError::FfmpegFailed(format!(
+            "{status}: {}",
+            tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+        )));
     }
 
     let split = split_jpegs(&bytes);
@@ -331,7 +391,17 @@ pub fn generate(
         )));
     }
     let base = index.frames[0].pts;
-    let absolute: Vec<f64> = times[..split.frames.len()].iter().map(|t| base + t).collect();
+    let absolute: Vec<f64> = times[..split.frames.len()]
+        .iter()
+        .map(|t| base + t)
+        .collect();
     let frames = assign(index, &absolute, align_tolerance)?;
-    Ok(frames.into_iter().zip(split.frames).map(|(frame, r)| Thumb { frame, jpeg: bytes[r].to_vec() }).collect())
+    Ok(frames
+        .into_iter()
+        .zip(split.frames)
+        .map(|(frame, r)| Thumb {
+            frame,
+            jpeg: bytes[r].to_vec(),
+        })
+        .collect())
 }

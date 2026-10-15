@@ -10,7 +10,10 @@ const BASE_TICK: u32 = 0x00123400;
 
 /// Three rendered frames per tick, like the real game at ~60 fps.
 fn expected(i: usize) -> SyncCode {
-    SyncCode { tick: BASE_TICK + (i / 3) as u32, frame_id: BASE_ID + i as u32 }
+    SyncCode {
+        tick: BASE_TICK + (i / 3) as u32,
+        frame_id: BASE_ID + i as u32,
+    }
 }
 
 fn ffmpeg_available() -> bool {
@@ -60,10 +63,25 @@ fn roundtrip(name: &str, w: usize, h: usize, crf: u32, out: Option<(usize, usize
     std::fs::write(&raw_in, &raw).unwrap();
 
     let ok = Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "gray"])
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "gray",
+        ])
         .args(["-s", &format!("{w}x{h}"), "-r", "60", "-i"])
         .arg(&raw_in)
-        .args(["-c:v", "libx264", "-crf", &crf.to_string(), "-pix_fmt", "yuv420p"])
+        .args([
+            "-c:v",
+            "libx264",
+            "-crf",
+            &crf.to_string(),
+            "-pix_fmt",
+            "yuv420p",
+        ])
         .arg(&video)
         .status()
         .unwrap()
@@ -84,7 +102,11 @@ fn roundtrip(name: &str, w: usize, h: usize, crf: u32, out: Option<(usize, usize
     assert!(decoded.status.success(), "ffmpeg decode failed");
 
     let frame_len = ow * oh;
-    assert_eq!(decoded.stdout.len(), frame_len * FRAMES, "frame count changed");
+    assert_eq!(
+        decoded.stdout.len(),
+        frame_len * FRAMES,
+        "frame count changed"
+    );
     let mut bad = Vec::new();
     for (i, f) in decoded.stdout.chunks_exact(frame_len).enumerate() {
         if decode(f, ow, oh) != Some(expected(i)) {

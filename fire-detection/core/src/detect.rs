@@ -42,7 +42,10 @@ impl Templates {
     pub fn from_rgba(s0: &[u8], s1: &[u8]) -> Result<Templates, String> {
         for (n, s) in [(0, s0), (1, s1)] {
             if s.len() != SHEET_LEN {
-                return Err(format!("fire_{n} must be {SHEET_LEN} bytes of RGBA, got {}", s.len()));
+                return Err(format!(
+                    "fire_{n} must be {SHEET_LEN} bytes of RGBA, got {}",
+                    s.len()
+                ));
             }
         }
         let mut items = Vec::with_capacity(4 * ROWS);
@@ -54,10 +57,18 @@ impl Templates {
                         for x in 0..TEX {
                             let sx = if mirror { TEX - 1 - x } else { x };
                             let i = ((row * TEX + y) * TEX + sx) * 4;
-                            rgba[(y * TEX + x) * 4..(y * TEX + x) * 4 + 4].copy_from_slice(&data[i..i + 4]);
+                            rgba[(y * TEX + x) * 4..(y * TEX + x) * 4 + 4]
+                                .copy_from_slice(&data[i..i + 4]);
                         }
                     }
-                    items.push(Template::new(Candidate { sheet: sheet as u8, mirror, row: row as u8 }, rgba)?);
+                    items.push(Template::new(
+                        Candidate {
+                            sheet: sheet as u8,
+                            mirror,
+                            row: row as u8,
+                        },
+                        rgba,
+                    )?);
                 }
             }
         }
@@ -70,7 +81,9 @@ impl Templates {
 
     /// True when both candidates show exactly the same opaque pixels (no matcher can tell them apart).
     pub fn same_pixels(&self, a: Candidate, b: Candidate) -> bool {
-        let (Some(a), Some(b)) = (self.find(a), self.find(b)) else { return false };
+        let (Some(a), Some(b)) = (self.find(a), self.find(b)) else {
+            return false;
+        };
         (0..TEX * TEX).all(|p| {
             let (x, y) = (&a.rgba[p * 4..p * 4 + 4], &b.rgba[p * 4..p * 4 + 4]);
             (x[3] == 0 && y[3] == 0) || (x[3] != 0 && y[3] != 0 && x[..3] == y[..3])
@@ -103,23 +116,45 @@ impl Template {
             for x in x0..x1 {
                 let i = (y * TEX + x) * 4;
                 if rgba[i + 3] != 0 {
-                    px.push((x - x0, y - y0, luma(rgba[i] as f64, rgba[i + 1] as f64, rgba[i + 2] as f64)));
+                    px.push((
+                        x - x0,
+                        y - y0,
+                        luma(rgba[i] as f64, rgba[i + 1] as f64, rgba[i + 2] as f64),
+                    ));
                 }
             }
         }
         let n = px.len() as f64;
         let mean = px.iter().map(|p| p.2).sum::<f64>() / n;
         let var = px.iter().map(|p| (p.2 - mean) * (p.2 - mean)).sum::<f64>();
-        Ok(Template { cand, rgba, bw: x1 - x0, bh: y1 - y0, px, mean, var })
+        Ok(Template {
+            cand,
+            rgba,
+            bw: x1 - x0,
+            bh: y1 - y0,
+            px,
+            mean,
+            var,
+        })
     }
 }
 
 /// Ranks all candidates for the part whose box (frame pixels, `[x0, y0, x1, y1]`) is given, best first. The box is
 /// clamped to the frame. Score is the zero-mean normalised correlation (-1..1) of luma over the candidate's opaque
 /// pixels, the crop being resampled to the candidate's opaque bounding box. Ties keep candidate order.
-pub fn classify(t: &Templates, frame: &[u8], w: usize, h: usize, bbox: [f64; 4]) -> Result<Vec<Scored>, String> {
+pub fn classify(
+    t: &Templates,
+    frame: &[u8],
+    w: usize,
+    h: usize,
+    bbox: [f64; 4],
+) -> Result<Vec<Scored>, String> {
     if w == 0 || h == 0 || frame.len() != w * h * 3 {
-        return Err(format!("frame must be {w}x{h} RGB24 ({} bytes), got {}", w * h * 3, frame.len()));
+        return Err(format!(
+            "frame must be {w}x{h} RGB24 ({} bytes), got {}",
+            w * h * 3,
+            frame.len()
+        ));
     }
     if bbox.iter().any(|v| !v.is_finite()) {
         return Err("box has a non-finite coordinate".into());
@@ -158,7 +193,9 @@ pub fn classify(t: &Templates, frame: &[u8], w: usize, h: usize, bbox: [f64; 4])
         let xb = (c.ceil() as usize).clamp(xa + 1, ix1);
         let yb = (d.ceil() as usize).clamp(ya + 1, iy1);
         let (xa, xb, ya, yb) = (xa - ix0, xb - ix0, ya - iy0, yb - iy0);
-        let s = integral[yb * (cw + 1) + xb] - integral[ya * (cw + 1) + xb] - integral[yb * (cw + 1) + xa]
+        let s = integral[yb * (cw + 1) + xb]
+            - integral[ya * (cw + 1) + xb]
+            - integral[yb * (cw + 1) + xa]
             + integral[ya * (cw + 1) + xa];
         s / ((xb - xa) * (yb - ya)) as f64
     };
@@ -180,10 +217,17 @@ pub fn classify(t: &Templates, frame: &[u8], w: usize, h: usize, bbox: [f64; 4])
         let score = if var < 1e-9 || tpl.var < 1e-9 {
             -1.0
         } else {
-            let cov: f64 = sample.iter().zip(&tpl.px).map(|(s, p)| (s - mean) * (p.2 - tpl.mean)).sum();
+            let cov: f64 = sample
+                .iter()
+                .zip(&tpl.px)
+                .map(|(s, p)| (s - mean) * (p.2 - tpl.mean))
+                .sum();
             (cov / (var * tpl.var).sqrt()).clamp(-1.0, 1.0)
         };
-        out.push(Scored { cand: tpl.cand, score });
+        out.push(Scored {
+            cand: tpl.cand,
+            score,
+        });
     }
     out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
     Ok(out)

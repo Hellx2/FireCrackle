@@ -1,26 +1,17 @@
 # Fire phase: evidence from Minecraft 1.16.5 (Yarn 1.16.5+build.10)
 
-Every claim below was read in the Yarn-decompiled sources (loom cache:
-`fire-detection/mod/.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-merged-15d0b954df/
-1.16.5-net.fabricmc.yarn.1_16_5.1.16.5+build.10-v2/*-sources.jar`) or in the vanilla assets
-(`~/.gradle/caches/fabric-loom/1.16.5/minecraft-client.jar`). Line numbers are those of the decompiled
-sources. Nothing here is assumed from context; items we could NOT verify are listed at the bottom.
+These notes summarize observations made against a local Minecraft 1.16.5 development environment,
+using Yarn 1.16.5+build.10 names and the vanilla assets. Class/method names and historical line numbers
+identify the reviewed version; the game source and mapping artifacts themselves are not included.
+The descriptions below are original explanations, not copied game implementation. Items not verified
+are listed at the bottom.
 
 ## E1. What advances the animation: one step per `tickAnimation()` call
 
 `Sprite.java:244-262`
-```java
-public void tickAnimation() {
-    this.frameTicks++;
-    if (this.frameTicks >= this.animationMetadata.getFrameTime(this.frameIndex)) {
-        int i = this.animationMetadata.getFrameIndex(this.frameIndex);
-        int j = this.animationMetadata.getFrameCount() == 0 ? this.getFrameCount() : this.animationMetadata.getFrameCount();
-        this.frameIndex = (this.frameIndex + 1) % j;
-        this.frameTicks = 0;
-        int k = this.animationMetadata.getFrameIndex(this.frameIndex);
-        if (i != k && k >= 0 && k < this.getFrameCount()) { this.upload(k); }
-    } ...
-```
+The sprite accumulates elapsed frame ticks. Once its configured duration is reached, it advances one
+position in the animation sequence, wraps at the sequence length, resets the elapsed counter, and
+uploads the new image if that image differs from the previous one.
 - `frameIndex` (`Sprite.java:36`, starts 0) is the **position in the animation sequence**, not the sheet row.
 - Row actually uploaded and drawn = `animationMetadata.getFrameIndex(frameIndex)` (`AnimationResourceMetadata.java`,
   `getFrameIndex`: `frames.get(frameIndex).getIndex()`), uploaded by `upload(k)` into the atlas slot.
@@ -52,10 +43,7 @@ So, with `s` = `frameIndex` (the animation step) and modulus 32:
 ## E3. When `tickAnimation()` runs: once per client tick, only while a world exists
 
 `MinecraftClient.tick()` (`MinecraftClient.java:1480-1482`):
-```java
-this.profiler.swap("textures");
-if (this.world != null) { this.textureManager.tick(); }
-```
+The client updates animated textures during a client tick when a world exists.
 This is **not** inside `if (!this.paused)`. => pausing in singleplayer does NOT stop the animation; being
 in no world (title screen, loading, disconnected) does.
 
@@ -73,12 +61,9 @@ returns `false` (`MinecraftClient.java:2586-2588`) so `minecraftClient.run()` ru
 ## E4. Ticks per rendered frame, and what a frame shows
 
 `MinecraftClient.render(boolean tick)` (`:997-1046`) and `RenderTickCounter.beginRenderTick`:
-```java
-int i = renderTickCounter.beginRenderTick(Util.getMeasuringTimeMs()); // floor(accumulated ticks)
-for (int j = 0; j < Math.min(10, i); j++) { this.tick(); }           // :1022-1024
-...
-gameRenderer.render(...)                                              // :1046, AFTER the tick loop
-```
+Before rendering a frame, the client computes the number of elapsed whole ticks and executes at most
+ten of them. It renders the scene after this update loop. Additional whole ticks beyond the cap are
+not executed.
 - Ticks run **before** the world is drawn in the same `render()`, so a frame shows the row produced by the
   last tick that ran at or before it.
 - Between two consecutive **game** renders on this vanilla path the step advances by **0..10**: 0 when `i == 0` (typical above
@@ -129,11 +114,8 @@ The footage FireCrackle processes has **no sync strip** (no tick, no frame id). 
 tick source changes. Everything below is derived from E3/E4 and the code they cite.
 
 **Executed ticks follow wall-clock time.** `RenderTickCounter.beginRenderTick` (`RenderTickCounter.java`):
-```java
-this.lastFrameDuration = (float)(timeMillis - this.prevTimeMillis) / this.tickTime;   // tickTime = 1000 / 20
-this.tickDelta = this.tickDelta + this.lastFrameDuration;
-int i = (int)this.tickDelta;  this.tickDelta -= i;                                    // floor, keep the fraction
-```
+The counter converts elapsed milliseconds into units of a 50 ms tick, accumulates that amount, takes
+the whole-tick portion for the next update, and retains the fractional remainder.
 so the number of ticks run by game time `T` (seconds since the counter started) is `N(T) = floor(20 * T)` as long
 as no frame is slow enough to hit the cap `Math.min(10, i)` (`MinecraftClient.java:1022`, E4). Pausing, a menu or
 a slow frame under 0.5 s only delays ticks (they run in bursts of up to 10 and catch up). Combined with E1/E2:

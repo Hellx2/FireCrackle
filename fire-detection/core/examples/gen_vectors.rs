@@ -15,7 +15,10 @@ fn main() {
             let mut f = vec![0u8; w * h];
             stamp(&mut f, w, h, tick, id).unwrap();
             let (sw, _) = strip_size(w).unwrap();
-            let row: String = f[..sw].iter().map(|&p| if p == 255 { '1' } else { '0' }).collect();
+            let row: String = f[..sw]
+                .iter()
+                .map(|&p| if p == 255 { '1' } else { '0' })
+                .collect();
             out.push_str(&format!("{w} {tick:06X} {id:06X} {row}\n"));
         }
     }
