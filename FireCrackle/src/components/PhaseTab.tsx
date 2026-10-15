@@ -186,7 +186,9 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
       setHover(`${f.severity} flag · frame ${f.frame}${f.end_frame > f.frame ? `–${f.end_frame}` : ""} · Δ ${f.phase_delta.toFixed(1)} ticks · click to open`);
     } else if (hit.point) {
       const p = hit.point;
-      setHover(`frame ${p.frame} · ${formatTime(p.pts, 0.01)} · row ${p.step} · phase ${p.phase.toFixed(2)}`);
+      const reference = chart!.reference_phase ?? chart!.runs[0]?.center ?? chart!.points[0]?.phase ?? 0;
+      const offset = relativePhase(p.phase, reference);
+      setHover(`frame ${p.frame} · ${formatTime(p.pts, 0.01)} · row ${p.step} · timing offset ${offset > 0 ? "+" : ""}${offset.toFixed(2)} ticks`);
     } else setHover(null);
   }
 
@@ -226,16 +228,16 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
       {error && <div className="banner error">{error}</div>}
       <section className="chart-area">
         <div className="chart-head">
-          <span className="panel-title">Phase against time</span>
+          <span className="panel-title">Animation timing offset (ticks)</span>
           <span className="dim">
-            Green line = the shared {chart?.tick_rate ?? 20} Hz clock through holds and gaps. Red/amber = review priority; lag can cause either.
+            Zero = the reference {chart?.tick_rate ?? 20} Hz animation clock. Dots show timing offset, not sprite row. Red/amber = review priority.
           </span>
         </div>
         {chart && chart.points.length === 0 ? (
           <div className="empty big-empty">No fire frames labelled yet. Label some in the Label tab and the chart appears here.</div>
         ) : (
           <>
-            {controls("phase")}
+            {controls("timing offset")}
             <canvas ref={phaseRef} className="chart phase" {...chartEvents} />
             <div className="chart-head">
               <span className="panel-title">Sprite row against time</span>
