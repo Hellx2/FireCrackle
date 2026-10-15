@@ -1,18 +1,18 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import fire0 from "../assets/fire_0.png";
 import fire1 from "../assets/fire_1.png";
 import { COLUMNS, ROWS, columnHeader, labelToCell, suggestionCells } from "../lib/grid";
 import type { View } from "../lib/api";
 
-const CELL = 22; // px; the 16 px sprites are shown scaled
-
 interface Props {
   view: View;
+  /** sprite size in px; the 16 px sprites are shown scaled */
+  cell: number;
   onCell: (col: number, row: number) => void;
 }
 
 /** The 4 x 32 sprite grid: click a cell to label the current frame with it. */
-export function Picker({ view, onCell }: Props) {
+export function Picker({ view, cell: CELL, onCell }: Props) {
   const current = labelToCell(view.label);
   const sug = view.suggestion ? suggestionCells(view.suggestion) : { primary: null, alt: null };
   const targetRef = useRef<HTMLDivElement | null>(null);
@@ -23,7 +23,7 @@ export function Picker({ view, onCell }: Props) {
   }, [focusRow]);
 
   return (
-    <div className="picker">
+    <div className="picker" style={{ "--cell": `${CELL}px` } as CSSProperties}>
       <div className="picker-head">
         <div className="gutter" />
         <div className="group">Normal</div>

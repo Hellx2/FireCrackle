@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import "./App.css";
 import { FlagsPanel } from "./components/FlagsPanel";
 import { PhaseTab } from "./components/PhaseTab";
 import { Picker } from "./components/Picker";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { Splitter } from "./components/Splitter";
 import { Timeline } from "./components/Timeline";
 import { VideoPane } from "./components/VideoPane";
+import { useLayout } from "./hooks/useLayout";
 import { useWorkspace } from "./hooks/useWorkspace";
+import { FLAGS_LIMITS, SIDE_LIMITS, VIDEO_LIMITS, pickerCellSize, upperBound } from "./lib/layout";
 import { STOPPED, keyInfo, nextPlayback, playbackTick, toUiAction, type Playback } from "./lib/actions";
 import { createBackend, settingValue, type Backend } from "./lib/api";
 import { actionFor } from "./lib/keymap";
@@ -40,6 +43,8 @@ export default function App() {
   const [showKeys, setShowKeys] = useState(false);
   const [path, setPath] = useState("");
   const [tab, setTab] = useState<"label" | "phase">("label");
+  const { layout, set: setLayout, reset: resetLayout } = useLayout();
+  const workareaRef = useRef<HTMLElement | null>(null);
 
   /** Leave the Phase tab at a frame (a flag, or a point of the chart). */
   function jumpToLabel(frame: number) {
@@ -195,9 +200,28 @@ export default function App() {
       ) : tab === "phase" ? (
         <PhaseTab backend={backend} view={view} version={ws.version} onJump={jumpToLabel} />
       ) : (
-        <main className="workarea">
+        <main
+          className="workarea"
+          ref={workareaRef}
+          style={
+            {
+              "--side-w": `${layout.sideWidth}px`,
+              "--video-h": `${layout.videoHeight}px`,
+              "--flags-h": `${layout.flagsHeight}px`,
+            } as CSSProperties
+          }
+        >
           <section className="left">
             <VideoPane backend={backend} view={view} onError={(m) => console.error(m)} />
+            <Splitter
+              direction="row"
+              label="Video height"
+              value={layout.videoHeight}
+              min={VIDEO_LIMITS.min}
+              getMax={() => upperBound(workareaRef.current?.clientHeight ?? 0, 160, VIDEO_LIMITS.max)}
+              onChange={(v) => setLayout("videoHeight", v)}
+              onReset={() => resetLayout("videoHeight")}
+            />
             <Timeline
               backend={backend}
               view={view}
@@ -206,8 +230,28 @@ export default function App() {
               settings={ws.settings}
               onSeek={(frame) => void act({ type: "goTo", frame })}
             />
+            <Splitter
+              direction="row"
+              label="Flag list height"
+              sign={-1}
+              value={layout.flagsHeight}
+              min={FLAGS_LIMITS.min}
+              getMax={() => FLAGS_LIMITS.max}
+              onChange={(v) => setLayout("flagsHeight", v)}
+              onReset={() => resetLayout("flagsHeight")}
+            />
             <FlagsPanel flags={ws.flags} fps={view.fps} current={view.current} onSeek={(frame) => void act({ type: "goTo", frame })} />
           </section>
+          <Splitter
+            direction="col"
+            label="Picker width"
+            sign={-1}
+            value={layout.sideWidth}
+            min={SIDE_LIMITS.min}
+            getMax={() => upperBound(workareaRef.current?.clientWidth ?? 0, 360, SIDE_LIMITS.max)}
+            onChange={(v) => setLayout("sideWidth", v)}
+            onReset={() => resetLayout("sideWidth")}
+          />
           <aside className="right">
             <div className="pick-state">
               <button className={view.pick.sheet === 1 ? "on" : ""} onClick={() => void act({ type: "toggleSheet" })} title="S">
@@ -226,7 +270,7 @@ export default function App() {
                 clear
               </button>
             </div>
-            <Picker view={view} onCell={(col, row) => void act({ type: "clickCell", col, row })} />
+            <Picker view={view} cell={pickerCellSize(layout.sideWidth)} onCell={(col, row) => void act({ type: "clickCell", col, row })} />
           </aside>
         </main>
       )}

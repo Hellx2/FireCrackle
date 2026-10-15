@@ -217,9 +217,47 @@ input {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 232px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 10px var(--side-w, 210px);
+  gap: 0;
   padding: 12px;
+}
+
+.splitter {
+  flex: 0 0 auto;
+  background: transparent;
+  border-radius: 4px;
+  touch-action: none;
+  outline: none;
+}
+.splitter::after {
+  content: "";
+  display: block;
+  background: var(--line);
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.splitter:hover::after,
+.splitter:focus-visible::after {
+  background: var(--accent);
+}
+.splitter.col {
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+}
+.splitter.col::after {
+  width: 3px;
+  height: 100%;
+}
+.splitter.row {
+  cursor: row-resize;
+  height: 10px;
+  display: flex;
+  align-items: center;
+}
+.splitter.row::after {
+  height: 3px;
+  width: 100%;
 }
 .left {
   min-width: 0;
@@ -246,8 +284,7 @@ input {
 .video-frame {
   position: relative;
   background: #000;
-  aspect-ratio: 16 / 9;
-  max-height: 52vh;
+  height: var(--video-h, 380px);
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -369,7 +406,7 @@ input {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 150px;
+  max-height: var(--flags-h, 150px);
   overflow-y: auto;
 }
 .flags li.inside button {
@@ -448,7 +485,7 @@ input {
   padding-right: 4px;
 }
 .cell {
-  height: 24px;
+  height: calc(var(--cell, 22px) + 2px);
   padding: 0;
   margin: 1px;
   background: #251a3a;
@@ -461,8 +498,8 @@ input {
 }
 .cell .sprite {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: var(--cell, 22px);
+  height: var(--cell, 22px);
   image-rendering: pixelated;
 }
 .cell:hover {

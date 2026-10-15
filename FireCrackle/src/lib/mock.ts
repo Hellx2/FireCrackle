@@ -5,6 +5,7 @@
 import type { UiAction } from "./actions";
 import type { Backend, Bucket, Flag, SettingInfo, Suggestion, View } from "./api";
 import type { ChartPoint } from "./chart";
+import type { ThumbStatus } from "./thumbs";
 import { isFire, labelsEqual, type Label } from "./grid";
 
 const N = 2400;
@@ -76,6 +77,14 @@ export function createMockBackend(): Backend {
   let typed: number | null = null;
   const settings = SETTINGS.map((s) => ({ ...s }));
   const num = (key: string) => settings.find((s) => s.key === key)!.value;
+
+  let thumbsReadyAt = 0;
+  const thumbStatus = (): ThumbStatus =>
+    thumbsReadyAt === 0
+      ? { state: "idle", count: 0, error: null }
+      : Date.now() < thumbsReadyAt
+        ? { state: "running", count: 0, error: null }
+        : { state: "ready", count: 40, error: null };
 
   const get = (f: number): Label => labels.get(f) ?? "unset";
   const clamp = (f: number) => Math.max(0, Math.min(N - 1, f));
@@ -248,6 +257,18 @@ export function createMockBackend(): Backend {
       return out;
     },
     flags: async () => MOCK_FLAGS,
+    // dev only: a thumbnail every 60 frames, "generated" after a short pause so the running state shows
+    async thumbsStart() {
+      if (thumbsReadyAt === 0) thumbsReadyAt = Date.now() + 1200;
+      return thumbStatus();
+    },
+    async thumbsStatus() {
+      return thumbStatus();
+    },
+    async thumbNearest(frames) {
+      return Date.now() < thumbsReadyAt || thumbsReadyAt === 0 ? frames.map(() => null) : frames.map((f) => Math.min(Math.round(f / 60) * 60, 2340));
+    },
+    thumb: (frame) => drawFrame(frame),
     async phaseChart(maxPoints) {
       // dev only: the points of the labelled fire frames, one run over all of them (the real analysis is Rust)
       const points: ChartPoint[] = [];

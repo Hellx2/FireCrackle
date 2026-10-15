@@ -4,6 +4,7 @@
 import type { UiAction } from "./actions";
 import type { PhaseChart } from "./chart";
 import type { Label } from "./grid";
+import type { ThumbStatus } from "./thumbs";
 
 export interface PickState {
   sheet: number;
@@ -77,6 +78,12 @@ export interface Backend {
   flags(): Promise<Flag[]>;
   /** The phase series (at most `maxPoints` points), runs and flags for the Phase tab. */
   phaseChart(maxPoints: number): Promise<PhaseChart>;
+  /** Start (or find already made) the timeline thumbnails; they are generated in the background. */
+  thumbsStart(): Promise<ThumbStatus>;
+  thumbsStatus(): Promise<ThumbStatus>;
+  /** For each wanted frame, the frame of the nearest stored thumbnail (null while there are none). */
+  thumbNearest(frames: number[]): Promise<Array<number | null>>;
+  thumb(frame: number): Promise<ArrayBuffer>;
   settingsDescribe(): Promise<SettingInfo[]>;
   settingsSet(key: string, value: number): Promise<View>;
 }
@@ -110,6 +117,10 @@ export async function createBackend(): Promise<Backend> {
     timeline: (start, end, buckets) => invoke<Bucket[]>("timeline", { start, end, buckets }),
     flags: () => invoke<Flag[]>("flags"),
     phaseChart: (maxPoints) => invoke<PhaseChart>("phase_chart", { maxPoints }),
+    thumbsStart: () => invoke<ThumbStatus>("thumbs_start"),
+    thumbsStatus: () => invoke<ThumbStatus>("thumbs_status"),
+    thumbNearest: (frames) => invoke<Array<number | null>>("thumb_nearest", { frames }),
+    thumb: (frame) => invoke<ArrayBuffer>("thumb", { frame }),
     settingsDescribe: () => invoke<SettingInfo[]>("settings_describe"),
     settingsSet: (key, value) => invoke<View>("settings_set", { key, value }),
   };
