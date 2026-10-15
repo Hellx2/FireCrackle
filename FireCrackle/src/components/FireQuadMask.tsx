@@ -144,15 +144,20 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       if (e.key === "Shift") setShiftHeld(true);
     };
     const keyUp = (e: KeyboardEvent) => { if (e.key === "Shift" || !e.shiftKey) setShiftHeld(false); };
+    // A frame decode can remount this overlay while Shift is already held.
+    const modifiers = (e: MouseEvent) => setShiftHeld(!!e.shiftKey);
     const blur = () => { setShiftHeld(false); setTransformActive(false); dragging.current = null; transformDrag.current = null; };
     window.addEventListener("click", click, true);
-    window.addEventListener("keydown", key);
-    window.addEventListener("keyup", keyUp);
+    // Capture before the mask toolbar suppresses key bubbling from focused controls.
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("keyup", keyUp, true);
+    window.addEventListener("pointermove", modifiers, true);
     window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("click", click, true);
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("keyup", keyUp, true);
+      window.removeEventListener("pointermove", modifiers, true);
       window.removeEventListener("blur", blur);
     };
   }, [width, height, selectedCorner, onQuad]);

@@ -59,6 +59,29 @@ beforeEach(() => {
 afterEach(() => { cleanup?.(); cleanup = undefined; vi.unstubAllGlobals(); });
 
 describe("manual quad controls", () => {
+  it("captures Shift before focused toolbar controls can stop bubbling", () => {
+    const bind = vi.spyOn(window, "addEventListener");
+    render();
+    expect(bind).toHaveBeenCalledWith("keydown", expect.any(Function), true);
+    expect(bind).toHaveBeenCalledWith("keyup", expect.any(Function), true);
+    dispatch("keydown", { key: "Shift", shiftKey: true });
+    expect(render().handles).toHaveLength(8);
+    dispatch("keyup", { key: "Shift", shiftKey: false });
+    expect(render().corners).toHaveLength(4);
+  });
+
+  it("recovers a held Shift after overlay mount without receiving the keydown", () => {
+    render();
+    dispatch("pointermove", { shiftKey: true });
+    let mask = render();
+    expect(mask.handles).toHaveLength(8);
+    expect(mask.corners).toHaveLength(0);
+    dispatch("pointermove", { shiftKey: false });
+    mask = render();
+    expect(mask.handles).toHaveLength(0);
+    expect(mask.corners).toHaveLength(4);
+  });
+
   it("routes edge resize and rotation handles separately from vertex edits", () => {
     render(); dispatch("keydown", { key: "Shift", shiftKey: true });
     let mask = render();
