@@ -29,6 +29,8 @@ import org.apache.logging.log4j.Logger;
 import org.firecracking.firelabel.core.BBox;
 import org.firecracking.firelabel.core.BoxCulling;
 import org.firecracking.firelabel.core.FirePart;
+import org.firecracking.firelabel.core.FireQuadLabel;
+import org.firecracking.firelabel.core.FireQuadProjection;
 import org.firecracking.firelabel.core.FireSourceLabel;
 import org.firecracking.firelabel.core.FrameRecord;
 import org.firecracking.firelabel.core.Occluder;
@@ -95,8 +97,14 @@ final class FireLabeler {
     /** The four variant groups of a source, indexed by sheet * 2 + (mirrored ? 1 : 0). */
     private static final class Variants {
         final Group[] groups = new Group[4];
+        final List<FireQuadLabel> quads = new ArrayList<FireQuadLabel>();
 
-        void add(int sheet, boolean mirrored, QuadVisibility.Result r) {
+        void add(int sheet, int row, Quad quad, double[] camera, Projector projector, QuadVisibility.Result r) {
+            boolean mirrored = quad.isMirroredFrom(camera);
+            FireQuadLabel label = FireQuadProjection.capture(sheet, row, quad, camera, projector, r);
+            if (label != null) {
+                quads.add(label);
+            }
             int g = sheet * 2 + (mirrored ? 1 : 0);
             if (groups[g] == null) {
                 groups[g] = new Group();
@@ -247,11 +255,11 @@ final class FireLabeler {
             for (CachedQuad cq : fire.quads) {
                 QuadVisibility.Result r = QuadVisibility.evaluate(
                         cq.quad, cam, projector, texels, masks[cq.sheet], occluder, MACRO, true, gui);
-                variants.add(cq.sheet, cq.quad.isMirroredFrom(cam), r);
+                variants.add(cq.sheet, rows[cq.sheet], cq.quad, cam, projector, r);
             }
             List<FirePart> parts = variants.parts(rows);
             if (!parts.isEmpty()) {
-                out.add(FireSourceLabel.block(pos.getX(), pos.getY(), pos.getZ(), dist, parts));
+                out.add(FireSourceLabel.block(pos.getX(), pos.getY(), pos.getZ(), dist, parts, variants.quads));
             }
         }
     }
@@ -342,7 +350,7 @@ final class FireLabeler {
                 perEntity.put(self, v);
                 types.put(self, q.entityType);
             }
-            v.add(q.sheet, q.quad.isMirroredFrom(ORIGIN), r);
+            v.add(q.sheet, rows[q.sheet], q.quad, ORIGIN, projector, r);
             double d = centroidDistance(q.quad);
             Double prev = minDist.get(self);
             minDist.put(self, prev == null ? d : Math.min(prev, d));
@@ -350,7 +358,7 @@ final class FireLabeler {
         for (Map.Entry<Integer, Variants> e : perEntity.entrySet()) {
             List<FirePart> parts = e.getValue().parts(rows);
             if (!parts.isEmpty()) {
-                out.add(FireSourceLabel.entity(e.getKey(), types.get(e.getKey()), minDist.get(e.getKey()), parts));
+                out.add(FireSourceLabel.entity(e.getKey(), types.get(e.getKey()), minDist.get(e.getKey()), parts, e.getValue().quads));
             }
         }
     }
@@ -398,11 +406,11 @@ final class FireLabeler {
         Variants variants = new Variants();
         for (Quad q : quads) {
             QuadVisibility.Result r = QuadVisibility.evaluate(q, ORIGIN, projector, texels, masks[1], none, MACRO, false, gui);
-            variants.add(1, q.isMirroredFrom(ORIGIN), r);
+            variants.add(1, rows[1], q, ORIGIN, projector, r);
         }
         List<FirePart> parts = variants.parts(rows);
         if (!parts.isEmpty()) {
-            out.add(FireSourceLabel.overlay(parts));
+            out.add(FireSourceLabel.overlay(parts, variants.quads));
         }
     }
 
