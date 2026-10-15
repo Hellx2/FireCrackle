@@ -138,7 +138,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       <g opacity={opacity} clipPath={`url(#${clipId})`}>
         <FireTexels texels={texels} pixelGrid={pixelGrid} scaleX={width} scaleY={height} />
       </g>
-      <polygon className="fire-quad-guide" points={points(quad)} onPointerDown={(e) => { if (e.ctrlKey) begin(e, selectedCorner ?? 0, false); }} />
+      <polygon className="fire-quad-guide" points={points(quad)} strokeWidth={2 / screenScale} onPointerDown={(e) => { if (e.ctrlKey) begin(e, selectedCorner ?? 0, false); }} />
       {quad.map(([x, y], i) => <circle key={i} className={`fire-quad-handle${selectedCorner === i ? " selected" : ""}`} cx={x * width} cy={y * height}
         r={8 / screenScale} fill="#61e9ff" stroke="#10202a" strokeWidth={2 / screenScale}
         onPointerDown={(e) => begin(e, i, true)}>

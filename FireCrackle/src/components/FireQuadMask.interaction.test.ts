@@ -36,7 +36,7 @@ function render(zoom = 1, matrixScale = 2) {
   Object.assign(hooks.refs[0].current ??= {}, { getScreenCTM: () => ({ a: matrixScale, b: 0, c: 0, d: matrixScale, e: 100, f: 50 }) });
   // Texture decoding is independent; execute only interaction listener setup.
   cleanup = hooks.effects[1]();
-  return { svg: find(tree, "svg")[0], corners: find(tree, "circle") };
+  return { svg: find(tree, "svg")[0], corners: find(tree, "circle"), edge: find(tree, "polygon")[0] };
 }
 function pointer(clientX: number, clientY: number, ctrlKey = false) {
   return { button: 0, pointerId: 1, clientX, clientY, ctrlKey, preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: { setPointerCapture: vi.fn() } };
@@ -74,10 +74,12 @@ describe("manual quad controls", () => {
       let mask = render(zoom, scale);
       expect(mask.corners[0].props.r * scale).toBeCloseTo(8);
       expect(mask.corners[0].props.strokeWidth * scale).toBeCloseTo(2);
+      expect(mask.edge.props.strokeWidth * scale).toBeCloseTo(2);
       render(zoom, scale / 2);
       resized();
       mask = render(zoom, scale / 2);
       expect(mask.corners[0].props.r * scale / 2).toBeCloseTo(8);
+      expect(mask.edge.props.strokeWidth * scale / 2).toBeCloseTo(2);
       stop?.();
     }
     expect(disconnect).toHaveBeenCalledTimes(4);
