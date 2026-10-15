@@ -9,6 +9,7 @@ import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 import { FireQuadMask } from "./FireQuadMask";
 import { DEFAULT_QUAD, type ManualQuad } from "../lib/quadMask";
 import { framePreview, previewSprite, type PreviewSprite } from "../lib/firePreview";
+import { compressionGeometry } from "../lib/compressionPreview";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -51,8 +52,12 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
   const [manualMirrored, setManualMirrored] = useState(false);
   const [manualOpacity, setManualOpacity] = useState(0.6);
   const [pixelGrid, setPixelGrid] = useState(false);
+  const [compressionEnabled, setCompressionEnabled] = useState(false);
+  const [compressionHeight, setCompressionHeight] = useState(720);
+  const [compressionQuality, setCompressionQuality] = useState(0.45);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
+  const delivery = imageSize.width > 0 ? compressionGeometry(imageSize.width,imageSize.height,compressionHeight,manualQuad) : null;
 
   function selectPreview(sprite: PreviewSprite): boolean {
     const mode = manualEnabled ? "manual" : hudEnabled ? "firstPerson" : "none";
@@ -161,7 +166,8 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
           {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
           {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} pixelGrid={pixelGrid} />}
           {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
-            opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale} />}
+            opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale}
+            frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
         </div>
         {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
@@ -198,6 +204,17 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
           <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <button onClick={() => setManualQuad(DEFAULT_QUAD)}>Reset corners</button>
+          <label title="Single-frame approximation: render at video-relative size, reduce colour detail, then apply JPEG block compression. No motion artifacts or exact YouTube bitrate model."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> YouTube-style compression</label>
+          {compressionEnabled && <>
+            <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
+              <option value={2160}>2160p</option><option value={1440}>1440p</option><option value={1080}>1080p</option><option value={720}>720p</option><option value={480}>480p</option><option value={360}>360p</option>
+            </select></label>
+            <label>Damage <select aria-label="Compression damage" value={compressionQuality} onChange={e=>setCompressionQuality(Number(e.target.value))}>
+              <option value={0.8}>Light</option><option value={0.45}>Medium</option><option value={0.15}>Heavy</option><option value={0.05}>Extreme</option>
+            </select></label>
+            {delivery && <span className="hud-hint">{delivery.width}×{delivery.height} frame · quad ≈{delivery.quadWidth.toFixed(1)}×{delivery.quadHeight.toFixed(1)} px · capped at decoded frame size · zoom only magnifies</span>}
+            <span className="hud-hint">Approximation: colour bleed + JPEG blocks, single frame</span>
+          </>}
           <button disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }}>Use frame label</button>
           <span className="hud-hint">Ctrl+atlas: preview · Ctrl+drag: move all · select corner + Alt+click: place · Esc: deselect</span>
         </>}

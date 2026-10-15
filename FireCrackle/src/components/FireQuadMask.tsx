@@ -4,6 +4,8 @@ import fire1 from "../assets/fire_1.png";
 import { manualTexels, moveQuadCorner, screenToQuadPoint, translateQuad, type ManualQuad, type QuadPoint } from "../lib/quadMask";
 import "./FireQuadMask.css";
 import { FireTexels } from "./FireTexels";
+import { CompressedQuad } from "./CompressedQuad";
+import { compressionGeometry, type CompressionSettings } from "../lib/compressionPreview";
 
 interface Props {
   width: number;
@@ -14,12 +16,14 @@ interface Props {
   opacity: number;
   pixelGrid?: boolean;
   zoom?: number;
+  compression?: CompressionSettings;
+  frameUrl?: string;
   quad: ManualQuad;
   onQuad: (quad: ManualQuad) => void;
 }
 
 /** Independent manual reference: dragging it never edits a frame label. */
-export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false, zoom = 1 }: Props) {
+export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false, zoom = 1, compression, frameUrl }: Props) {
   const clipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const dragging = useRef<{ corner: number; last: QuadPoint } | null>(null);
@@ -52,6 +56,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     return () => { cancelled = true; };
   }, [sheet]);
   const texels = useMemo(() => rgba ? manualTexels(rgba, row, mirrored, quad) : [], [rgba, row, mirrored, quad]);
+  const delivery = compression ? compressionGeometry(width,height,compression.height,quad) : null;
   const points = (p: Array<[number, number]>) => p.map(([x, y]) => `${x * width},${y * height}`).join(" ");
 
   function cursorPoint(x: number, y: number): QuadPoint | null {
@@ -135,8 +140,11 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     <svg ref={svgRef} className="fire-quad-mask" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet"
       aria-label="Manual fire matching mask: drag the four corner handles" onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={stop}>
       <defs><clipPath id={clipId}><rect width={width} height={height} /></clipPath></defs>
-      <g opacity={opacity} clipPath={`url(#${clipId})`}>
-        <FireTexels texels={texels} pixelGrid={pixelGrid} scaleX={width} scaleY={height} />
+      <g opacity={compression ? 1 : opacity} clipPath={`url(#${clipId})`}>
+        {compression && frameUrl && delivery ? rgba && <CompressedQuad frameUrl={frameUrl} texels={texels}
+          width={delivery.width} height={delivery.height} displayWidth={width} displayHeight={height} opacity={opacity} quality={compression.quality} />
+          : <FireTexels texels={texels} pixelGrid={pixelGrid} scaleX={width} scaleY={height} />}
+        {compression && pixelGrid && <g fill="none">{texels.map((p,i)=><polygon key={i} points={points(p.points)} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={0.7} vectorEffect="non-scaling-stroke" />)}</g>}
       </g>
       <polygon className="fire-quad-guide" points={points(quad)} strokeWidth={2 / screenScale} onPointerDown={(e) => { if (e.ctrlKey) begin(e, selectedCorner ?? 0, false); }} />
       {quad.map(([x, y], i) => <circle key={i} className={`fire-quad-handle${selectedCorner === i ? " selected" : ""}`} cx={x * width} cy={y * height}
