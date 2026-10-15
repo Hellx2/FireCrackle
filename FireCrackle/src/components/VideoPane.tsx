@@ -13,6 +13,7 @@ import { framePreview, previewSprite, type PreviewSprite } from "../lib/firePrev
 import { compressionGeometry } from "../lib/compressionPreview";
 import { readMaskState, writeMaskState, type MaskState } from "../lib/maskState";
 import { parallelizeQuad } from "../lib/quadTransform";
+import { QuadMatchControls } from "./QuadMatchControls";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -37,10 +38,12 @@ interface Props {
   view: View;
   onError: (message: string) => void;
   previewRef?: Ref<VideoPreviewHandle>;
+  onPreviewChange?: (sprite:PreviewSprite|null)=>void;
+  onMatchCandidate?: (sprite:PreviewSprite)=>void;
 }
 
 /** The current frame, with its number, time and label over it. */
-export function VideoPane({ backend, view, onError, previewRef }: Props) {
+export function VideoPane({ backend, view, onError, previewRef, onPreviewChange, onMatchCandidate }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
@@ -75,6 +78,10 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
   }, [manualEnabled]);
+  useEffect(()=> {
+    onPreviewChange?.(manualEnabled?{sheet:manualSheet,row:manualRow,mirrored:manualMirrored}
+      :hudEnabled?{sheet:1,row:hudRow,mirrored:false}:null);
+  },[manualEnabled,manualSheet,manualRow,manualMirrored,hudEnabled,hudRow,onPreviewChange]);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
   const delivery = imageSize.width > 0 ? compressionGeometry(imageSize.width,imageSize.height,compressionHeight,manualQuad) : null;
@@ -197,10 +204,10 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
         <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>
         {view.typed_pending !== null && <div className="typed-chip">row: {view.typed_pending}_</div>}
         {s && (
-          <div className="suggest-chip" title="Enter accepts the suggestion">
-            Enter ▸ sheet {s.sheet} · row {s.row}
+          <div className="suggest-chip" title={`Time-based guess from frame ${s.from_frame}; not confirmed`}>
+            Time guess · sheet {s.sheet} · row {s.row}
             {s.alt_row !== null && <span className="alt"> (or {s.alt_row})</span>}
-            {s.mirrored ? " · mirrored" : ""}
+            {s.mirrored ? " · mirrored" : ""} · unconfirmed
           </div>
         )}
       </div>
@@ -228,6 +235,10 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <IconButton icon="reset" label="Reset quad corners" onClick={() => setManualQuad(DEFAULT_QUAD)} />
           <IconButton icon="parallel" label="Make quad a parallelogram" title="Make a parallelogram · P · keeps the center" onClick={() => setManualQuad(parallelizeQuad)} />
+          {url&&<QuadMatchControls frameUrl={url} quad={manualQuad} disabled={shown!==view.current} onPreview={candidate=> {
+            setManualSheet(candidate.sheet);setManualRow(candidate.row);setManualMirrored(candidate.mirrored);setManualQuad(candidate.quad);
+            onMatchCandidate?.(candidate);
+          }} />}
           <label title="FFmpeg encodes all 32 fire rows at their video-relative pixel size on white, using H.264 at 60 fps. Only the extracted fire is displayed. This is a real codec stress test, not YouTube's exact encoding recipe."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> FFmpeg compression</label>
           {compressionEnabled && <>
             <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
