@@ -13,12 +13,13 @@ interface Props {
   mirrored: boolean;
   opacity: number;
   pixelGrid?: boolean;
+  zoom?: number;
   quad: ManualQuad;
   onQuad: (quad: ManualQuad) => void;
 }
 
 /** Independent manual reference: dragging it never edits a frame label. */
-export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false }: Props) {
+export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false, zoom = 1 }: Props) {
   const clipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const dragging = useRef<{ corner: number; last: QuadPoint } | null>(null);
@@ -27,6 +28,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
   latestQuad.current = quad;
   const [rgba, setRgba] = useState<Uint8ClampedArray | null>(null);
   const [error, setError] = useState(false);
+  const [screenScale, setScreenScale] = useState(1);
   useEffect(() => {
     let cancelled = false;
     setRgba(null);
@@ -112,6 +114,22 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       window.removeEventListener("keydown", key);
     };
   }, [width, height, selectedCorner, onQuad]);
+
+  // Convert a screen-pixel handle size into SVG units, including image fit and zoom.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const measure = () => {
+      const matrix = svg.getScreenCTM();
+      if (!matrix) return;
+      const scale = Math.hypot(matrix.a, matrix.b);
+      if (Number.isFinite(scale) && scale > 0) setScreenScale(scale);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [width, height, zoom]);
   return <>
     {error && <div className="hud-error" role="alert">Could not load the manual fire sprite.</div>}
     <svg ref={svgRef} className="fire-quad-mask" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet"
@@ -122,7 +140,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       </g>
       <polygon className="fire-quad-guide" points={points(quad)} onPointerDown={(e) => { if (e.ctrlKey) begin(e, selectedCorner ?? 0, false); }} />
       {quad.map(([x, y], i) => <circle key={i} className={`fire-quad-handle${selectedCorner === i ? " selected" : ""}`} cx={x * width} cy={y * height}
-        r={Math.max(width, height) / 120} fill="#61e9ff" stroke="#10202a" strokeWidth={2} vectorEffect="non-scaling-stroke"
+        r={8 / screenScale} fill="#61e9ff" stroke="#10202a" strokeWidth={2 / screenScale}
         onPointerDown={(e) => begin(e, i, true)}>
         <title>{`Corner ${i + 1}: drag to move; Ctrl+drag moves all; select then Alt+click to place`}</title>
       </circle>)}

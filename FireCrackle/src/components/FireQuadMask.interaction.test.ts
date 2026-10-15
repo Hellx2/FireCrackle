@@ -28,12 +28,12 @@ function find(node: Element, type: string): Element[] {
 }
 let cleanup: void | (() => void);
 const onQuad = vi.fn();
-function render() {
+function render(zoom = 1, matrixScale = 2) {
   cleanup?.();
   hooks.refCursor = hooks.stateCursor = 0;
   hooks.effects = [];
-  const tree = FireQuadMask({ width: 100, height: 100, sheet: 0, row: 0, mirrored: false, opacity: 1, quad: DEFAULT_QUAD, onQuad });
-  hooks.refs[0].current = { getScreenCTM: () => ({ a: 2, b: 0, c: 0, d: 2, e: 100, f: 50 }) };
+  const tree = FireQuadMask({ width: 100, height: 100, sheet: 0, row: 0, mirrored: false, opacity: 1, quad: DEFAULT_QUAD, onQuad, zoom });
+  Object.assign(hooks.refs[0].current ??= {}, { getScreenCTM: () => ({ a: matrixScale, b: 0, c: 0, d: matrixScale, e: 100, f: 50 }) });
   // Texture decoding is independent; execute only interaction listener setup.
   cleanup = hooks.effects[1]();
   return { svg: find(tree, "svg")[0], corners: find(tree, "circle") };
@@ -59,6 +59,30 @@ beforeEach(() => {
 afterEach(() => { cleanup?.(); cleanup = undefined; vi.unstubAllGlobals(); });
 
 describe("manual quad controls", () => {
+  it("keeps handles at eight screen pixels through zoom and fitted-image resizing", () => {
+    let resized = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resized = callback; }
+      observe() {}
+      disconnect = disconnect;
+    });
+    for (const [zoom, fit] of [[1, 0.5], [2.46, 0.5], [0.1, 0.25], [10, 1]]) {
+      const scale = zoom * fit;
+      render(zoom, scale);
+      const stop = hooks.effects[2]();
+      let mask = render(zoom, scale);
+      expect(mask.corners[0].props.r * scale).toBeCloseTo(8);
+      expect(mask.corners[0].props.strokeWidth * scale).toBeCloseTo(2);
+      render(zoom, scale / 2);
+      resized();
+      mask = render(zoom, scale / 2);
+      expect(mask.corners[0].props.r * scale / 2).toBeCloseTo(8);
+      stop?.();
+    }
+    expect(disconnect).toHaveBeenCalledTimes(4);
+  });
+
   it("places a selected corner only on Alt+click, including outside the image", () => {
     let mask = render();
     mask.corners[0].props.onPointerDown(pointer(160, 90));
