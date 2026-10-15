@@ -26,6 +26,7 @@ const shapes = {
   zoomOut: <><circle cx="10" cy="10" r="7" /><path d="m15 15 6 6M7 10h6" /></>,
   fit: <><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" /><rect x="7" y="7" width="10" height="10" rx="1" /></>,
   check: <path d="m5 12 4 4L19 6" />,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" /></>,
   alert: <><path d="m12 3 10 18H2ZM12 9v5M12 17h.01" /></>,
 } satisfies Record<string, ReactNode>;
 

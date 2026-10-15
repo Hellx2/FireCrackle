@@ -4,6 +4,7 @@ import { FlagsPanel } from "./components/FlagsPanel";
 import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
 import { Picker } from "./components/Picker";
+import { Credits } from "./components/Credits";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Splitter } from "./components/Splitter";
 import { Timeline } from "./components/Timeline";
@@ -54,6 +55,7 @@ export default function App() {
   const [playback, setPlayback] = useState<Playback>(STOPPED);
   const [showSettings, setShowSettings] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  const [showCredits, setShowCredits] = useState(false);
   const [path, setPath] = useState("");
   const [tab, setTab] = useState<"label" | "phase">("label");
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
@@ -234,6 +236,7 @@ export default function App() {
               <IconButton icon="settings" label="Settings" onClick={() => setShowSettings(true)} />
             </>
           )}
+          <IconButton icon="info" label="Credits" onClick={() => setShowCredits(true)} />
         </div>
       </header>
 
@@ -380,6 +383,7 @@ export default function App() {
         </div>
       )}
       {showSettings && <SettingsPanel settings={ws.settings} onSet={ws.setSetting} onClose={() => setShowSettings(false)} />}
+      {showCredits && <Credits onClose={() => setShowCredits(false)} />}
     </div>
   );
 }

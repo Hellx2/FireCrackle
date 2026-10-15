@@ -1,0 +1,19 @@
+.modal.credits {
+  width: min(560px, 92vw);
+}
+.credits-body {
+  padding-top: 6px;
+}
+.credits-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.credits-section li {
+  padding: 6px 0;
+  line-height: 1.5;
+  color: #b8c2d4;
+}
+.credits-section li b {
+  color: var(--text);
+}
