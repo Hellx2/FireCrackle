@@ -60,19 +60,23 @@ export function QuadMatchControls({frameUrl,quad,disabled,onPreview}:Props) {
     onPreview(candidate);
   }
   return <>
-    <button disabled={disabled||busy===key} onClick={()=>void find()} title="Compare the outlined fire with all 128 sheet/row/mirror combinations. Refines position/size slightly; previews only, never saves a label.">
+    <button disabled={disabled||busy===key} onClick={()=>void find()} title="Build a fire-colour mask, then compare positive colour support for all 128 sheet/row/mirror combinations. Unknown areas add no votes. Refines position/size slightly; previews only, never saves a label.">
       <Icon name="zoomIn" /> {busy===key?"Matching…":"Find best match"}
     </button>
     {current?.error&&<span className="warn" role="alert">Match failed: {current.error}</span>}
     {current?.data&&<>
       <span className="hud-hint" role="status">{current.selected?`Preview: ${name(current.selected)} · confirm separately`
         :current.data.status==="insufficient"?"Too few visible pixels—adjust the quad or use a larger fire"
-        :current.data.status==="weak"?"No clear texture match—adjust the quad; closest candidates below"
+        :current.data.status==="weak"?"Too little matching colour evidence—adjust the quad; closest candidates below"
         :"Close matches—pick a candidate to preview"}</span>
+      {current.data.candidates[0]?.support!==undefined&&<span className="hud-hint"
+        title="Samples are taken at 256 fixed positions across the full quad. Unknown areas contribute zero; they never reduce existing votes.">
+        {current.data.candidates[0].support} matching / {current.data.candidates[0].maskSamples} fire-colour samples · positive evidence only
+      </span>}
       {current.data.candidates.slice(0,3).map((c,i)=><button key={`${c.sheet}-${c.row}-${c.mirrored}`}
         disabled={disabled} aria-pressed={current.selected===c} onClick={()=>preview(c)}
-        title={`Preview ${name(c)}. Similarity is a ranking score, not a probability.`}>
-        {i+1}: S{c.sheet} R{c.row}{c.mirrored?" M":" N"} · {c.score.toFixed(2)}
+        title={`Preview ${name(c)}. Only matching colours add votes; unknown or mismatching pixels add zero. This is evidence, not a probability.`}>
+        {i+1}: S{c.sheet} R{c.row}{c.mirrored?" M":" N"} · {Math.round(c.score*256)} votes
       </button>)}
     </>}
   </>;

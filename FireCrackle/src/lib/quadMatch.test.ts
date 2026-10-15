@@ -56,3 +56,33 @@ it("abstains on a flat background, tiny patch or entirely off-frame quad",()=> {
   const outside=q.map(([x,y])=>[x+2,y]) as ManualQuad;
   expect(matchFireQuad(blank,atlas,outside).status).toBe("insufficient");
 });
+
+it("builds a colour mask first and matches visible fire despite dark particles covering half the quad",()=> {
+  const atlas=sheets(),image=frame(atlas[1],23,true);
+  for(let y=10;y<90;y++)for(let x=32;x<80;x++)image.data.set([8,8,8,255],(y*image.width+x)*4);
+  const result=matchFireQuad(image,atlas,q);
+  expect(result.candidates[0]).toMatchObject({sheet:1,row:23,mirrored:true});
+  expect(result.status).toBe("clear");
+  expect(result.candidates[0].support).toBeGreaterThanOrEqual(32);
+  expect(result.candidates[0].maskSamples).toBeLessThan(180);
+});
+it("abstains when almost all fire is covered rather than inventing a row",()=> {
+  const atlas=sheets(),image=frame(atlas[0],12,false);
+  for(let y=10;y<90;y++)for(let x=32;x<122;x++)image.data.set([8,8,8,255],(y*image.width+x)*4);
+  expect(matchFireQuad(image,atlas,q).status).not.toBe("clear");
+});
+
+it("adds positive evidence without diluting existing votes with masked colour mismatches",()=> {
+  const atlas=sheets(),covered=frame(atlas[1],23,true);
+  for(let y=10;y<90;y++)for(let x=32;x<80;x++)covered.data.set([8,8,8,255],(y*160+x)*4);
+  const partial=matchFireQuad(covered,atlas,q).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
+  expect(partial).toBeDefined();
+  // Reveal unrelated but fire-coloured pixels on the hidden side. They may
+  // support rivals, but cannot subtract this candidate's existing evidence.
+  const unrelated=frame(atlas[0],3,false);
+  for(let y=10;y<90;y++)for(let x=32;x<80;x++)covered.data.set(unrelated.data.subarray((y*160+x)*4,(y*160+x)*4+4),(y*160+x)*4);
+  const extra=matchFireQuad(covered,atlas,q).candidates.find(c=>c.sheet===1&&c.row===23&&c.mirrored)!;
+  expect(extra).toBeDefined();expect(extra.score).toBeGreaterThanOrEqual(partial.score);
+  const full=matchFireQuad(frame(atlas[1],23,true),atlas,q).candidates[0];
+  expect(full.score).toBeGreaterThan(partial.score);
+});
