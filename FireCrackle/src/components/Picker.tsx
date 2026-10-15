@@ -5,6 +5,8 @@ import { COLUMNS, ROWS, columnHeader, labelToCell, suggestionCells, type Label }
 import type { PreviewSprite } from "../lib/firePreview";
 import type { View } from "../lib/api";
 import { pickerLayout } from "../lib/pickerLayout";
+import { appearanceEdges, edgeFilterValue, matchesEdges, matchingAppearances, sheetEdgeCounts, type AtlasEdges } from "../lib/atlasFilter";
+import { Icon, IconButton } from "./Icon";
 import "./Picker.css";
 
 interface Props {
@@ -21,6 +23,30 @@ interface Props {
 export function Picker({ view, cell, onCell, candidate = null, preview = null }: Props) {
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [left, setLeft] = useState<number | null>(null);
+  const [right, setRight] = useState<number | null>(null);
+  const [edges, setEdges] = useState<AtlasEdges | null>(null);
+  const [edgeError, setEdgeError] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = (src: string) => new Promise<ReturnType<typeof sheetEdgeCounts>>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        try {
+          if (image.naturalWidth !== 16 || image.naturalHeight !== 512) throw new Error("Invalid fire sprite sheet");
+          const canvas = document.createElement("canvas"); canvas.width = 16; canvas.height = 512;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas unavailable");
+          ctx.drawImage(image, 0, 0);
+          resolve(sheetEdgeCounts(ctx.getImageData(0, 0, 16, 512).data));
+        } catch (error) { reject(error); }
+      };
+      image.onerror = () => reject(new Error("Could not load fire pixels"));
+      image.src = src;
+    });
+    void Promise.all([load(fire0), load(fire1)]).then((counts) => { if (!cancelled) setEdges(counts); }).catch(() => { if (!cancelled) setEdgeError(true); });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     const picker = pickerRef.current;
     if (!picker) return;
@@ -42,7 +68,17 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null }:
     targetRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [focusRow, blocks, CELL]);
 
-  return (
+  const filterActive = left !== null || right !== null;
+  return (<>
+    <section className="atlas-filters" aria-label="Visual sprite filters" onKeyDown={(e) => e.stopPropagation()}>
+      <div className="atlas-filter-heading"><Icon name="settings" /><strong>Edge pixels</strong><span role="status">{edgeError ? "Counts unavailable" : edges ? `${matchingAppearances(edges, { left, right })} / 128 match` : "Reading pixels…"}</span></div>
+      <div className="atlas-filter-inputs">
+        <label>Left <select aria-label="Left edge fire pixels" value={left ?? ""} onChange={(e) => setLeft(edgeFilterValue(e.target.value))}><option value="">Any</option>{Array.from({ length: 17 }, (_, count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <label>Right <select aria-label="Right edge fire pixels" value={right ?? ""} onChange={(e) => setRight(edgeFilterValue(e.target.value))}><option value="">Any</option>{Array.from({ length: 17 }, (_, count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <IconButton icon="reset" label="Clear edge pixel filters" disabled={!filterActive} onClick={() => { setLeft(null); setRight(null); }} />
+      </div>
+      <p>{edgeError ? "Could not read sprite pixels. All sprites remain selectable." : "Outermost columns · dimmed sprites stay clickable · hover for counts"}</p>
+    </section>
     <div ref={pickerRef} className="picker picker-adaptive" style={{ "--cell": `${CELL}px`, "--blocks": blocks } as CSSProperties}>
       <div className="picker-blocks">
         {Array.from({ length: blocks }, (_, block) => (
@@ -70,15 +106,17 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null }:
                     const isAlt = sug.alt?.col === c && sug.alt.row === row;
                     const isChosen = chosen?.col === c && chosen.row === row;
                     const isShown = shown?.col === c && shown.row === row;
+                    const counts = edges ? appearanceEdges(edges, col.sheet, row, col.mirrored) : null;
+                    const filteredOut = counts !== null && !matchesEdges(counts, { left, right });
                     const states = [isChosen && "Candidate", isShown && "Preview", isSug && `Time guess from frame ${view.suggestion?.from_frame}`, isAlt && "Alternate time guess", isCurrent && "Saved label"].filter(Boolean);
                     const sheetImg = col.sheet === 0 ? fire0 : fire1;
                     return (
                       <button
                         key={c}
-                        className={`cell${isCurrent ? " atlas-saved" : ""}${isSug ? " atlas-time" : ""}${isAlt ? " atlas-alt" : ""}${isChosen ? " atlas-candidate" : ""}${isShown ? " atlas-preview" : ""}`}
-                        aria-label={`sheet ${col.sheet}, row ${row}, ${col.mirrored ? "mirrored" : "normal"}${states.length ? `; ${states.join(", ")}` : ""}`}
+                        className={`cell${isCurrent ? " atlas-saved" : ""}${isSug ? " atlas-time" : ""}${isAlt ? " atlas-alt" : ""}${isChosen ? " atlas-candidate" : ""}${isShown ? " atlas-preview" : ""}${filteredOut ? " edge-filter-miss" : ""}`}
+                        aria-label={`sheet ${col.sheet}, row ${row}, ${col.mirrored ? "mirrored" : "normal"}${counts ? `; left ${counts.left}, right ${counts.right} edge pixels` : ""}${filteredOut ? "; outside filter, still selectable" : ""}${states.length ? `; ${states.join(", ")}` : ""}`}
                         aria-pressed={isChosen}
-                        title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}${states.length ? `\n${states.join(" · ")}` : ""}\nClick: select candidate · Ctrl+click: preview only`}
+                        title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}${counts ? `\nEdge pixels: left ${counts.left} · right ${counts.right}` : ""}${filteredOut ? "\nOutside filter · still selectable" : ""}${states.length ? `\n${states.join(" · ")}` : ""}\nClick: select candidate · Ctrl+click: preview only`}
                         onClick={(e) => onCell(c, row, e.ctrlKey)}
                         tabIndex={-1}
                       >
@@ -108,5 +146,5 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null }:
         ))}
       </div>
     </div>
-  );
+  </>);
 }
