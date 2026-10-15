@@ -237,7 +237,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           <IconButton icon="parallel" label="Make quad a parallelogram" title="Make a parallelogram · P · keeps the center" onClick={() => setManualQuad(parallelizeQuad)} />
           {url&&<QuadMatchControls frameUrl={url} quad={manualQuad} disabled={shown!==view.current} onPreview={candidate=> {
             setManualSheet(candidate.sheet);setManualRow(candidate.row);setManualMirrored(candidate.mirrored);setManualQuad(candidate.quad);
-            onMatchCandidate?.(candidate);
+            onMatchCandidate?.({sheet:candidate.sheet,row:candidate.row,mirrored:candidate.mirrored});
           }} />}
           <label title="FFmpeg encodes all 32 fire rows at their video-relative pixel size on white, using H.264 at 60 fps. Only the extracted fire is displayed. This is a real codec stress test, not YouTube's exact encoding recipe."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> FFmpeg compression</label>
           {compressionEnabled && <>
