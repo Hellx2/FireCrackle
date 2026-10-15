@@ -85,7 +85,7 @@ export function VideoPane({ backend, view, onError }: Props) {
     return true;
   });
 
-  // the pane can be resized: keep the view inside it
+  // Resize preserves free zoom/pan; only invalid numeric values are repaired.
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -95,7 +95,7 @@ export function VideoPane({ backend, view, onError }: Props) {
   }, []);
 
   function panDown(e: PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0 || xf.scale <= 1) return;
+    if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = { x: e.clientX, y: e.clientY };
   }
@@ -115,12 +115,13 @@ export function VideoPane({ backend, view, onError }: Props) {
   return (
     <div className="video-pane">
       <div
-        className={`video-frame${xf.scale > 1 ? " zoomed" : ""}`}
+        className="video-frame zoomed"
         ref={frameRef}
         onPointerDown={panDown}
         onPointerMove={panMove}
         onPointerUp={panUp}
         onPointerCancel={panUp}
+        onLostPointerCapture={panUp}
         onDoubleClick={() => setXf(IDENTITY)}
         title="scroll to zoom · drag to move · double-click to reset"
       >
@@ -133,7 +134,7 @@ export function VideoPane({ backend, view, onError }: Props) {
           {manualEnabled && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} />}
         </div>
-        {xf.scale > 1 && <div className="zoom-tag">{xf.scale.toFixed(1)}× · double-click to reset</div>}
+        {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
         <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>
         {view.typed_pending !== null && <div className="typed-chip">row: {view.typed_pending}_</div>}
@@ -167,7 +168,7 @@ export function VideoPane({ backend, view, onError }: Props) {
           <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
           <button onClick={() => setManualQuad(DEFAULT_QUAD)}>Reset corners</button>
           <button disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }}>Use frame label</button>
-          <span className="hud-hint">drag the four blue corners · reference only, labels unchanged</span>
+          <span className="hud-hint">drag blue corners beyond the image · zoom out for room · labels unchanged</span>
         </>}
       </div>
       <div className="video-meta">

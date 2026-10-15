@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   IDENTITY,
   PANEL_ZOOM,
-  VIDEO_ZOOM,
   clampView,
   panView,
   parseZooms,
@@ -66,13 +65,23 @@ describe("zoomAt (video)", () => {
     expect(cx * v.scale + v.x).toBeCloseTo(px, 6);
     expect(cy * v.scale + v.y).toBeCloseTo(py, 6);
   });
-  it("cannot zoom out below 1x and returns to the identity", () => {
+  it("zooms out below fit while keeping the cursor anchored", () => {
     const v = zoomAt({ scale: 1.2, x: -50, y: -20 }, 300, 100, 0.1, BOX);
-    expect(v).toEqual(IDENTITY);
+    expect(v.scale).toBeCloseTo(0.12);
+    expect(v.x).toBeCloseTo(265);
+    expect(v.y).toBeCloseTo(88);
   });
-  it("cannot zoom in past the maximum", () => {
+  it("has no application zoom ceiling", () => {
     const v = zoomAt(IDENTITY, 0, 0, 1e6, BOX);
-    expect(v.scale).toBe(VIDEO_ZOOM.max);
+    expect(v.scale).toBe(1e6);
+    expect(zoomAt(v, 0, 0, 2, BOX).scale).toBe(2e6);
+  });
+  it("has no application zoom-out floor", () => {
+    let v = IDENTITY;
+    for (let i = 0; i < 200; i++) v = zoomAt(v, 500, 250, 0.5, BOX);
+    expect(v.scale).toBe(2 ** -200);
+    expect(v.x).toBeCloseTo(500);
+    expect(v.y).toBeCloseTo(250);
   });
   it("zooming in at the corner never exposes empty space", () => {
     const v = zoomAt(IDENTITY, 0, 0, 4, BOX);
@@ -90,29 +99,39 @@ describe("zoomAt (video)", () => {
 });
 
 describe("clampView / panView", () => {
-  it("at 1x the view is pinned to the origin whatever the pan", () => {
-    expect(panView(IDENTITY, 80, -40, BOX)).toEqual(IDENTITY);
+  it("pans freely at fit and zoomed out", () => {
+    expect(panView(IDENTITY, 80, -40, BOX)).toEqual({scale:1,x:80,y:-40});
+    expect(panView({scale:0.25,x:0,y:0}, -80, 90, BOX)).toEqual({scale:0.25,x:-80,y:90});
   });
   it("panning moves the content with the pointer", () => {
     const v = panView({ scale: 2, x: -400, y: -100 }, 50, 20, BOX);
     expect(v).toEqual({ scale: 2, x: -350, y: -80 });
   });
-  it("cannot pan past an edge", () => {
+  it("can pan past any video edge", () => {
     const v = panView({ scale: 2, x: -400, y: -100 }, 9999, 9999, BOX);
-    expect(v.x).toBe(0);
-    expect(v.y).toBe(0);
+    expect(v.x).toBe(9599);
+    expect(v.y).toBe(9899);
     const w = panView({ scale: 2, x: -400, y: -100 }, -9999, -9999, BOX);
-    expect(w.x).toBe(BOX.w - BOX.w * 2);
-    expect(w.y).toBe(BOX.h - BOX.h * 2);
+    expect(w.x).toBe(-10399);
+    expect(w.y).toBe(-10099);
   });
-  it("clampView pulls a stale view back in after the pane shrinks", () => {
+  it("preserves off-frame positioning after a resize", () => {
     const v = clampView({ scale: 2, x: -1800, y: -900 }, { w: 400, h: 200 });
-    expect(v.x).toBe(400 - 800);
-    expect(v.y).toBe(200 - 400);
+    expect(v.x).toBe(-1800);
+    expect(v.y).toBe(-900);
   });
-  it("clampView forces scale into the video limits", () => {
-    expect(clampView({ scale: 0.2, x: 5, y: 5 }, BOX)).toEqual(IDENTITY);
-    expect(clampView({ scale: 999, x: 0, y: 0 }, BOX).scale).toBe(VIDEO_ZOOM.max);
+  it("preserves any finite positive scale and repairs invalid values", () => {
+    expect(clampView({ scale: 0.2, x: 5, y: 5 }, BOX)).toEqual({ scale:0.2,x:5,y:5 });
+    expect(clampView({ scale: 999, x: 0, y: 0 }, BOX).scale).toBe(999);
+    expect(clampView({ scale: NaN, x: Infinity, y: NaN }, BOX)).toEqual(IDENTITY);
+    expect(clampView({ scale: 0, x: 0, y: 0 }, BOX)).toEqual(IDENTITY);
+  });
+  it("keeps finite coordinates at numeric overflow or underflow", () => {
+    for (const scale of [Number.MAX_VALUE, Number.MIN_VALUE]) {
+      const v = zoomAt({scale,x:0,y:0}, 200, 100, scale > 1 ? 2 : 0.5, BOX);
+      expect(v.scale).toBeGreaterThan(0);
+      expect([v.scale,v.x,v.y].every(Number.isFinite)).toBe(true);
+    }
   });
 });
 

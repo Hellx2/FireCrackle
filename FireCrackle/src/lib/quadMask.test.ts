@@ -15,14 +15,22 @@ describe("manual fire quad", () => {
     for (const p of line) expect((p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])).toBeCloseTo(0, 10);
   });
 
-  it("clamps handles to the image and prevents folded or collapsed masks", () => {
+  it("allows handles outside the image and prevents folded or collapsed masks", () => {
     expect(validQuad(DEFAULT_QUAD)).toBe(true);
     const moved = moveQuadCorner(DEFAULT_QUAD, 0, [-2, -1]);
-    expect(moved[0]).toEqual([0, 0]);
+    expect(moved[0]).toEqual([-2, -1]);
     expect(moved.slice(1)).toEqual(DEFAULT_QUAD.slice(1));
     expect(moveQuadCorner(DEFAULT_QUAD, 0, [0.8, 0.9])).toBe(DEFAULT_QUAD);
     expect(moveQuadCorner(DEFAULT_QUAD, 0, DEFAULT_QUAD[1])).toBe(DEFAULT_QUAD);
     expect(moveQuadCorner(DEFAULT_QUAD, 5, [0, 0])).toBe(DEFAULT_QUAD);
+  });
+
+  it("supports quads partly or entirely outside the video without clipping geometry", () => {
+    const outside: ManualQuad = [[-2,-2],[-1,-2],[-1,-1],[-2,-1]];
+    expect(validQuad(outside)).toBe(true);
+    expect(projectQuad(outside,0,0)).toEqual([-2,-2]);
+    expect(moveQuadCorner(DEFAULT_QUAD,2,[1.4,1.6])[2]).toEqual([1.4,1.6]);
+    expect(moveQuadCorner(DEFAULT_QUAD,0,[NaN,0])).toBe(DEFAULT_QUAD);
   });
 
   it("keeps source row, transparency and manual mirroring separate from geometry", () => {

@@ -17,7 +17,6 @@ export interface Box {
   h: number;
 }
 
-export const VIDEO_ZOOM: Limits = { min: 1, max: 16 };
 export const PANEL_ZOOM: Limits = { min: 0.5, max: 3 };
 
 export const IDENTITY: ViewXform = { scale: 1, x: 0, y: 0 };
@@ -49,28 +48,27 @@ export function zoomPanel(scale: number, deltaY: number): number {
   return clamp(start * wheelFactor(deltaY), PANEL_ZOOM.min, PANEL_ZOOM.max);
 }
 
-/** Keep the view valid: scale in range, and no empty space past an edge of the content. */
-export function clampView(v: ViewXform, box: Box): ViewXform {
-  const scale = Number.isFinite(v.scale) ? clamp(v.scale, VIDEO_ZOOM.min, VIDEO_ZOOM.max) : 1;
-  const w = Number.isFinite(box.w) ? Math.max(0, box.w) : 0;
-  const h = Number.isFinite(box.h) ? Math.max(0, box.h) : 0;
+/** Repair invalid numeric values without limiting zoom or off-frame navigation. */
+export function clampView(v: ViewXform, _box: Box): ViewXform {
+  const scale = Number.isFinite(v.scale) && v.scale > 0 ? v.scale : 1;
   const x = Number.isFinite(v.x) ? v.x : 0;
   const y = Number.isFinite(v.y) ? v.y : 0;
   return {
     scale,
-    x: clamp(x, w - w * scale, 0),
-    y: clamp(y, h - h * scale, 0),
+    x,
+    y,
   };
 }
 
 /** Zoom by `factor` around the pane point (px, py): the content under it stays under it. */
 export function zoomAt(v: ViewXform, px: number, py: number, factor: number, box: Box): ViewXform {
   if (!(box.w > 0) || !(box.h > 0)) return clampView(v, box);
+  const start = clampView(v, box);
   const f = Number.isFinite(factor) && factor > 0 ? factor : 1;
-  const next = clamp(v.scale * f, VIDEO_ZOOM.min, VIDEO_ZOOM.max);
-  const cx = (px - v.x) / v.scale;
-  const cy = (py - v.y) / v.scale;
-  return clampView({ scale: next, x: px - cx * next, y: py - cy * next }, box);
+  // Only numeric representation has limits: prevent zero/Infinity at underflow/overflow.
+  const next = Math.min(Number.MAX_VALUE, Math.max(Number.MIN_VALUE, start.scale * f));
+  const ratio = next / start.scale;
+  return clampView({ scale: next, x: px - (px - start.x) * ratio, y: py - (py - start.y) * ratio }, box);
 }
 
 /** Move the content with the pointer by (dx, dy). */

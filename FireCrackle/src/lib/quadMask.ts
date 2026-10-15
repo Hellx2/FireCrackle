@@ -2,18 +2,18 @@ export type QuadPoint = [number, number];
 export type ManualQuad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
 export const DEFAULT_QUAD: ManualQuad = [[0.3, 0.2], [0.7, 0.2], [0.7, 0.8], [0.3, 0.8]];
 
-/** Keep corner order and reject folded or collapsed masks. Coordinates are image fractions. */
+/** Keep corner order and reject folded/collapsed masks. Image fractions may extend beyond [0,1]. */
 export function validQuad(quad: ManualQuad): boolean {
   return quad.every((p, i) => {
     const b = quad[(i + 1) % 4], c = quad[(i + 2) % 4];
-    return p.every((v) => Number.isFinite(v) && v >= 0 && v <= 1) &&
+    return p.every(Number.isFinite) &&
       (b[0] - p[0]) * (c[1] - b[1]) - (b[1] - p[1]) * (c[0] - b[0]) > 0.00001;
   });
 }
 
 export function moveQuadCorner(quad: ManualQuad, corner: number, point: QuadPoint): ManualQuad {
   if (!Number.isInteger(corner) || corner < 0 || corner > 3 || !point.every(Number.isFinite)) return quad;
-  const next = quad.map((p, i) => i === corner ? point.map((v) => Math.min(1, Math.max(0, v))) : p) as ManualQuad;
+  const next = quad.map((p, i) => i === corner ? [...point] : p) as ManualQuad;
   return validQuad(next) ? next : quad;
 }
 
