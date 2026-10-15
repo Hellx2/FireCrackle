@@ -285,16 +285,48 @@ input {
   position: relative;
   background: #000;
   height: var(--video-h, 380px);
-  margin: 0 auto;
+  overflow: hidden;
+  touch-action: none;
+}
+.video-frame.zoomed {
+  cursor: grab;
+}
+.video-frame.zoomed:active {
+  cursor: grabbing;
+}
+.video-zoom {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.video-frame img {
-  max-width: 100%;
-  max-height: 100%;
+.video-zoom img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   user-select: none;
+}
+.zoom-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.zoom-box {
+  flex: 0 0 auto;
+}
+.picker-box {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .placeholder {
   color: var(--dim);
@@ -454,7 +486,7 @@ input {
 .picker {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -462,7 +494,7 @@ input {
 }
 .picker-head {
   display: grid;
-  grid-template-columns: 22px repeat(4, 1fr);
+  grid-template-columns: 22px repeat(4, calc(var(--cell, 22px) + 4px));
   color: var(--dim);
   text-align: center;
   font-size: 12px;
@@ -475,7 +507,7 @@ input {
 }
 .picker-row {
   display: grid;
-  grid-template-columns: 22px repeat(4, 1fr);
+  grid-template-columns: 22px repeat(4, calc(var(--cell, 22px) + 4px));
   align-items: center;
 }
 .gutter {

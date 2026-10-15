@@ -8,8 +8,10 @@ import { Splitter } from "./components/Splitter";
 import { Timeline } from "./components/Timeline";
 import { VideoPane } from "./components/VideoPane";
 import { useLayout } from "./hooks/useLayout";
+import { usePanelZooms } from "./hooks/usePanelZooms";
+import { useWheel } from "./hooks/useWheel";
 import { useWorkspace } from "./hooks/useWorkspace";
-import { FLAGS_LIMITS, SIDE_LIMITS, VIDEO_LIMITS, pickerCellSize, upperBound } from "./lib/layout";
+import { FLAGS_LIMITS, SIDE_LIMITS, VIDEO_LIMITS, clampSize, pickerCellSize, upperBound } from "./lib/layout";
 import { STOPPED, keyInfo, nextPlayback, playbackTick, toUiAction, type Playback } from "./lib/actions";
 import { createBackend, settingValue, type Backend } from "./lib/api";
 import { actionFor } from "./lib/keymap";
@@ -45,6 +47,12 @@ export default function App() {
   const [tab, setTab] = useState<"label" | "phase">("label");
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
   const workareaRef = useRef<HTMLElement | null>(null);
+  const { zooms, wheel: zoomWheel, reset: resetZoom } = usePanelZooms();
+  const pickerBoxRef = useRef<HTMLDivElement | null>(null);
+  const flagsBoxRef = useRef<HTMLDivElement | null>(null);
+  // ctrl + wheel zooms the panel under the cursor (and not the whole window)
+  useWheel(pickerBoxRef, (e) => (e.ctrlKey ? (zoomWheel("picker", e.deltaY), true) : false));
+  useWheel(flagsBoxRef, (e) => (e.ctrlKey ? (zoomWheel("flags", e.deltaY), true) : false));
 
   /** Leave the Phase tab at a frame (a flag, or a point of the chart). */
   function jumpToLabel(frame: number) {
@@ -240,7 +248,9 @@ export default function App() {
               onChange={(v) => setLayout("flagsHeight", v)}
               onReset={() => resetLayout("flagsHeight")}
             />
-            <FlagsPanel flags={ws.flags} fps={view.fps} current={view.current} onSeek={(frame) => void act({ type: "goTo", frame })} />
+            <div className="zoom-box" ref={flagsBoxRef} style={{ zoom: zooms.flags }} onDoubleClick={(e) => e.ctrlKey && resetZoom("flags")}>
+              <FlagsPanel flags={ws.flags} fps={view.fps} current={view.current} onSeek={(frame) => void act({ type: "goTo", frame })} />
+            </div>
           </section>
           <Splitter
             direction="col"
@@ -270,7 +280,13 @@ export default function App() {
                 clear
               </button>
             </div>
-            <Picker view={view} cell={pickerCellSize(layout.sideWidth)} onCell={(col, row) => void act({ type: "clickCell", col, row })} />
+            <div className="picker-box" ref={pickerBoxRef} onDoubleClick={(e) => e.ctrlKey && resetZoom("picker")}>
+              <Picker
+                view={view}
+                cell={clampSize(pickerCellSize(layout.sideWidth) * zooms.picker, 16, 240)}
+                onCell={(col, row) => void act({ type: "clickCell", col, row })}
+              />
+            </div>
           </aside>
         </main>
       )}
