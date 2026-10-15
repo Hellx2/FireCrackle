@@ -1,0 +1,9 @@
+.video-ruler { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; user-select: none; }
+.ruler-shadow { stroke: #000c; }
+.ruler-axis, .ruler-tick { stroke: #d9ff89; }
+.ruler-hit { stroke: transparent; pointer-events: stroke; cursor: move; touch-action: none; }
+.ruler-number { fill: #eaffb9; stroke: #111e; paint-order: stroke fill; text-anchor: middle; font-family: system-ui, sans-serif; pointer-events: none; }
+.ruler-calibration { pointer-events: all; cursor: move; touch-action: none; }
+.ruler-calibration circle { fill: #d9ff89; stroke: #15200c; }
+.ruler-calibration.point-1 circle { fill: #fff; }
+.ruler-controls .ruler-unit-input { width: 85px; }

@@ -14,6 +14,8 @@ import { compressionGeometry } from "../lib/compressionPreview";
 import { readMaskState, writeMaskState, type MaskState } from "../lib/maskState";
 import { parallelizeQuad } from "../lib/quadTransform";
 import { QuadMatchControls } from "./QuadMatchControls";
+import { VideoRuler } from "./VideoRuler";
+import { DEFAULT_RULER, readRuler, rulerUnit, scaleRulerUnit, writeRuler, type RulerState } from "../lib/ruler";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -85,6 +87,12 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
   const delivery = imageSize.width > 0 ? compressionGeometry(imageSize.width,imageSize.height,compressionHeight,manualQuad) : null;
+  const restoredRuler = useRef<RulerState | null>(null);
+  if (!restoredRuler.current) restoredRuler.current = readRuler();
+  const [ruler, setRuler] = useState(restoredRuler.current);
+  const unitPixels = rulerUnit(ruler.points, imageSize.width, imageSize.height);
+  useEffect(() => { writeRuler(ruler); }, [ruler]);
+  const resizeRulerUnit = (pixels: number) => setRuler(current => ({ ...current, points: scaleRulerUnit(current.points, pixels, imageSize.width, imageSize.height) }));
 
   function selectPreview(sprite: PreviewSprite): boolean {
     const mode = manualEnabled ? "manual" : hudEnabled ? "firstPerson" : "none";
@@ -198,6 +206,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale}
             frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
+          {ruler.enabled && url && imageSize.width > 0 && <VideoRuler {...imageSize} zoom={xf.scale} points={ruler.points} onChange={points => setRuler(current => ({ ...current, points }))} />}
         </div>
         {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
@@ -210,6 +219,16 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
             {s.mirrored ? " · mirrored" : ""} · unconfirmed
           </div>
         )}
+      </div>
+      <div className="hud-controls ruler-controls" onKeyDown={(e) => e.stopPropagation()}>
+        <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
+        {ruler.enabled && <>
+          <label>1 unit = <input className="ruler-unit-input" aria-label="Video pixels per ruler unit" type="number" min={0.01} step={0.25} disabled={unitPixels <= 0} value={unitPixels > 0 ? Number(unitPixels.toFixed(3)) : ""} onChange={e => resizeRulerUnit(e.target.valueAsNumber)} /> video px</label>
+          <IconButton icon="zoomOut" label="Shrink ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels / 1.1)} />
+          <IconButton icon="zoomIn" label="Enlarge ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels * 1.1)} />
+          <IconButton icon="reset" label="Reset ruler calibration" onClick={() => setRuler({ enabled: true, points: DEFAULT_RULER.points })} />
+          <span className="hud-hint">Drag 0 and 1 to set unit / direction · drag line to move · extends both ways</span>
+        </>}
       </div>
       <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
         <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); } }} /> First-person fire</label>
