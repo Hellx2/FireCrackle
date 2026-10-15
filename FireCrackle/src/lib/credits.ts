@@ -17,7 +17,7 @@ export const CREDITS: CreditSection[] = [
       { name: "Dijakonal", note: "started investigating fire in more depth and brought up that it is tick-based." },
       { name: "Lagios", note: "discovered how to use fire animations to detect splices." },
       { name: "Jasper", note: "had the idea to combine that with jolt cracking." },
-      { name: "Dart", note: "gave hints initially." },
+      { name: "Dart", note: "gave hints throughout the process." },
     ],
   },
   {

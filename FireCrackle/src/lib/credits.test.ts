@@ -14,7 +14,8 @@ describe("the credits", () => {
     expect(find("Dijakonal")?.note).toMatch(/tick/i);
     expect(find("Lagios")?.note).toMatch(/splice/i);
     expect(find("Jasper")?.note).toMatch(/jolt cracking/i);
-    expect(find("Dart")?.note).toMatch(/hints initially/i);
+    expect(find("Dart")?.note).toMatch(/hints throughout the process/i);
+    expect(find("Dart")?.note).not.toMatch(/initially/i);
   });
 
   it("thanks the Minecraft Forensics server", () => {
