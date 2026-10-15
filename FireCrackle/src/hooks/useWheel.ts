@@ -23,5 +23,11 @@ export function useWheel(ref: RefObject<HTMLElement | null>, handler: (e: WheelE
     el.addEventListener("wheel", on, { passive: false });
     off.current = () => el.removeEventListener("wheel", on);
   });
-  useEffect(() => () => off.current?.(), []);
+  useEffect(() => () => {
+    off.current?.();
+    off.current = null;
+    // StrictMode replays effect setup after cleanup with the same refs.
+    // Clear the binding too, so setup attaches the listener again.
+    bound.current = null;
+  }, []);
 }
