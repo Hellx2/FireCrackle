@@ -1,6 +1,6 @@
 import { inTauri } from "./api";
-import { compressionSvg } from "./compressionPreview";
-import { manualTexels, type ManualQuad } from "./quadMask";
+import type { ManualQuad } from "./quadMask";
+import { rasterizeFire, restoreFireAlpha } from "./quadRaster";
 
 export function qualityToCrf(quality:number):number {
   return quality >= 0.8 ? 20 : quality >= 0.45 ? 28 : quality >= 0.15 ? 36 : 42;
@@ -42,15 +42,13 @@ export async function encodeFireCycle(rgba:Uint8ClampedArray,quad:ManualQuad,mir
     if(!inTauri()) throw new Error("FFmpeg compression requires the desktop app");
     const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
     const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Canvas unavailable");
+    const pixels=ctx.createImageData(width,height);
     const frames:number[][]=[];
     for(let row=0;row<32;row++) {
       if(cancelled())throw new Error("Cancelled");
-      const url=URL.createObjectURL(new Blob([compressionSvg(manualTexels(rgba,row,mirrored,quad),width,height)],{type:"image/svg+xml"}));
-      try {
-        const sprite=await loadImage(url);
-        ctx.fillStyle="white";ctx.fillRect(0,0,width,height);ctx.drawImage(sprite,0,0);
-        frames.push(Array.from(new Uint8Array(await (await png(canvas)).arrayBuffer())));
-      } finally {URL.revokeObjectURL(url);}
+      rasterizeFire(rgba,row,mirrored,quad,width,height,true,pixels.data);
+      ctx.putImageData(pixels,0,0);
+      frames.push(Array.from(new Uint8Array(await (await png(canvas)).arrayBuffer())));
     }
     if(cancelled())throw new Error("Cancelled");
     const {invoke}=await import("@tauri-apps/api/core");
@@ -64,12 +62,14 @@ export async function encodeFireCycle(rgba:Uint8ClampedArray,quad:ManualQuad,mir
 /** Clip the decoded frame using the original fire alpha; the white backdrop never reaches the video. */
 export async function clipCompressedFire(frame:Uint8Array,rgba:Uint8ClampedArray,quad:ManualQuad,row:number,mirrored:boolean,width:number,height:number):Promise<Blob> {
   const damagedUrl=URL.createObjectURL(new Blob([frame as BlobPart],{type:"image/png"}));
-  const maskUrl=URL.createObjectURL(new Blob([compressionSvg(manualTexels(rgba,row,mirrored,quad),width,height)],{type:"image/svg+xml"}));
   try {
-    const [damaged,mask]=await Promise.all([loadImage(damagedUrl),loadImage(maskUrl)]);
+    const damaged=await loadImage(damagedUrl);
     const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
     const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Canvas unavailable");
-    ctx.drawImage(damaged,0,0);ctx.globalCompositeOperation="destination-in";ctx.drawImage(mask,0,0);
+    ctx.drawImage(damaged,0,0);
+    const pixels=ctx.getImageData(0,0,width,height);
+    restoreFireAlpha(pixels.data,rasterizeFire(rgba,row,mirrored,quad,width,height));
+    ctx.putImageData(pixels,0,0);
     return await png(canvas);
-  } finally {URL.revokeObjectURL(damagedUrl);URL.revokeObjectURL(maskUrl);}
+  } finally {URL.revokeObjectURL(damagedUrl);}
 }

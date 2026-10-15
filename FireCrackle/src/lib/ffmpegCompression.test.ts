@@ -25,6 +25,8 @@ function canvasMocks() {
   vi.stubGlobal("window",{__TAURI_INTERNALS__:{}});
   const operations:string[]=[];
   const ctx={fillStyle:"",globalCompositeOperation:"source-over",fillRect:vi.fn(),
+    createImageData:(w:number,h:number)=>({data:new Uint8ClampedArray(w*h*4)}),
+    getImageData:(_x:number,_y:number,w:number,h:number)=>({data:new Uint8ClampedArray(w*h*4).fill(200)}),putImageData:vi.fn(),
     drawImage:vi.fn(function(this:{globalCompositeOperation:string}) {operations.push(this.globalCompositeOperation);})};
   const canvas={width:0,height:0,getContext:()=>ctx,toBlob:(cb:(blob:Blob)=>void)=>cb(new Blob(["png"],{type:"image/png"}))};
   vi.stubGlobal("document",{createElement:()=>canvas});
@@ -39,8 +41,9 @@ it("encodes the full animation at delivery pixels on white, reusing the cycle fo
   const quad:ManualQuad=[[0.4,0.4],[0.42,0.4],[0.42,0.44],[0.4,0.44]];
   const cycle=await encodeFireCycle(rgba,quad,false,1920,1080,0.45,()=>false);
   expect([canvas.width,canvas.height]).toEqual([1920,1080]);
-  expect(ctx.fillStyle).toBe("white");
-  expect(ctx.fillRect).toHaveBeenCalledTimes(32);
+  expect(ctx.putImageData).toHaveBeenCalledTimes(32);
+  expect(ctx.putImageData.mock.calls[0][0].data.slice(0,4)).toEqual(new Uint8ClampedArray([255,255,255,255]));
+  expect(ctx.drawImage).not.toHaveBeenCalled();
   expect(invoke).toHaveBeenCalledWith("compress_fire_cycle",expect.objectContaining({width:1920,height:1080,crf:28,frames:expect.arrayContaining([expect.any(Array)])}));
   expect((vi.mocked(invoke).mock.calls[0][1] as {frames:number[][]}).frames).toHaveLength(32);
   const again=await encodeFireCycle(rgba,quad,false,1920,1080,0.45,()=>false);
@@ -53,10 +56,11 @@ it("clips decoded pixels with sprite alpha, including transparent holes; backdro
   const quad:ManualQuad=[[0,0],[1,0],[1,1],[0,1]];
   const rgba=new Uint8ClampedArray(16*512*4).fill(255);
   const blob=await clipCompressedFire(new Uint8Array([1]),rgba,quad,4,true,1920,1080);
-  expect(operations).toEqual(["source-over","destination-in"]);
+  expect(operations).toEqual(["source-over"]);
+  expect(ctx.putImageData.mock.calls[0][0].data[3]).toBe(255);
   expect(ctx.fillRect).not.toHaveBeenCalled();
   expect(blob.type).toBe("image/png");
-  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1);
 });
 it("reads exactly32 length-prefixed decoded frames",()=> {
   const bytes=new Uint8Array(32*7); const view=new DataView(bytes.buffer);
