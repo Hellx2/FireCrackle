@@ -146,6 +146,10 @@ pub struct LabelConfig {
     pub row_type_timeout_ms: u32,
     /// No row suggestion further than this many seconds from the nearest labelled fire frame.
     pub suggest_max_seconds: f64,
+    /// Neighbouring trusted labels used to constrain fractional clock phase.
+    pub suggest_calibration_seconds: f64,
+    /// Timing uncertainty around the target, measured in local indexed frame intervals.
+    pub suggest_capture_frames: f64,
     /// Fastest playback with the J/L shuttle keys, as a multiple of the video's frame rate.
     pub max_play_speed: u32,
     /// Shortest time between two playback steps in milliseconds; faster playback steps several frames at once.
@@ -160,6 +164,8 @@ impl Default for LabelConfig {
             advance_to_unlabelled: false,
             row_type_timeout_ms: 700,
             suggest_max_seconds: 30.0,
+            suggest_calibration_seconds: 2.0,
+            suggest_capture_frames: 0.5,
             max_play_speed: 8,
             min_play_tick_ms: 16,
         }
@@ -310,7 +316,7 @@ struct Spec {
     set: fn(&mut Settings, f64),
 }
 
-static SPECS: [Spec; 44] = [
+static SPECS: [Spec; 46] = [
     Spec {
         key: "phase.min_run",
         label: "Phase: shortest believable run (frames)",
@@ -518,11 +524,23 @@ Lower it if you only ever type single digits; raise it if you type slowly. Enter
         min: 0.0,
         max: 3600.0,
         integer: false,
-        explanation: "The suggested row for a frame is computed from the nearest labelled fire frame by counting \
-game ticks of video time. The longer the distance, the more a timing error or a cut can throw it off, so no \
-suggestion is made further than this many seconds from a label. Set 0 to turn suggestions off.",
+        explanation: "The suggested row uses indexed timestamps and the nearest manually checked fire label. \
+Accepted guesses do not extend its reach or calibrate the clock. The longer the distance, the more timing \
+errors or cuts can throw it off; no suggestion is made beyond this distance. Set 0 to turn suggestions off.",
         get: |s| s.label.suggest_max_seconds,
         set: |s, v| s.label.suggest_max_seconds = v,
+    },
+    Spec {
+        key: "label.suggest_calibration_seconds", label: "Label: local prediction calibration window (s)",
+        min:0.0, max:3600.0, integer:false,
+        explanation:"Nearby manually checked fire labels constrain the fractional 20 Hz clock phase. Conflicting evidence stops calibration rather than averaging away lag. Accepted guesses never calibrate. 0 uses only the nearest trusted anchor.",
+        get:|s|s.label.suggest_calibration_seconds, set:|s,v|s.label.suggest_calibration_seconds=v,
+    },
+    Spec {
+        key: "label.suggest_capture_frames", label: "Label: prediction capture uncertainty (frame intervals)",
+        min:0.0, max:2.0, integer:false,
+        explanation:"Keep a neighbouring row as an alternative near a tick boundary, allowing this many local indexed frame intervals of timing uncertainty. Default 0.5 is half a frame. This does not bound genuine lag, cuts or clock-rate errors. 0 assumes exact capture timestamps.",
+        get:|s|s.label.suggest_capture_frames, set:|s,v|s.label.suggest_capture_frames=v,
     },
     Spec {
         key: "label.max_play_speed",

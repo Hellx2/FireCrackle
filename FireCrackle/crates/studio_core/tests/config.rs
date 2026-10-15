@@ -1,6 +1,6 @@
 use studio_core::config::*;
 
-const KEYS: [&str; 44] = [
+const KEYS: [&str; 46] = [
     "phase.min_run",
     "phase.tick_rate",
     "phase.window_ticks",
@@ -23,6 +23,8 @@ const KEYS: [&str; 44] = [
     "label.advance_to_unlabelled",
     "label.row_type_timeout_ms",
     "label.suggest_max_seconds",
+    "label.suggest_calibration_seconds",
+    "label.suggest_capture_frames",
     "label.max_play_speed",
     "label.min_play_tick_ms",
     "decode.window_back",

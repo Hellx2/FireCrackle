@@ -14,7 +14,9 @@ fn project(n: usize, fps: f64) -> Project {
     Project::assemble("v.mkv", 1, "1:4096:0".into(), meta, &idx)
 }
 
-fn session_with(n: usize, fps: f64, settings: Settings) -> Session {
+fn session_with(n: usize, fps: f64, mut settings: Settings) -> Session {
+    // These original ideal-clock fixtures assume exact capture, not half-frame sampling uncertainty.
+    settings.label.suggest_capture_frames = 0.0;
     Session::new(project(n, fps), LabelStore::new(n as u32), settings).unwrap()
 }
 

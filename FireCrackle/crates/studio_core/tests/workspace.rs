@@ -60,6 +60,51 @@ fn fire(sheet: u8, row: u8, mirrored: bool) -> Label {
     Label::Fire { sheet, row, mirrored }
 }
 
+fn manual(frames:i64) -> UiAction {
+    serde_json::from_value(serde_json::json!({"type":"manualStep","frames":frames})).unwrap()
+}
+
+#[test]
+fn manual_advance_autosaves_departing_guess_once_and_returns_destination_suggestion() {
+    let (dir,mut w)=ws("manual_prediction",20);
+    click(&mut w,1,5); // trustedframe0, nowframe1
+    let v=w.apply(manual(3)).unwrap();
+    assert_eq!(v.current,4);assert_eq!(v.labelled_count,2);
+    assert_eq!(v.suggestion.unwrap().from_frame,0);
+    w.apply(UiAction::GoTo{frame:1}).unwrap();
+    assert_eq!(w.view().label,fire(1,6,false));
+    let saved=lines(&dir);assert_eq!(saved.len(),2);assert!(saved[1].contains("\"predicted\":true"));
+    let mut reopened=open_in(&dir,20);reopened.apply(UiAction::GoTo{frame:4}).unwrap();
+    assert_eq!(reopened.view().suggestion.unwrap().from_frame,0);
+    let v=w.apply(UiAction::Undo).unwrap();assert_eq!(v.current,1);assert_eq!(v.label,Label::Unset);
+    let mut reopened=open_in(&dir,20);reopened.apply(UiAction::GoTo{frame:1}).unwrap();assert_eq!(reopened.view().label,Label::Unset);
+    let _=std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn navigation_only_actions_and_existing_labels_never_confirm_a_guess() {
+    let (dir,mut w)=ws("manual_no_overwrite",20);click(&mut w,1,5);
+    w.apply(UiAction::Step{frames:1}).unwrap(); // playback
+    w.apply(manual(-1)).unwrap();assert_eq!(w.view().labelled_count,1);
+    w.apply(UiAction::NoFire).unwrap();w.apply(UiAction::GoTo{frame:1}).unwrap();
+    w.apply(manual(1)).unwrap();w.apply(UiAction::GoTo{frame:1}).unwrap();assert_eq!(w.view().label,Label::NoFire);
+    let _=std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn manual_big_step_moves_once_and_failed_save_retries_without_reconfirmation() {
+    let (dir,mut w)=ws("manual_retry",30);click(&mut w,1,5);
+    let path=dir.join("labels.jsonl");let backup=dir.join("labels.backup");
+    std::fs::rename(&path,&backup).unwrap();std::fs::create_dir(&path).unwrap();
+    let action:UiAction=serde_json::from_value(serde_json::json!({"type":"manualBigStep","dir":1})).unwrap();
+    let v=w.apply(action).unwrap();assert_eq!(v.current,11);assert_eq!(v.labelled_count,2);assert!(v.save_error.is_some());
+    std::fs::remove_dir(&path).unwrap();std::fs::rename(backup,&path).unwrap();
+    let v=w.apply(UiAction::Step{frames:1}).unwrap();assert_eq!(v.current,12);assert_eq!(v.labelled_count,2);assert!(v.save_error.is_none());
+    assert_eq!(lines(&dir).len(),2);
+    let mut reopened=open_in(&dir,30);reopened.apply(UiAction::GoTo{frame:12}).unwrap();assert_eq!(reopened.view().suggestion.unwrap().from_frame,0);
+    let _=std::fs::remove_dir_all(&dir);
+}
+
 fn click(w: &mut Workspace, col: u32, row: u32) -> View {
     w.apply(UiAction::ClickCell { col, row }).unwrap()
 }
@@ -96,7 +141,7 @@ fn the_view_serialises_to_json_the_ui_can_read() {
     assert_eq!(v["pick"], serde_json::json!({"sheet": 1, "mirrored": false}));
     assert_eq!(v["suggestion"]["row"], 8);
     assert_eq!(v["suggestion"]["from_frame"], 0);
-    assert!(v["suggestion"]["alt_row"].is_null());
+    assert_eq!(v["suggestion"]["alt_row"],9, "whole ticks still have capture-boundary uncertainty by default");
     assert_eq!(v["labelled_count"], 1);
     let first = serde_json::to_value(w.apply(UiAction::GoTo { frame: 0 }).unwrap()).unwrap();
     assert_eq!(first["label"], serde_json::json!({"fire": {"sheet": 1, "row": 5, "mirrored": false}}));
@@ -361,7 +406,7 @@ fn unreadable_settings_fall_back_to_the_defaults_with_a_warning() {
 fn the_settings_are_described_with_their_explanations() {
     let (dir, w) = ws("describe", 50);
     let d = w.describe_settings();
-    assert_eq!(d.len(), 44);
+    assert_eq!(d.len(), 46);
     assert!(d.iter().all(|s| !s.explanation.is_empty()));
     let _ = std::fs::remove_dir_all(&dir);
 }

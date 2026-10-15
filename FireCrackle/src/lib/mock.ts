@@ -71,7 +71,8 @@ function drawFrame(f: number): Promise<ArrayBuffer> {
 
 export function createMockBackend(): Backend {
   const labels = new Map<number, Label>();
-  const undoStack: Array<Array<[number, Label]>> = [];
+  const undoStack: Array<Array<[number, Label, boolean]>> = [];
+  const predicted = new Set<number>();
   let current = 0;
   let pick = { sheet: 1, mirrored: false };
   let typed: number | null = null;
@@ -89,31 +90,34 @@ export function createMockBackend(): Backend {
   const get = (f: number): Label => labels.get(f) ?? "unset";
   const clamp = (f: number) => Math.max(0, Math.min(N - 1, f));
 
-  function put(changes: Array<[number, Label]>) {
-    const undo: Array<[number, Label]> = [];
+  function put(changes: Array<[number, Label]>, inferred=false) {
+    const undo: Array<[number, Label, boolean]> = [];
     for (const [f, l] of changes) {
       const prev = get(f);
-      if (labelsEqual(prev, l)) continue;
-      undo.push([f, prev]);
+      const wasPredicted=predicted.has(f);
+      if (labelsEqual(prev, l) && wasPredicted === inferred) continue;
+      undo.push([f, prev, wasPredicted]);
+      predicted.delete(f);
+      if (inferred && isFire(l)) predicted.add(f);
       if (l === "unset") labels.delete(f);
       else labels.set(f, l);
     }
     if (undo.length) undoStack.push(undo);
   }
 
-  function apply(label: Label) {
-    put([[current, label]]);
+  function apply(label: Label, inferred=false) {
+    put([[current, label]], inferred);
     if (label !== "unset") current = clamp(current + num("label.advance_frames"));
   }
 
-  function pickRow(row: number) {
-    apply({ fire: { sheet: pick.sheet, row, mirrored: pick.mirrored } });
+  function pickRow(row: number, inferred=false) {
+    apply({ fire: { sheet: pick.sheet, row, mirrored: pick.mirrored } }, inferred);
   }
 
   function suggestion(): Suggestion | null {
     let best: { f: number; d: number } | null = null;
     for (const [f, l] of labels) {
-      if (!isFire(l) || f === current) continue;
+      if (!isFire(l) || f === current || predicted.has(f)) continue;
       const d = Math.abs(f - current);
       if (!best || d < best.d || (d === best.d && f < best.f)) best = { f, d };
     }
@@ -161,6 +165,14 @@ export function createMockBackend(): Backend {
     return current;
   }
 
+  function manualAdvance(frames:number) {
+    if (frames>0 && current<N-1 && get(current)==="unset") {
+      const s=suggestion();
+      if (s) {put([[current,{fire:{sheet:s.sheet,row:s.row,mirrored:s.mirrored}}]],true);pick={sheet:s.sheet,mirrored:s.mirrored};}
+    }
+    current=clamp(current+frames);
+  }
+
   const api: Backend = {
     mock: true,
     pickVideo: async () => "mock://demo.mkv",
@@ -169,6 +181,8 @@ export function createMockBackend(): Backend {
     async act(a: UiAction) {
       if (a.type !== "digit" && a.type !== "flushTyped") typed = null;
       switch (a.type) {
+        case "manualStep": manualAdvance(a.frames);break;
+        case "manualBigStep": manualAdvance(Math.sign(a.dir)*num("label.big_step_frames"));break;
         case "step": current = clamp(current + a.frames); break;
         case "bigStep": current = clamp(current + Math.sign(a.dir) * num("label.big_step_frames")); break;
         case "home": current = 0; break;
@@ -201,7 +215,7 @@ export function createMockBackend(): Backend {
           const s = suggestion();
           if (!s) throw new Error("NoSuggestion");
           pick = { sheet: s.sheet, mirrored: s.mirrored };
-          pickRow(s.row);
+          pickRow(s.row, true);
           break;
         }
         case "clear": apply("unset"); break;
@@ -210,7 +224,7 @@ export function createMockBackend(): Backend {
         case "undo": {
           const step = undoStack.pop();
           if (step) {
-            for (const [f, prev] of step) { if (prev === "unset") labels.delete(f); else labels.set(f, prev); }
+            for (const [f, prev, inferred] of step) { if (prev === "unset") labels.delete(f); else labels.set(f, prev);predicted.delete(f);if (inferred) predicted.add(f); }
             current = Math.min(...step.map(([f]) => f));
           }
           break;

@@ -14,6 +14,8 @@ const MUTATING = new Set<UiAction["type"]>([
   "undo",
   "acceptSuggestion",
   "fillRange",
+  "manualStep",
+  "manualBigStep",
 ]);
 
 export function messageOf(e: unknown): string {

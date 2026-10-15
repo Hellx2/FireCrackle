@@ -228,6 +228,8 @@ impl FrameService {
 pub enum UiAction {
     Step { frames: i64 },
     BigStep { dir: i64 },
+    ManualStep { frames: i64 },
+    ManualBigStep { dir: i64 },
     Home,
     End,
     GoTo { frame: u32 },
@@ -464,6 +466,11 @@ impl Workspace {
             }
         };
         match action {
+            UiAction::ManualStep {frames} => { self.session.manual_advance(frames).map_err(session_err)?; }
+            UiAction::ManualBigStep {dir} => {
+                let forward=direction(dir,"a manual big step")?;
+                self.session.manual_advance(if forward {big} else {-big}).map_err(session_err)?;
+            }
             UiAction::Step { frames } => {
                 self.session.go(Move::Frames(frames));
             }

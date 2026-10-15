@@ -8,6 +8,8 @@ import type { Label } from "./grid";
 export type UiAction =
   | { type: "step"; frames: number }
   | { type: "bigStep"; dir: number }
+  | { type: "manualStep"; frames: number }
+  | { type: "manualBigStep"; dir: number }
   | { type: "home" }
   | { type: "end" }
   | { type: "goTo"; frame: number }
@@ -30,9 +32,9 @@ export type UiAction =
 export function toUiAction(a: Action): UiAction | null {
   switch (a.type) {
     case "step":
-      return { type: "step", frames: a.frames };
+      return a.frames > 0 ? { type: "manualStep", frames: a.frames } : { type: "step", frames: a.frames };
     case "bigStep":
-      return { type: "bigStep", dir: a.dir };
+      return a.dir > 0 ? { type: "manualBigStep", dir: a.dir } : { type: "bigStep", dir: a.dir };
     case "home":
     case "end":
     case "toggleSheet":

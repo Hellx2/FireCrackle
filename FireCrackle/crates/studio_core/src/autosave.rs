@@ -1,7 +1,7 @@
 //! The append-only label log on disk (format: `label::log_line`), opened with crash repair.
 
 use crate::config::AutosaveConfig;
-use crate::label::{log_line, LabelError, LabelStore};
+use crate::label::{LabelError, LabelStore};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -114,8 +114,8 @@ impl AutosaveLog {
         }
         let labelled = store.iter();
         let mut text = String::new();
-        for (frame, label) in &labelled {
-            text.push_str(&log_line(*frame, *label));
+        for (frame, _) in &labelled {
+            text.push_str(&store.log_line(*frame));
             text.push('\n');
         }
         let tmp = temp_path(&self.path)?;

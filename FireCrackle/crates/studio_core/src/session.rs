@@ -2,7 +2,7 @@
 //! autosave queue, as one pure object. The UI calls one method per user action.
 
 use crate::config::Settings;
-use crate::label::{log_line, Label, LabelError, LabelStore};
+use crate::label::{Label, LabelError, LabelStore};
 use crate::phase::{Analysis, Flag, FrameObs, STEPS};
 use crate::project::Project;
 use serde::Serialize;
@@ -98,13 +98,13 @@ pub enum TypeOutcome {
     Rejected,
 }
 
-/// The likely row for the current frame, from the nearest labelled fire frame (E7).
+/// Nominal clock prediction from trusted labels; never a claim that lag cannot occur.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Suggestion {
     pub sheet: u8,
     pub mirrored: bool,
     pub row: u8,
-    /// The other possible row (the sprite advanced one tick more or less): the tick boundary falls near here.
+    /// Closest alternate supported by phase/capture uncertainty. Larger lag may exceed either candidate.
     pub alt_row: Option<u8>,
     pub from_frame: u32,
 }
@@ -113,7 +113,10 @@ pub struct Suggestion {
 pub enum SessionError {
     Label(LabelError),
     /// The project and the label store disagree on the number of frames.
-    FrameCountMismatch { project: usize, store: u32 },
+    FrameCountMismatch {
+        project: usize,
+        store: u32,
+    },
     NoSuggestion,
 }
 
@@ -123,7 +126,7 @@ impl From<LabelError> for SessionError {
     }
 }
 
-/// Distance from a whole number of ticks below which the advance is treated as certain.
+/// Floating-point tolerance for whole-tick arithmetic; does not remove capture uncertainty.
 const WHOLE_TICK_EPS: f64 = 1e-6;
 
 pub struct Session {
@@ -225,10 +228,15 @@ impl Session {
 
     /// Set the label of the current frame, then advance per the settings. `Unset` clears and stays.
     pub fn apply(&mut self, label: Label) -> Result<Applied, SessionError> {
+        self.apply_with_source(label, false)
+    }
+
+    fn apply_with_source(&mut self, label: Label, predicted: bool) -> Result<Applied, SessionError> {
         self.typer.clear();
         let frame = self.current;
-        if self.store.set(frame, label)? {
-            self.log.push(log_line(frame, label));
+        let changed = if predicted { self.store.set_predicted(frame, label)? } else { self.store.set(frame, label)? };
+        if changed {
+            self.log.push(self.store.log_line(frame));
             self.analysis = None;
         }
         let last = self.last();
@@ -281,36 +289,76 @@ impl Session {
         if max_seconds <= 0.0 {
             return None;
         }
-        // nearest labelled fire frame; ties go to the earlier one (iteration is ascending, `<` keeps it)
-        let mut best: Option<(u32, u32, u8, u8, bool)> = None; // (distance, frame, sheet, row, mirrored)
+        let now = self.project.frames[self.current as usize].pts;
+        let mut trusted = Vec::new();
         for (frame, label) in self.store.iter() {
             let Label::Fire { sheet, row, mirrored } = label else { continue };
-            if frame == self.current {
+            if frame == self.current || self.store.is_predicted(frame) {
                 continue;
             }
-            let dist = frame.abs_diff(self.current);
-            if best.is_none_or(|b| dist < b.0) {
-                best = Some((dist, frame, sheet, row, mirrored));
+            let pts = self.project.frames[frame as usize].pts;
+            if (pts - now).abs() <= max_seconds {
+                trusted.push((frame, pts, sheet, row, mirrored));
             }
         }
-        let (_, from_frame, sheet, row, mirrored) = best?;
-
-        let dt = self.project.frames[self.current as usize].pts - self.project.frames[from_frame as usize].pts;
+        let &(from_frame, anchor_pts, sheet, row, mirrored) =
+            trusted.iter().min_by(|a, b| (a.1 - now).abs().total_cmp(&(b.1 - now).abs()).then(a.0.cmp(&b.0)))?;
+        let dt = now - anchor_pts;
         if dt.abs() > max_seconds {
             return None;
         }
-        // x ticks of video time have passed; the sprite advanced floor(x) or floor(x) + 1 ticks, the latter
-        // with probability frac(x) (E7). Likelier first, the other as the alternative.
-        let x = self.settings.phase.tick_rate * dt;
-        let whole = x.round();
-        let (advance, alt) = if (x - whole).abs() < WHOLE_TICK_EPS {
-            (whole as i64, None)
+        let rate = self.settings.phase.tick_rate;
+        let snap = |x: f64| if (x - x.round()).abs() < WHOLE_TICK_EPS { x.round() } else { x };
+        // At the anchor the unknown fractional tick phase lies in [0,1). Nearby trusted rows
+        // intersect that interval. Stop at conflicting timing instead of smoothing over a stall.
+        let (mut lo, mut hi) = (0.0f64, 1.0f64);
+        trusted.retain(|t| (t.1 - anchor_pts).abs() <= self.settings.label.suggest_calibration_seconds);
+        trusted.sort_by(|a, b| (a.1 - anchor_pts).abs().total_cmp(&(b.1 - anchor_pts).abs()).then(a.0.cmp(&b.0)));
+        for &(frame, pts, _, other_row, _) in &trusted {
+            if frame == from_frame {
+                continue;
+            }
+            if (pts - anchor_pts).abs() > self.settings.label.suggest_calibration_seconds {
+                break;
+            }
+            let x = snap(rate * (pts - anchor_pts));
+            let nominal = x.round() as i64;
+            let observed = nominal + (other_row as i64 - row as i64 - nominal + 16).rem_euclid(STEPS as i64) - 16;
+            let a = lo.max(observed as f64 - x);
+            let b = hi.min(observed as f64 + 1.0 - x);
+            if b - a <= WHOLE_TICK_EPS {
+                break;
+            }
+            lo = a;
+            hi = b;
+        }
+        let x = snap(rate * dt);
+        let a = snap(lo + x);
+        let b = snap(hi + x);
+        let advance = snap((a + b) / 2.0).floor() as i64;
+        let low = a.floor() as i64;
+        let high = (b - WHOLE_TICK_EPS).floor() as i64;
+        let alt = if low != high {
+            Some(if advance == low { high } else { low })
         } else {
-            let floor = x.floor();
-            if x - floor >= 0.5 {
-                (floor as i64 + 1, Some(floor as i64))
+            let frames = &self.project.frames;
+            let i = self.current as usize;
+            let before = frames[..i].iter().rev().find(|f| f.pts < now).map(|f| now - f.pts);
+            let after = frames[i + 1..].iter().find(|f| f.pts > now).map(|f| f.pts - now);
+            let interval = match (before, after) {
+                (Some(a), Some(b)) => a.min(b),
+                (Some(a), None) | (None, Some(a)) => a,
+                _ => 0.0,
+            };
+            let uncertainty = rate * interval * self.settings.label.suggest_capture_frames;
+            let down = a - advance as f64;
+            let up = advance as f64 + 1.0 - b;
+            if uncertainty > 0.0 && up <= uncertainty + WHOLE_TICK_EPS && up <= down + WHOLE_TICK_EPS {
+                Some(advance + 1)
+            } else if uncertainty > 0.0 && down <= uncertainty + WHOLE_TICK_EPS {
+                Some(advance - 1)
             } else {
-                (floor as i64, Some(floor as i64 + 1))
+                None
             }
         };
         let to_row = |a: i64| (row as i64 + a).rem_euclid(STEPS as i64) as u8;
@@ -320,17 +368,32 @@ impl Session {
     pub fn accept_suggestion(&mut self) -> Result<Applied, SessionError> {
         let s = self.suggestion().ok_or(SessionError::NoSuggestion)?;
         self.pick = PickState { sheet: s.sheet, mirrored: s.mirrored };
-        self.apply(Label::Fire { sheet: s.sheet, row: s.row, mirrored: s.mirrored })
+        self.apply_with_source(Label::Fire { sheet: s.sheet, row: s.row, mirrored: s.mirrored }, true)
+    }
+
+    /// Confirm the departing unset frame, then navigate exactly once (never use label auto-advance).
+    pub fn manual_advance(&mut self, frames: i64) -> Result<u32, SessionError> {
+        if frames > 0 && self.current < self.last() && self.label() == Label::Unset {
+            if let Some(s) = self.suggestion() {
+                let label = Label::Fire { sheet: s.sheet, row: s.row, mirrored: s.mirrored };
+                if self.store.set_predicted(self.current, label)? {
+                    self.log.push(self.store.log_line(self.current));
+                    self.analysis = None;
+                }
+                self.pick = PickState { sheet: s.sheet, mirrored: s.mirrored };
+            }
+        }
+        Ok(self.go(Move::Frames(frames)))
     }
 
     pub fn fill_range(&mut self, start: u32, end: u32, label: Label) -> Result<usize, SessionError> {
         let in_range = start <= end && end < self.store.frame_count();
-        let before: Vec<Label> = if in_range { (start..=end).map(|f| self.store.get(f)).collect() } else { Vec::new() };
+        let before: Vec<_> = if in_range { (start..=end).map(|f| (self.store.get(f), self.store.is_predicted(f))).collect() } else { Vec::new() };
         let changed = self.store.fill_range(start, end, label)?;
         if changed > 0 {
             for (i, frame) in (start..=end).enumerate() {
-                if before[i] != label {
-                    self.log.push(log_line(frame, label));
+                if before[i] != (label, false) {
+                    self.log.push(self.store.log_line(frame));
                 }
             }
             self.analysis = None;
@@ -343,7 +406,7 @@ impl Session {
         match self.store.undo_step() {
             Some(frames) => {
                 for &f in &frames {
-                    self.log.push(log_line(f, self.store.get(f)));
+                    self.log.push(self.store.log_line(f));
                 }
                 self.current = frames[0];
                 self.typer.clear();

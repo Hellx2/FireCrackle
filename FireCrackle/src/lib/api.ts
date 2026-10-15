@@ -12,6 +12,7 @@ export interface PickState {
 }
 
 export interface Suggestion {
+  /** Nominal clock candidates from trusted labels. Lag can exceed this closest alternate. */
   sheet: number;
   mirrored: boolean;
   row: number;

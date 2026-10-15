@@ -1,7 +1,7 @@
 //! Per-frame label store: set / clear / undo, tick-run fill, navigation and an append-only JSONL log.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What a frame is labelled as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,11 +21,20 @@ pub enum Label {
 pub enum LabelError {
     InvalidSheet(u8),
     InvalidRow(u8),
-    FrameOutOfRange { frame: u32, count: u32 },
+    FrameOutOfRange {
+        frame: u32,
+        count: u32,
+    },
     /// `fill_range` with `start > end`.
-    BadRange { start: u32, end: u32 },
+    BadRange {
+        start: u32,
+        end: u32,
+    },
     /// A log line that cannot be parsed (1-based line number).
-    Parse { line: usize, msg: String },
+    Parse {
+        line: usize,
+        msg: String,
+    },
 }
 
 impl Label {
@@ -64,21 +73,24 @@ struct Entry {
     version: u32,
     frame: u32,
     label: Label,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    predicted: bool,
 }
 
 /// Previous labels of the frames one undo step restores.
-type UndoStep = Vec<(u32, Label)>;
+type UndoStep = Vec<(u32, Label, bool)>;
 
 #[derive(Debug, Clone)]
 pub struct LabelStore {
     frame_count: u32,
     labels: BTreeMap<u32, Label>,
+    predicted: BTreeSet<u32>,
     undo: Vec<UndoStep>,
 }
 
 impl LabelStore {
     pub fn new(frame_count: u32) -> LabelStore {
-        LabelStore { frame_count, labels: BTreeMap::new(), undo: Vec::new() }
+        LabelStore { frame_count, labels: BTreeMap::new(), predicted: BTreeSet::new(), undo: Vec::new() }
     }
 
     pub fn frame_count(&self) -> u32 {
@@ -90,6 +102,15 @@ impl LabelStore {
         self.labels.get(&frame).copied().unwrap_or(Label::Unset)
     }
 
+    pub fn is_predicted(&self, frame: u32) -> bool {
+        self.predicted.contains(&frame)
+    }
+
+    /// Persist both value and source; accepted guesses must not become calibration evidence on restart.
+    pub fn log_line(&self, frame: u32) -> String {
+        serde_json::to_string(&Entry { version: 2, frame, label: self.get(frame), predicted: self.is_predicted(frame) }).expect("plain log entry")
+    }
+
     fn check_frame(&self, frame: u32) -> Result<(), LabelError> {
         if frame < self.frame_count {
             Ok(())
@@ -99,6 +120,7 @@ impl LabelStore {
     }
 
     fn put(&mut self, frame: u32, label: Label) {
+        self.predicted.remove(&frame);
         if label == Label::Unset {
             self.labels.remove(&frame);
         } else {
@@ -109,14 +131,27 @@ impl LabelStore {
     /// Set a label. `Ok(true)` if it changed something (and pushed one undo entry),
     /// `Ok(false)` if it equalled the current label. `Label::Unset` clears.
     pub fn set(&mut self, frame: u32, label: Label) -> Result<bool, LabelError> {
+        self.set_with_source(frame, label, false)
+    }
+
+    pub fn set_predicted(&mut self, frame: u32, label: Label) -> Result<bool, LabelError> {
+        self.set_with_source(frame, label, true)
+    }
+
+    fn set_with_source(&mut self, frame: u32, label: Label, predicted: bool) -> Result<bool, LabelError> {
         label.validate()?;
         self.check_frame(frame)?;
         let prev = self.get(frame);
-        if prev == label {
+        let was_predicted = self.is_predicted(frame);
+        let predicted = predicted && label.is_fire();
+        if prev == label && was_predicted == predicted {
             return Ok(false);
         }
-        self.undo.push(vec![(frame, prev)]);
+        self.undo.push(vec![(frame, prev, was_predicted)]);
         self.put(frame, label);
+        if predicted {
+            self.predicted.insert(frame);
+        }
         Ok(true)
     }
 
@@ -133,8 +168,11 @@ impl LabelStore {
     pub fn undo_step(&mut self) -> Option<Vec<u32>> {
         let step = self.undo.pop()?;
         let mut frames: Vec<u32> = Vec::with_capacity(step.len());
-        for (frame, prev) in step {
+        for (frame, prev, predicted) in step {
             self.put(frame, prev);
+            if predicted {
+                self.predicted.insert(frame);
+            }
             frames.push(frame);
         }
         frames.sort_unstable();
@@ -153,8 +191,8 @@ impl LabelStore {
         let mut step: UndoStep = Vec::new();
         for f in start..=end {
             let prev = self.get(f);
-            if prev != label {
-                step.push((f, prev));
+            if prev != label || self.is_predicted(f) {
+                step.push((f, prev, self.is_predicted(f)));
                 self.put(f, label);
             }
         }
@@ -189,12 +227,7 @@ impl LabelStore {
     /// Blank lines are ignored; an unparsable *last* line is dropped (`torn_tail`);
     /// an unparsable earlier line, an invalid label or a frame >= `frame_count` is an error.
     pub fn replay(text: &str, frame_count: u32) -> Result<Replay, LabelError> {
-        let lines: Vec<(usize, &str)> = text
-            .lines()
-            .enumerate()
-            .map(|(i, l)| (i + 1, l.trim()))
-            .filter(|(_, l)| !l.is_empty())
-            .collect();
+        let lines: Vec<(usize, &str)> = text.lines().enumerate().map(|(i, l)| (i + 1, l.trim())).filter(|(_, l)| !l.is_empty()).collect();
         let mut store = LabelStore::new(frame_count);
         let mut torn_tail = false;
         for (idx, &(line_no, line)) in lines.iter().enumerate() {
@@ -218,6 +251,9 @@ impl LabelStore {
             }
             store.check_frame(entry.frame)?;
             store.put(entry.frame, entry.label);
+            if entry.predicted && entry.label.is_fire() {
+                store.predicted.insert(entry.frame);
+            }
         }
         Ok(Replay { store, torn_tail })
     }
@@ -225,7 +261,7 @@ impl LabelStore {
 
 /// One versioned animation-index log entry, without a trailing newline.
 pub fn log_line(frame: u32, label: Label) -> String {
-    serde_json::to_string(&Entry { version: 2, frame, label }).expect("a plain struct always serialises")
+    serde_json::to_string(&Entry { version: 2, frame, label, predicted: false }).expect("a plain struct always serialises")
 }
 
 /// Clamp a (possibly negative / past-the-end) frame index into `0..count`. `None` when `count == 0`.
