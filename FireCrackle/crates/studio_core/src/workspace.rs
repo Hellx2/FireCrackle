@@ -425,6 +425,22 @@ impl Workspace {
         &self.dir
     }
 
+    pub fn export_labels(&self) -> String {
+        self.session.store().export_json(&self.session.project().fingerprint)
+    }
+
+    pub fn export_labels_to(&mut self, path: &Path) -> Result<View, WorkspaceError> {
+        let view = self.apply(UiAction::FlushTyped)?;
+        write_atomic(path, self.export_labels().as_bytes())?;
+        Ok(view)
+    }
+
+    pub fn import_labels(&mut self, text: &str) -> Result<View, WorkspaceError> {
+        self.session.import_labels(text).map_err(WorkspaceError::Session)?;
+        self.flush();
+        Ok(self.view())
+    }
+
     pub fn view(&mut self) -> View {
         let current = self.session.current();
         let project = self.session.project();

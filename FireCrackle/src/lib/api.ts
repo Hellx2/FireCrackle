@@ -89,6 +89,8 @@ export interface Backend {
   thumb(frame: number): Promise<ArrayBuffer>;
   settingsDescribe(): Promise<SettingInfo[]>;
   settingsSet(key: string, value: number): Promise<View>;
+  /** Native label file dialog and transfer; null on cancel. */
+  transferLabels?(kind: "import" | "export"): Promise<View | null>;
 }
 
 export function inTauri(): boolean {
@@ -102,9 +104,17 @@ export async function createBackend(): Promise<Backend> {
     return createMockBackend();
   }
   const { invoke } = await import("@tauri-apps/api/core");
-  const { open } = await import("@tauri-apps/plugin-dialog");
+  const { open, save } = await import("@tauri-apps/plugin-dialog");
   return {
     mock: false,
+    async transferLabels(kind) {
+      const filters = [{ name: "FireCrackle labels", extensions: ["json"] }];
+      const path = kind === "export"
+        ? await save({ title: "Export labels", defaultPath: "firecrackle-labels.json", filters })
+        : await open({ title: "Import labels into this video", multiple: false, directory: false, filters });
+      if (typeof path !== "string") return null;
+      return invoke<View>(kind === "export" ? "export_labels" : "import_labels", { path });
+    },
     startupVideo: () => invoke<string | null>("startup_video"),
     async pickVideo() {
       const picked = await open({

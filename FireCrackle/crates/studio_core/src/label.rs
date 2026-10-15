@@ -77,6 +77,15 @@ struct Entry {
     predicted: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+struct LabelArchive {
+    format: String,
+    version: u32,
+    fingerprint: String,
+    frame_count: u32,
+    labels: Vec<Entry>,
+}
+
 /// Previous labels of the frames one undo step restores.
 type UndoStep = Vec<(u32, Label, bool)>;
 
@@ -95,6 +104,51 @@ impl LabelStore {
 
     pub fn frame_count(&self) -> u32 {
         self.frame_count
+    }
+
+    /// Portable snapshot: animation indices and prediction provenance are preserved.
+    pub fn export_json(&self, fingerprint: &str) -> String {
+        let archive = LabelArchive {
+            format: "firecrackle-labels".into(), version: 2,
+            fingerprint: fingerprint.into(), frame_count: self.frame_count,
+            labels: self.iter().into_iter().map(|(frame, label)| Entry {
+                version: 2, frame, label, predicted: self.is_predicted(frame),
+            }).collect(),
+        };
+        serde_json::to_string_pretty(&archive).expect("plain label archive")
+    }
+
+    /// Validate the entire snapshot before merging; the whole import is one undo step.
+    pub fn import_json(&mut self, text: &str, fingerprint: &str) -> Result<Vec<u32>, LabelError> {
+        let bad = |msg: &str| LabelError::Parse { line: 0, msg: msg.into() };
+        let archive: LabelArchive = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| bad(&format!("Invalid label file: {e}")))?;
+        if archive.format != "firecrackle-labels" || archive.version != 2 {
+            return Err(bad("Unsupported label export format or version"));
+        }
+        if archive.frame_count != self.frame_count || archive.fingerprint != fingerprint {
+            return Err(bad("These labels belong to a different video. Open the matching video first."));
+        }
+        let mut seen = BTreeSet::new();
+        for entry in &archive.labels {
+            self.check_frame(entry.frame)?;
+            entry.label.validate()?;
+            if entry.version != 2 || !seen.insert(entry.frame) || (entry.predicted && !entry.label.is_fire()) {
+                return Err(bad("Invalid or duplicate label entry"));
+            }
+        }
+        let mut undo = Vec::new();
+        for entry in archive.labels {
+            let previous = self.get(entry.frame);
+            let predicted = self.is_predicted(entry.frame);
+            if (previous, predicted) == (entry.label, entry.predicted) { continue; }
+            undo.push((entry.frame, previous, predicted));
+            self.put(entry.frame, entry.label);
+            if entry.predicted { self.predicted.insert(entry.frame); }
+        }
+        let mut frames: Vec<_> = undo.iter().map(|(frame, _, _)| *frame).collect();
+        frames.sort_unstable();
+        if !undo.is_empty() { self.undo.push(undo); }
+        Ok(frames)
     }
 
     /// Label of a frame; `Label::Unset` when none (also for out-of-range frames).

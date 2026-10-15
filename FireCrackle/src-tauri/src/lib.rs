@@ -74,6 +74,21 @@ async fn act(state: State<'_, AppState>, action: UiAction) -> Result<View, Strin
     run(state.ws.clone(), move |w| w.apply(action).map_err(err)).await
 }
 
+#[tauri::command]
+async fn export_labels(state: State<'_, AppState>, path: String) -> Result<View, String> {
+    run(state.ws.clone(), move |w| {
+        w.export_labels_to(Path::new(&path)).map_err(err)
+    }).await
+}
+
+#[tauri::command]
+async fn import_labels(state: State<'_, AppState>, path: String) -> Result<View, String> {
+    run(state.ws.clone(), move |w| {
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("Could not read labels: {e}"))?;
+        w.import_labels(&text).map_err(err)
+    }).await
+}
+
 /// The JPEG bytes of one frame, sent raw (no JSON).
 #[tauri::command]
 async fn frame(state: State<'_, AppState>, frame: u32) -> Result<Response, String> {
@@ -116,6 +131,8 @@ pub fn run_app() {
             open_video,
             view,
             act,
+            export_labels,
+            import_labels,
             frame,
             timeline,
             flags,

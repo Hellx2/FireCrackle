@@ -177,6 +177,8 @@ export default function App() {
               <span className="tag" role="status" title="Labels save after every edit; the last video and frame reopen next launch">
                 {backend.mock ? "Preview only" : ws.saveStatus}
               </span>
+              <button disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("export"); }} title="Save all labels to a portable JSON file">Export labels…</button>
+              <button disabled={!backend.transferLabels || ws.opening || ws.transferring} onClick={() => { setPlayback(STOPPED); void ws.transferLabels("import"); }} title="Merge a label export into this video; matching frames are replaced. Undo restores the import.">Import labels…</button>
               <button onClick={() => void act({ type: "undo" })} title="Ctrl+Z">
                 Undo
               </button>

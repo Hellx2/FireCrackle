@@ -38,6 +38,8 @@ export interface WorkspaceState {
   opening: boolean;
   saveStatus: string;
   save: () => Promise<void>;
+  transferLabels: (kind: "import" | "export") => Promise<void>;
+  transferring: boolean;
   /** True while an action is in flight (playback skips ticks instead of queueing them). */
   busy: React.MutableRefObject<boolean>;
   open: (path: string) => Promise<void>;
@@ -53,6 +55,7 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [opening, setOpening] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const busy = useRef(false);
   const isOpen = view !== null;
   const videoPath = useRef<string | null>(null);
@@ -155,6 +158,26 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     }
   }, [backend, remember]);
 
+  const transferLabels = useCallback(async (kind: "import" | "export") => {
+    if (!backend?.transferLabels || busy.current || !videoPath.current) return;
+    busy.current = true;
+    setTransferring(true);
+    try {
+      const v = await backend.transferLabels(kind);
+      if (!v) return;
+      setView(v);
+      setVersion((x) => x + 1);
+      remember(v);
+      setError(v.save_error);
+      if (!v.save_error) setSaveStatus(kind === "export" ? "Labels exported" : "Labels imported · autosaved");
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      busy.current = false;
+      setTransferring(false);
+    }
+  }, [backend, remember]);
+
   useEffect(() => {
     if (!view?.save_error) return;
     const timer = setInterval(() => void save(), 5000);
@@ -188,5 +211,5 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     [backend],
   );
 
-  return { view, flags, settings, error, version, opening, saveStatus, save, busy, open, act, setSetting, clearError: () => setError(null) };
+  return { view, flags, settings, error, version, opening, saveStatus, save, transferLabels, transferring, busy, open, act, setSetting, clearError: () => setError(null) };
 }

@@ -167,6 +167,14 @@ impl Session {
         &self.store
     }
 
+    pub fn import_labels(&mut self, text: &str) -> Result<usize, SessionError> {
+        let frames = self.store.import_json(text, &self.project.fingerprint)?;
+        self.typer.clear();
+        for &frame in &frames { self.log.push(self.store.log_line(frame)); }
+        if !frames.is_empty() { self.analysis = None; }
+        Ok(frames.len())
+    }
+
     pub fn settings(&self) -> &Settings {
         &self.settings
     }
