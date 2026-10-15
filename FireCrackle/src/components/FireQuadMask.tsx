@@ -3,6 +3,7 @@ import fire0 from "../assets/fire_0.png";
 import fire1 from "../assets/fire_1.png";
 import { manualTexels, moveQuadCorner, type ManualQuad } from "../lib/quadMask";
 import "./FireQuadMask.css";
+import { FireTexels } from "./FireTexels";
 
 interface Props {
   width: number;
@@ -11,12 +12,13 @@ interface Props {
   row: number;
   mirrored: boolean;
   opacity: number;
+  pixelGrid?: boolean;
   quad: ManualQuad;
   onQuad: (quad: ManualQuad) => void;
 }
 
 /** Independent manual reference: dragging it never edits a frame label. */
-export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad }: Props) {
+export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false }: Props) {
   const clipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const dragging = useRef<number | null>(null);
@@ -63,12 +65,14 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     <svg ref={svgRef} className="fire-quad-mask" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet"
       aria-label="Manual fire matching mask: drag the four corner handles" onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={stop}>
       <defs><clipPath id={clipId}><rect width={width} height={height} /></clipPath></defs>
-      <g opacity={opacity} clipPath={`url(#${clipId})`}>{texels.map((p, i) => <polygon key={i} points={points(p.points)} fill={p.colour} fillOpacity={p.alpha} />)}</g>
+      <g opacity={opacity} clipPath={`url(#${clipId})`}>
+        <FireTexels texels={texels} pixelGrid={pixelGrid} scaleX={width} scaleY={height} />
+      </g>
       <polygon className="fire-quad-guide" points={points(quad)} />
       {quad.map(([x, y], i) => <circle key={i} className="fire-quad-handle" cx={x * width} cy={y * height}
         r={Math.max(width, height) / 120} fill="#61e9ff" stroke="#10202a" strokeWidth={2} vectorEffect="non-scaling-stroke"
         onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); dragging.current = i; e.currentTarget.setPointerCapture(e.pointerId); }}>
-        <title>Drag corner {i + 1}</title>
+        <title>{`Drag corner ${i + 1}`}</title>
       </circle>)}
     </svg>
   </>;

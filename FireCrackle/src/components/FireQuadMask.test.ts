@@ -10,6 +10,6 @@ it("keeps off-frame handles outside the group that clips the fire texture", () =
   }));
   expect(markup).toContain('cx="-200" cy="-50"');
   expect(markup).toContain('cx="1200" cy="550"');
-  expect(markup).toMatch(/clip-path="url\(#[^)]+\)"><\/g><polygon class="fire-quad-guide"/);
+  expect(markup).toMatch(/clip-path="url\(#[^)]+\)"><g shape-rendering="crispEdges"><\/g><\/g><polygon class="fire-quad-guide"/);
   expect(markup).toContain('<rect width="1000" height="500"');
 });

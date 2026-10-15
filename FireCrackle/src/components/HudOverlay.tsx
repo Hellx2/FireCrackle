@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import fire1 from "../assets/fire_1.png";
 import { hudTexels } from "../lib/hudOverlay";
 import "./HudOverlay.css";
+import { FireTexels } from "./FireTexels";
 
 interface Props {
   width: number;
@@ -9,10 +10,11 @@ interface Props {
   row: number;
   fov: number;
   opacity: number;
+  pixelGrid: boolean;
 }
 
 /** A visual reference only: no detector decisions and no label writes. */
-export function HudOverlay({ width, height, row, fov, opacity }: Props) {
+export function HudOverlay({ width, height, row, fov, opacity, pixelGrid }: Props) {
   const clipId = useId();
   const [rgba, setRgba] = useState<Uint8ClampedArray | null>(null);
   const [error, setError] = useState(false);
@@ -41,7 +43,7 @@ export function HudOverlay({ width, height, row, fov, opacity }: Props) {
   return <svg className="hud-overlay" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" style={{ opacity }} aria-label={`First-person fire preview, sheet 1 row ${row}`}>
     <defs><clipPath id={clipId}><rect width={width} height={height} /></clipPath></defs>
     <g clipPath={`url(#${clipId})`}>
-      {texels.map((p, i) => <polygon key={i} points={p.points.map(([x,y]) => `${x},${y}`).join(" ")} fill={p.colour} fillOpacity={p.alpha} />)}
+      <FireTexels texels={texels} pixelGrid={pixelGrid} />
     </g>
   </svg>;
 }
