@@ -82,6 +82,20 @@ export function pan(vp: Viewport, dxPx: number, width: number, total: number): V
   return clampViewport({ start: vp.start - dxPx / vp.pxPerFrame, pxPerFrame: vp.pxPerFrame }, width, total);
 }
 
+/** Ordinary wheel scrolls along time; Ctrl+wheel zooms around the cursor. */
+export function wheelViewport(
+  vp: Viewport,
+  event: Pick<WheelEvent, "ctrlKey" | "deltaX" | "deltaY" | "deltaMode">,
+  anchorX: number, zoomFactor: number, maxPx: number, width: number, total: number,
+): Viewport {
+  if (event.ctrlKey) {
+    return event.deltaY ? zoomAt(vp, anchorX, event.deltaY < 0 ? zoomFactor : 1 / zoomFactor, maxPx, width, total) : vp;
+  }
+  const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? width : 1;
+  return delta ? pan(vp, -delta * unit, width, total) : vp;
+}
+
 /**
  * Scroll just enough that `frame` is at least `marginPx` from both edges (follow the playhead). With a margin of
  * half the width or more the frame is centred.

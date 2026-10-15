@@ -11,12 +11,38 @@ import {
   visibleRange,
   xToFrame,
   zoomAt,
+  wheelViewport,
   type Viewport,
 } from "./timeline";
 
 const W = 1000;
 const TOTAL = 10000;
 const near = (a: number, b: number, eps = 1e-9) => expect(Math.abs(a - b)).toBeLessThan(eps);
+
+describe("timeline wheel controls", () => {
+  const vp = { start:100, pxPerFrame:2 };
+  const wheel = (deltaY:number, ctrlKey=false, deltaX=0, deltaMode=0) =>
+    wheelViewport(vp,{deltaY,deltaX,deltaMode,ctrlKey},200,1.25,32,W,TOTAL);
+  it("scrolls forward/backward without zooming for an ordinary wheel", () => {
+    expect(wheel(120)).toEqual({start:160,pxPerFrame:2});
+    expect(wheel(-120)).toEqual({start:40,pxPerFrame:2});
+  });
+  it("supports horizontal trackpad scrolling and line/page wheel units", () => {
+    expect(wheel(0,false,40).start).toBe(120);
+    expect(wheel(3,false,0,1).start).toBe(124);
+    expect(wheel(1,false,0,2).start).toBe(600);
+  });
+  it("zooms only with Ctrl and keeps the frame under the cursor fixed", () => {
+    const next=wheel(-120,true);
+    expect(next.pxPerFrame).toBe(2.5);
+    expect(next.start+200/next.pxPerFrame).toBe(vp.start+200/vp.pxPerFrame);
+    expect(wheel(120,true).pxPerFrame).toBe(1.6);
+  });
+  it("clamps scrolling at video edges and ignores empty wheel input", () => {
+    expect(wheel(-1000)).toEqual({start:0,pxPerFrame:2});
+    expect(wheel(0)).toEqual(vp);
+  });
+});
 
 describe("fit and conversions", () => {
   it("fits the whole video in the width", () => {

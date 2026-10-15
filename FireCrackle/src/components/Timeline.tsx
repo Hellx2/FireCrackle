@@ -11,6 +11,7 @@ import {
   visibleRange,
   xToFrame,
   zoomAt,
+  wheelViewport,
   type Viewport,
 } from "../lib/timeline";
 import { thumbSlots, uniqueFrames, type ThumbStatus } from "../lib/thumbs";
@@ -44,7 +45,7 @@ interface Props {
   onSeek: (frame: number) => void;
 }
 
-/** Editor-style timeline: time ruler, label lane, flag marks and the playhead. Wheel zooms, drag pans. */
+/** Editor-style timeline: wheel scrolls, Ctrl+wheel zooms, drag pans. */
 export function Timeline({ backend, view, flags, version, settings, onSeek }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -281,12 +282,13 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
     g.fill();
   }, [vp, width, buckets, flags, view.current, view.fps, total, spacing, slots, nearest, imageTick, thumbStatus, showThumbs, thumbW, laneY, flagY, height]);
 
-  // wheel zoom needs a non-passive listener so the page does not scroll
+  // Consume timeline scrolling and Ctrl+zoom so neither scrolls/zooms the page.
   useWheel(canvasRef, (e) => {
     const canvas = canvasRef.current;
-    if (!canvas || !e.deltaY) return false;
+    if (!canvas || (!e.deltaY && !e.deltaX)) return false;
     const x = e.clientX - canvas.getBoundingClientRect().left;
-    setVp((v) => zoomAt(v, x, e.deltaY < 0 ? zoomFactor : 1 / zoomFactor, maxPx, width, total));
+    e.stopPropagation();
+    setVp((v) => wheelViewport(v, e, x, zoomFactor, maxPx, width, total));
     return true;
   });
 
@@ -324,7 +326,7 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
         onPointerCancel={() => { drag.current = null; }}
         onLostPointerCapture={() => { drag.current = null; }}
       />
-      <div className="timeline-hint">wheel: zoom · drag: pan · click: seek · double-click: show all · {vp.pxPerFrame.toFixed(3)} px/frame</div>
+      <div className="timeline-hint">scroll: move timeline · Ctrl+scroll: zoom · drag: pan · click: seek · double-click: show all · {vp.pxPerFrame.toFixed(3)} px/frame</div>
     </div>
   );
 }
