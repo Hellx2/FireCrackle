@@ -73,8 +73,8 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null }:
     <section className="atlas-filters" aria-label="Visual sprite filters" onKeyDown={(e) => e.stopPropagation()}>
       <div className="atlas-filter-heading"><Icon name="settings" /><strong>Edge pixels</strong><span role="status">{edgeError ? "Counts unavailable" : edges ? `${matchingAppearances(edges, { left, right })} / 128 match` : "Reading pixels…"}</span></div>
       <div className="atlas-filter-inputs">
-        <label>Left <select aria-label="Left edge fire pixels" value={left ?? ""} onChange={(e) => setLeft(edgeFilterValue(e.target.value))}><option value="">Any</option>{Array.from({ length: 17 }, (_, count) => <option key={count} value={count}>{count}</option>)}</select></label>
-        <label>Right <select aria-label="Right edge fire pixels" value={right ?? ""} onChange={(e) => setRight(edgeFilterValue(e.target.value))}><option value="">Any</option>{Array.from({ length: 17 }, (_, count) => <option key={count} value={count}>{count}</option>)}</select></label>
+        <label>Left <input type="number" min={0} max={16} step={1} placeholder="Any" aria-label="Left edge fire pixels" value={left ?? ""} onChange={(e) => setLeft(edgeFilterValue(e.target.value))} /></label>
+        <label>Right <input type="number" min={0} max={16} step={1} placeholder="Any" aria-label="Right edge fire pixels" value={right ?? ""} onChange={(e) => setRight(edgeFilterValue(e.target.value))} /></label>
         <IconButton icon="reset" label="Clear edge pixel filters" disabled={!filterActive} onClick={() => { setLeft(null); setRight(null); }} />
       </div>
       <p>{edgeError ? "Could not read sprite pixels. All sprites remain selectable." : "Outermost columns · dimmed sprites stay clickable · hover for counts"}</p>

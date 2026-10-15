@@ -26,7 +26,7 @@ function render() {
   const tree = Picker({ view, cell: 40, onCell, candidate: {fire: {sheet: 1, row: 0, mirrored: false}} });
   return {
     cells: all(tree, e => e.type === "button" && e.props.className?.startsWith("cell")),
-    select: (side: string) => all(tree, e => e.props["aria-label"] === `${side} edge fire pixels`)[0],
+    input: (side: string) => all(tree, e => e.props["aria-label"] === `${side} edge fire pixels`)[0],
     reset: all(tree, e => e.props.label === "Clear edge pixel filters")[0],
   };
 }
@@ -53,8 +53,10 @@ it("visually filters exact outermost counts while keeping every cell and click w
   await Promise.resolve(); await Promise.resolve();
   let ui = render();
   expect(ui.cells).toHaveLength(128);
-  ui.select("Left").props.onChange({target: {value: "3"}});
-  ui.select("Right").props.onChange({target: {value: "7"}});
+  expect(ui.input("Left").type).toBe("input");
+  expect(ui.input("Left").props).toMatchObject({type: "number", min: 0, max: 16, placeholder: "Any", value: ""});
+  ui.input("Left").props.onChange({target: {value: "3"}});
+  ui.input("Right").props.onChange({target: {value: "7"}});
   ui = render();
   const matching = ui.cells.filter(e => !e.props.className.includes("edge-filter-miss"));
   expect(matching).toHaveLength(1);
@@ -67,5 +69,10 @@ it("visually filters exact outermost counts while keeping every cell and click w
   dimmed.props.onClick({ctrlKey: false}); dimmed.props.onClick({ctrlKey: true});
   expect(onCell.mock.calls).toEqual([[1, 0, false], [1, 0, true]]);
   ui.reset.props.onClick();
+  expect(render().cells.every(e => !e.props.className.includes("edge-filter-miss"))).toBe(true);
+  ui = render();
+  ui.input("Left").props.onChange({target: {value: "0"}});
+  expect(render().input("Left").props.value).toBe(0);
+  ui = render(); ui.input("Left").props.onChange({target: {value: ""}});
   expect(render().cells.every(e => !e.props.className.includes("edge-filter-miss"))).toBe(true);
 });

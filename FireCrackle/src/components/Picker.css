@@ -7,7 +7,7 @@
 .atlas-filter-heading > span { color: var(--dim); margin-left: auto; font-variant-numeric: tabular-nums; }
 .atlas-filter-inputs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 7px; }
 .atlas-filter-inputs label { display: inline-flex; align-items: center; gap: 6px; }
-.atlas-filter-inputs select { width: 65px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel2); color: var(--text); font: inherit; }
+.atlas-filter-inputs input { width: 65px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel2); color: var(--text); font: inherit; }
 .atlas-filter-inputs .icon-button { min-height: 26px; height: 28px; }
 .atlas-filters p { margin: 6px 0 0; color: var(--dim); font-size: 11px; }
 .picker-adaptive .cell.edge-filter-miss { background: #151923; }
