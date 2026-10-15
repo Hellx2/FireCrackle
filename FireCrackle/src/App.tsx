@@ -6,7 +6,8 @@ import { Picker } from "./components/Picker";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Splitter } from "./components/Splitter";
 import { Timeline } from "./components/Timeline";
-import { VideoPane } from "./components/VideoPane";
+import { VideoPane, type VideoPreviewHandle } from "./components/VideoPane";
+import { selectAtlasCell } from "./lib/firePreview";
 import { useLayout } from "./hooks/useLayout";
 import { usePanelZooms } from "./hooks/usePanelZooms";
 import { useWheel } from "./hooks/useWheel";
@@ -30,6 +31,9 @@ const KEY_HELP: Array<[string, string]> = [
   ["N · Shift+N", "next / previous unlabelled"],
   ["F · Shift+F", "next / previous flag"],
   ["Esc", "cancel a half-typed row"],
+  ["Ctrl + atlas click", "select sprite for the enabled fire preview without labeling"],
+  ["Ctrl + quad drag", "move all four corners together"],
+  ["Select corner + Alt+click", "place that corner at the click, including outside the image; Esc deselects"],
 ];
 
 export default function App() {
@@ -50,6 +54,7 @@ export default function App() {
   const workareaRef = useRef<HTMLElement | null>(null);
   const { zooms, wheel: zoomWheel, reset: resetZoom } = usePanelZooms();
   const pickerBoxRef = useRef<HTMLDivElement | null>(null);
+  const videoPreviewRef = useRef<VideoPreviewHandle | null>(null);
   const flagsBoxRef = useRef<HTMLDivElement | null>(null);
   // ctrl + wheel zooms the panel under the cursor (and not the whole window)
   useWheel(pickerBoxRef, (e) => (e.ctrlKey ? (zoomWheel("picker", e.deltaY), true) : false));
@@ -239,7 +244,7 @@ export default function App() {
           }
         >
           <section className="left">
-            <VideoPane backend={backend} view={view} onError={(m) => console.error(m)} />
+            <VideoPane backend={backend} view={view} previewRef={videoPreviewRef} onError={(m) => console.error(m)} />
             <Splitter
               direction="row"
               label="Video height"
@@ -303,7 +308,9 @@ export default function App() {
               <Picker
                 view={view}
                 cell={clampSize(pickerCellSize(layout.sideWidth) * zooms.picker, 16, 240)}
-                onCell={(col, row) => void act({ type: "clickCell", col, row })}
+                onCell={(col, row, ctrlKey) => selectAtlasCell(ctrlKey, col, row,
+                  (sprite) => videoPreviewRef.current?.selectSprite(sprite) ?? false,
+                  (col, row) => { void act({ type: "clickCell", col, row }); })}
               />
             </div>
           </aside>

@@ -1,7 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_QUAD, manualTexels, moveQuadCorner, projectQuad, validQuad, type ManualQuad } from "./quadMask";
+import { DEFAULT_QUAD, manualTexels, moveQuadCorner, projectQuad, screenToQuadPoint, translateQuad, validQuad, type ManualQuad } from "./quadMask";
 
 describe("manual fire quad", () => {
+  it("translates every point equally without changing perspective or clipping at the image", () => {
+    const moved = translateQuad(DEFAULT_QUAD, [-2, 3]);
+    expect(moved[0]).toEqual([-1.7, 3.2]);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      expect(moved[i][0] - moved[j][0]).toBeCloseTo(DEFAULT_QUAD[i][0] - DEFAULT_QUAD[j][0], 12);
+      expect(moved[i][1] - moved[j][1]).toBeCloseTo(DEFAULT_QUAD[i][1] - DEFAULT_QUAD[j][1], 12);
+    }
+    expect(translateQuad(DEFAULT_QUAD, [NaN, 1])).toBe(DEFAULT_QUAD);
+  });
+
+  it("converts cursor coordinates through letterboxing, pan and zoom without bounding them", () => {
+    const matrix = { a: 2, b: 0, c: 0, d: 2, e: 100, f: 200 };
+    expect(screenToQuadPoint(matrix, 1100, 700, 1000, 500)).toEqual([0.5, 0.5]);
+    expect(screenToQuadPoint(matrix, -300, 1400, 1000, 500)).toEqual([-0.2, 1.2]);
+    const rotated = { a: 0, b: 2, c: -2, d: 0, e: 100, f: 200 };
+    expect(screenToQuadPoint(rotated, -400, 1200, 1000, 500)).toEqual([0.5, 0.5]);
+    expect(screenToQuadPoint({ ...matrix, a: 0, d: 0 }, 0, 0, 1000, 500)).toBeNull();
+  });
   it("maps all four sprite corners exactly onto an asymmetric perspective quad", () => {
     const quad: ManualQuad = [[0.2, 0.1], [0.9, 0.25], [0.75, 0.9], [0.1, 0.7]];
     for (const [i, [u, v]] of [[0, 0], [1, 0], [1, 1], [0, 1]].entries()) {

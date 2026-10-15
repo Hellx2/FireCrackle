@@ -17,6 +17,21 @@ export function moveQuadCorner(quad: ManualQuad, corner: number, point: QuadPoin
   return validQuad(next) ? next : quad;
 }
 
+export function translateQuad(quad: ManualQuad, delta: QuadPoint): ManualQuad {
+  if (!delta.every(Number.isFinite)) return quad;
+  const next = quad.map(([x, y]) => [x + delta[0], y + delta[1]]) as ManualQuad;
+  return validQuad(next) ? next : quad;
+}
+
+/** Invert the SVG screen transform, including letterboxing, video zoom and pan. */
+export function screenToQuadPoint(matrix: { a: number; b: number; c: number; d: number; e: number; f: number }, x: number, y: number, width: number, height: number): QuadPoint | null {
+  const { a, b, c, d, e, f } = matrix;
+  const det = a * d - b * c;
+  if (![a, b, c, d, e, f, x, y, width, height, det].every(Number.isFinite) || det === 0 || width <= 0 || height <= 0) return null;
+  const point: QuadPoint = [(d * (x - e) - c * (y - f)) / det / width, (a * (y - f) - b * (x - e)) / det / height];
+  return point.every(Number.isFinite) ? point : null;
+}
+
 /** Perspective mapping from a unit sprite square to a convex four-corner mask. */
 export function projectQuad(q: ManualQuad, u: number, v: number): QuadPoint {
   const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q;

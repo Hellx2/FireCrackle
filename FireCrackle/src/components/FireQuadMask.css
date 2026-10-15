@@ -1,3 +1,4 @@
 .fire-quad-mask { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .fire-quad-handle { pointer-events: all; cursor: move; touch-action: none; }
-.fire-quad-guide { stroke: #61e9ff; stroke-width: 2; vector-effect: non-scaling-stroke; fill: none; }
+.fire-quad-guide { stroke: #61e9ff; stroke-width: 2; vector-effect: non-scaling-stroke; fill: transparent; pointer-events: all; }
+.fire-quad-handle.selected { fill: #f5c542; stroke: #fff; }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type Ref } from "react";
 import { useWheel } from "../hooks/useWheel";
 import type { Backend, View } from "../lib/api";
 import { IDENTITY, clampView, panView, wheelFactor, zoomAt, type Box, type ViewXform } from "../lib/zoom";
@@ -8,6 +8,12 @@ import { HudOverlay } from "./HudOverlay";
 import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 import { FireQuadMask } from "./FireQuadMask";
 import { DEFAULT_QUAD, type ManualQuad } from "../lib/quadMask";
+import { framePreview, previewSprite, type PreviewSprite } from "../lib/firePreview";
+
+export interface VideoPreviewHandle {
+  /** True when an enabled preview consumes the selection without a label write. */
+  selectSprite: (sprite: PreviewSprite) => boolean;
+}
 
 export function describeLabel(label: Label): string {
   if (label === "unset") return "unlabelled";
@@ -26,10 +32,11 @@ interface Props {
   backend: Backend;
   view: View;
   onError: (message: string) => void;
+  previewRef?: Ref<VideoPreviewHandle>;
 }
 
 /** The current frame, with its number, time and label over it. */
-export function VideoPane({ backend, view, onError }: Props) {
+export function VideoPane({ backend, view, onError, previewRef }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
@@ -46,6 +53,27 @@ export function VideoPane({ backend, view, onError }: Props) {
   const [pixelGrid, setPixelGrid] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
+
+  function selectPreview(sprite: PreviewSprite): boolean {
+    const mode = manualEnabled ? "manual" : hudEnabled ? "firstPerson" : "none";
+    const next = previewSprite(mode, sprite);
+    if (!next) return false;
+    if (mode === "manual") {
+      setManualSheet(next.sheet);
+      setManualRow(next.row);
+      setManualMirrored(next.mirrored);
+    } else setHudRow(next.row);
+    return true;
+  }
+  useImperativeHandle(previewRef, () => ({ selectSprite: selectPreview }));
+
+  const previousFrame = useRef(view.current);
+  useEffect(() => {
+    if (previousFrame.current === view.current) return;
+    previousFrame.current = view.current;
+    const next = framePreview(view);
+    if (next) selectPreview(next);
+  }, [view.current, view.suggestion, view.label, manualEnabled, hudEnabled]);
 
   useEffect(() => {
     const mine = ++token.current;
@@ -131,8 +159,8 @@ export function VideoPane({ backend, view, onError }: Props) {
           style={{ transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.scale})` }}
         >
           {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
-          {hudEnabled && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} pixelGrid={pixelGrid} />}
-          {manualEnabled && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
+          {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} pixelGrid={pixelGrid} />}
+          {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} />}
         </div>
         {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
@@ -148,19 +176,19 @@ export function VideoPane({ backend, view, onError }: Props) {
         )}
       </div>
       <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) setManualEnabled(false); }} /> First-person fire</label>
+        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); } }} /> First-person fire</label>
         {hudEnabled && <>
           <button aria-label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))}>◀</button>
           <label>Row <input aria-label="HUD animation index" type="number" min={0} max={31} value={hudRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setHudRow(n); }} /></label>
           <button aria-label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))}>▶</button>
           <button disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} title="Copies this frame's animation row into the preview">Use frame label</button>
           <label>FOV <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>70° · normal</option><option value={60}>60° · submerged</option></select></label>
-          <span className="hud-hint">Fixed first-person preview</span>
+          <span className="hud-hint">Ctrl+click atlas to preview · follows the next frame's guess</span>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
         </>}
       </div>
       <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <label><input type="checkbox" checked={manualEnabled} onChange={(e) => { setManualEnabled(e.target.checked); if (e.target.checked) setHudEnabled(false); }} /> Manual fire quad mask</label>
+        <label><input type="checkbox" checked={manualEnabled} onChange={(e) => { setManualEnabled(e.target.checked); if (e.target.checked) { setHudEnabled(false); const next = framePreview(view); if (next) { setManualSheet(next.sheet); setManualRow(next.row); setManualMirrored(next.mirrored); } } }} /> Manual fire quad mask</label>
         {manualEnabled && <>
           <label>Sheet <select aria-label="Manual mask sheet" value={manualSheet} onChange={(e) => setManualSheet(Number(e.target.value) as 0 | 1)}><option value={0}>0</option><option value={1}>1</option></select></label>
           <button aria-label="Previous manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, -1))}>◀</button>
@@ -171,7 +199,7 @@ export function VideoPane({ backend, view, onError }: Props) {
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <button onClick={() => setManualQuad(DEFAULT_QUAD)}>Reset corners</button>
           <button disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }}>Use frame label</button>
-          <span className="hud-hint">drag blue corners beyond the image · zoom out for room · labels unchanged</span>
+          <span className="hud-hint">Ctrl+atlas: preview · Ctrl+drag: move all · select corner + Alt+click: place · Esc: deselect</span>
         </>}
       </div>
       <div className="video-meta">

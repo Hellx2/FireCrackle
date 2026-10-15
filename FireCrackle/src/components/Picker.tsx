@@ -11,7 +11,7 @@ interface Props {
   /** sprite size in px; the 16 px sprites are shown scaled */
   cell: number;
   /** The animation index is shared by both sheets and the backend. */
-  onCell: (col: number, row: number) => void;
+  onCell: (col: number, row: number, ctrlKey: boolean) => void;
 }
 
 /** The 32 sprite rows, divided into equal blocks to fit the panel. */
@@ -69,7 +69,7 @@ export function Picker({ view, cell, onCell }: Props) {
                         key={c}
                         className={`cell${isCurrent ? " current" : ""}${isSug ? " suggest" : ""}${isAlt ? " alt" : ""}`}
                         title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}`}
-                        onClick={() => onCell(c, row)}
+                        onClick={(e) => onCell(c, row, e.ctrlKey)}
                         tabIndex={-1}
                       >
                         <span

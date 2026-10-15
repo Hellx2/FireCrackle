@@ -1,0 +1,91 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type ReactElement } from "react";
+import { DEFAULT_QUAD } from "../lib/quadMask";
+
+// Run the component's event handlers without operating a browser or desktop.
+const hooks = vi.hoisted(() => ({
+  refs: [] as Array<{ current: unknown }>, states: [] as unknown[],
+  refCursor: 0, stateCursor: 0, effects: [] as Array<() => void | (() => void)>,
+}));
+vi.mock("react", async (original) => ({
+  ...await original<typeof import("react")>(),
+  useId: () => "mask",
+  useRef: (initial: unknown) => hooks.refs[hooks.refCursor++] ??= { current: initial },
+  useState: (initial: unknown) => {
+    const i = hooks.stateCursor++;
+    if (!(i in hooks.states)) hooks.states[i] = initial;
+    return [hooks.states[i], (value: unknown) => { hooks.states[i] = value; }];
+  },
+  useMemo: (factory: () => unknown) => factory(),
+  useEffect: (setup: () => void | (() => void)) => { hooks.effects.push(setup); },
+}));
+import { FireQuadMask } from "./FireQuadMask";
+
+type Element = ReactElement<Record<string, any>>;
+function find(node: Element, type: string): Element[] {
+  const children = [node.props.children].flat(Infinity).filter((child): child is Element => !!child && typeof child === "object" && "props" in child);
+  return [...(node.type === type ? [node] : []), ...children.flatMap((child) => find(child, type))];
+}
+let cleanup: void | (() => void);
+const onQuad = vi.fn();
+function render() {
+  cleanup?.();
+  hooks.refCursor = hooks.stateCursor = 0;
+  hooks.effects = [];
+  const tree = FireQuadMask({ width: 100, height: 100, sheet: 0, row: 0, mirrored: false, opacity: 1, quad: DEFAULT_QUAD, onQuad });
+  hooks.refs[0].current = { getScreenCTM: () => ({ a: 2, b: 0, c: 0, d: 2, e: 100, f: 50 }) };
+  // Texture decoding is independent; execute only interaction listener setup.
+  cleanup = hooks.effects[1]();
+  return { svg: find(tree, "svg")[0], corners: find(tree, "circle") };
+}
+function pointer(clientX: number, clientY: number, ctrlKey = false) {
+  return { button: 0, pointerId: 1, clientX, clientY, ctrlKey, preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: { setPointerCapture: vi.fn() } };
+}
+function dispatch(type: string, fields: Record<string, unknown>) {
+  const event = Object.assign(new Event(type, { cancelable: true }), fields);
+  window.dispatchEvent(event);
+  return event;
+}
+beforeEach(() => {
+  hooks.refs = []; hooks.states = []; onQuad.mockClear();
+  const target = new EventTarget();
+  // Node's boolean capture handling differs from browser removeEventListener.
+  vi.stubGlobal("window", {
+    addEventListener: (type: string, listener: EventListener, capture = false) => target.addEventListener(type, listener, { capture }),
+    removeEventListener: (type: string, listener: EventListener, capture = false) => target.removeEventListener(type, listener, { capture }),
+    dispatchEvent: (event: Event) => target.dispatchEvent(event),
+  });
+});
+afterEach(() => { cleanup?.(); cleanup = undefined; vi.unstubAllGlobals(); });
+
+describe("manual quad controls", () => {
+  it("places a selected corner only on Alt+click, including outside the image", () => {
+    let mask = render();
+    mask.corners[0].props.onPointerDown(pointer(160, 90));
+    mask.svg.props.onPointerUp(pointer(160, 90));
+    mask = render();
+    dispatch("keydown", { key: "Alt", altKey: true });
+    dispatch("pointermove", { clientX: 60, clientY: 30, altKey: true });
+    dispatch("mousemove", { clientX: 60, clientY: 30, altKey: true });
+    expect(onQuad).not.toHaveBeenCalled();
+    expect(dispatch("click", { button: 0, clientX: 60, clientY: 30, altKey: true }).defaultPrevented).toBe(true);
+    expect(onQuad).toHaveBeenCalledExactlyOnceWith([[-0.2, -0.1], ...DEFAULT_QUAD.slice(1)]);
+    dispatch("mousemove", { clientX: 0, clientY: 0, altKey: true });
+    expect(onQuad).toHaveBeenCalledTimes(1);
+    dispatch("keydown", { key: "Escape" });
+    render();
+    dispatch("click", { button: 0, clientX: 0, clientY: 0, altKey: true });
+    expect(onQuad).toHaveBeenCalledTimes(1);
+  });
+
+  it("Ctrl+drag translates every corner using the video transform", () => {
+    const mask = render();
+    mask.corners[0].props.onPointerDown(pointer(160, 90, true));
+    mask.svg.props.onPointerMove(pointer(360, 290, true));
+    const moved = onQuad.mock.calls[0][0];
+    DEFAULT_QUAD.forEach(([x, y], i) => {
+      expect(moved[i][0]).toBeCloseTo(x + 1);
+      expect(moved[i][1]).toBeCloseTo(y + 1);
+    });
+  });
+});
