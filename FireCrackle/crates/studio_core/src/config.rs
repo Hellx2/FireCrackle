@@ -6,6 +6,102 @@
 use crate::phase::Config as PhaseConfig;
 use serde::{Deserialize, Serialize};
 
+/// Experimental phase comparison controls, separate from shipped settings until validated.
+/// All thresholds are explicit here and serialised in comparison reports.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PhaseResearchConfig {
+    /// Expected ticks per video second. Positive and finite; never automatically replaced by a fitted rate.
+    pub tick_rate: f64,
+    /// Time-bin width in seconds (>0). One circular mean per occupied bin avoids counting duplicate frames
+    /// as independent measurements. PELT is exact on these bins, not on all original observations.
+    pub bin_seconds: f64,
+    /// PELT change penalty and PCID pre-screen gain, in circular tick-squared units (>=0).
+    pub penalty_ticks2: f64,
+    /// Smallest segment-level offset reported as an event, in ticks (0..16).
+    pub min_change_ticks: f64,
+    /// Largest difference between departure's before/after levels to call it recovered (0..16 ticks).
+    pub recovery_ticks: f64,
+    /// Longest departure grouped as a recovered event, in video seconds (>0).
+    pub recovery_seconds: f64,
+    /// A row held longer than this is a held-animation event (>0 seconds), not proof of a frozen picture.
+    pub held_seconds: f64,
+    /// Largest observation gap across which held animation can be asserted (>0 seconds).
+    pub held_max_gap_seconds: f64,
+    /// PCID interval expansion in occupied bins (>0), chosen below the shortest change spacing of interest.
+    pub expansion_bins: usize,
+    /// PCID bounded analysis-window size in bins (>=2); a second overlapping tiling covers window edges.
+    pub pcid_window_bins: usize,
+    /// Block-permutation replicates (>0). Minimum attainable p-value is 1/(B+1).
+    pub permutations: usize,
+    /// Bins per shuffled block (>0), retaining short-range dependence; no calibrated video-wide error claim.
+    pub permutation_block_bins: usize,
+    /// Exploratory PCID per-test significance in (0,1). Multiple adaptive tests are not globally calibrated.
+    pub alpha: f64,
+    /// Reproducible randomisation seed; nonzero after internal mixing.
+    pub seed: u64,
+    /// Half-width of diagnostic rate search around nominal, ticks/second (>0).
+    pub rate_search: f64,
+    /// Diagnostic rate grid spacing (>0, <=rate_search); reported fit never changes the detector clock.
+    pub rate_step: f64,
+    /// Quantile of wrapped clock residual used for a lower-edge diagnostic (0..1).
+    pub edge_quantile: f64,
+    /// First occupied time bins used to anchor the common clock (>0). Circular median resists isolated
+    /// startup outliers; the reference never follows later observations or resets across gaps.
+    pub clock_anchor_bins: usize,
+}
+impl Default for PhaseResearchConfig {
+    fn default() -> Self {
+        Self {
+            tick_rate: 20.0,
+            bin_seconds: 0.5,
+            penalty_ticks2: 5.0,
+            min_change_ticks: 0.75,
+            recovery_ticks: 0.75,
+            recovery_seconds: 60.0,
+            held_seconds: 0.25,
+            held_max_gap_seconds: 0.1,
+            expansion_bins: 16,
+            pcid_window_bins: 256,
+            permutations: 199,
+            permutation_block_bins: 2,
+            alpha: 0.05,
+            seed: 1,
+            rate_search: 0.05,
+            rate_step: 0.0005,
+            edge_quantile: 0.1,
+            clock_anchor_bins: 8,
+        }
+    }
+}
+
+/// Combined-checker controls. Every field is exposed and range-checked by Settings::describe/set.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PhaseV2Config {
+    /// Occupied time-bin width for PELT (seconds); raw checks still inspect every label.
+    pub bin_seconds:f64,
+    /// Cost per extra PELT segment in circular tick-squared units.
+    pub penalty_ticks2:f64,
+    /// Early occupied bins anchoring the common circular-median clock reference.
+    pub anchor_bins:usize,
+    /// Contiguous same-row duration that supplies held-animation evidence (seconds).
+    pub held_seconds:f64,
+    /// Largest timestamp gap allowed inside a held-animation interval (seconds).
+    pub held_max_gap_seconds:f64,
+    /// Observations on EACH side needed to assess recovery; missing evidence leaves it unknown.
+    pub recovery_samples:usize,
+    /// Allowed difference of before/after clock-residual centres (ticks).
+    pub recovery_ticks:f64,
+    /// Minimum PELT supplement size (ticks); phase.min_shift_ticks may raise it.
+    pub supplement_min_ticks:f64,
+}
+impl Default for PhaseV2Config {
+    fn default()->Self { Self {bin_seconds:0.5,penalty_ticks2:5.0,anchor_bins:8,held_seconds:0.25,
+        held_max_gap_seconds:0.1,recovery_samples:6,recovery_ticks:0.75,supplement_min_ticks:0.75} }
+}
+
+
 /// How the frame index judges timing regularity.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -170,6 +266,7 @@ impl Default for TimelineConfig {
 #[serde(default)]
 pub struct Settings {
     pub phase: PhaseConfig,
+    pub phase_v2: PhaseV2Config,
     pub index: IndexConfig,
     pub project: ProjectConfig,
     pub label: LabelConfig,
@@ -213,17 +310,16 @@ struct Spec {
     set: fn(&mut Settings, f64),
 }
 
-static SPECS: [Spec; 33] = [
+static SPECS: [Spec; 44] = [
     Spec {
         key: "phase.min_run",
         label: "Phase: shortest believable run (frames)",
         min: 1.0,
         max: 1_000_000.0,
         integer: true,
-        explanation: "A stretch of labelled frames with the same phase that is shorter than this, and sits between \
-two stretches with one identical phase, is flagged as a hard outlier (a mislabelled frame). Longer stretches are \
-treated as a real phase change and flagged softly instead (a resource reload, leaving the world, or drift). \
-Raise it to flag longer odd stretches as outliers; lower it to trust short runs.",
+        explanation: "The raw check treats shorter stretches between compatible neighbours as outliers. The hold \
+detector can also bridge an interruption shorter than this when the same row returns, while keeping its odd \
+observations independently flagged. A finding does not prove whether labels, capture timing or the game caused it.",
         get: |s| s.phase.min_run as f64,
         set: |s, v| s.phase.min_run = v as usize,
     },
@@ -255,14 +351,13 @@ false alarms on jittery footage; raise it for very jittery footage.",
     },
     Spec {
         key: "phase.max_lag_ticks",
-        label: "Phase: most ticks lag can explain",
+        label: "Phase: hard discrepancy threshold (ticks)",
         min: 0.0,
         max: 16.0,
         integer: false,
-        explanation: "When the game stalls, its animation falls behind the video clock and then catches up, but \
-Minecraft runs at most 10 catch-up ticks per frame, so a short lag excursion is never further off than about 10 \
-ticks. A short odd stretch further than this from its neighbours cannot be lag and is marked as a hard error \
-(for example a wrong sheet, which is exactly 16 ticks off); nearer ones are marked soft.",
+        explanation: "A discrepancy larger than this receives hard review priority. Lag, capture holds, edits, \
+resets and wrong labels may all cause it. This is not a Minecraft lag cap and does not prove a cause. For an \
+observed hold, elapsed nominal ticks include whole animation cycles rather than only the wrapped offset.",
         get: |s| s.phase.max_lag_ticks,
         set: |s, v| s.phase.max_lag_ticks = v,
     },
@@ -291,6 +386,46 @@ shifts. A change that stays, or returns only later than this, is a shift: that i
 resource reload or leaving the world looks like. Set 0 to never merge.",
         get: |s| s.phase.max_excursion_seconds,
         set: |s, v| s.phase.max_excursion_seconds = v,
+    },
+    Spec {
+        key:"phase_v2.bin_seconds",label:"Phase: sustained-change time bins (s)",min:0.01,max:10.0,integer:false,
+        explanation:"PELT compares circular means in occupied bins of this duration. Smaller bins preserve shorter timing changes at a higher processing cost. Individual label checks still run before binning.",
+        get:|s|s.phase_v2.bin_seconds,set:|s,v|s.phase_v2.bin_seconds=v,
+    },
+    Spec {
+        key:"phase_v2.penalty_ticks2",label:"Phase: sustained-change penalty",min:0.0,max:100000.0,integer:false,
+        explanation:"Cost of adding another circular timing segment, in tick-squared units. Larger values favour fewer sustained changes; raw frame discrepancies are retained regardless of this penalty.",
+        get:|s|s.phase_v2.penalty_ticks2,set:|s,v|s.phase_v2.penalty_ticks2=v,
+    },
+    Spec {
+        key:"phase_v2.anchor_bins",label:"Phase: early bins anchoring the clock",min:1.0,max:1000.0,integer:true,
+        explanation:"The circular median of these first occupied bins anchors the shared clock. The reference continues through holds and gaps and is never reset to a later sighting. Wrong initial labels can bias it.",
+        get:|s|s.phase_v2.anchor_bins as f64,set:|s,v|s.phase_v2.anchor_bins=v as usize,
+    },
+    Spec {
+        key:"phase_v2.held_seconds",label:"Phase: held-animation duration (s)",min:0.05,max:3600.0,integer:false,
+        explanation:"A canonical sprite row held for this long in contiguous labelled frames supplies hold evidence. It may be a capture stall or repeated labels; rows alone do not prove identical whole pictures.",
+        get:|s|s.phase_v2.held_seconds,set:|s,v|s.phase_v2.held_seconds=v,
+    },
+    Spec {
+        key:"phase_v2.held_max_gap_seconds",label:"Phase: largest gap within held animation (s)",min:0.001,max:1.0,integer:false,
+        explanation:"A larger timestamp gap ends a held-animation observation. Missing or unlabelled video cannot establish a continuous freeze even when the row on either side is identical.",
+        get:|s|s.phase_v2.held_max_gap_seconds,set:|s,v|s.phase_v2.held_max_gap_seconds=v,
+    },
+    Spec {
+        key:"phase_v2.recovery_samples",label:"Phase: observations confirming recovery",min:1.0,max:1000.0,integer:true,
+        explanation:"Use this many actual labelled observations before and after a hold to compare clock residuals. Without enough evidence on either side, recovery stays unknown rather than being assumed.",
+        get:|s|s.phase_v2.recovery_samples as f64,set:|s,v|s.phase_v2.recovery_samples=v as usize,
+    },
+    Spec {
+        key:"phase_v2.recovery_ticks",label:"Phase: recovery tolerance (ticks)",min:0.0,max:16.0,integer:false,
+        explanation:"Before and after a held row, residual centres within this circular distance support recovered timing against the same clock. Recovery never clears separate raw-frame evidence in the hold.",
+        get:|s|s.phase_v2.recovery_ticks,set:|s,v|s.phase_v2.recovery_ticks=v,
+    },
+    Spec {
+        key:"phase_v2.supplement_min_ticks",label:"Phase: smallest sustained-change supplement (ticks)",min:0.0,max:16.0,integer:false,
+        explanation:"A persistent PELT change must exceed this size before adding a review flag. The existing smallest-change setting can raise this floor. Raw optimiser boundaries alone are never flags.",
+        get:|s|s.phase_v2.supplement_min_ticks,set:|s,v|s.phase_v2.supplement_min_ticks=v,
     },
     Spec {
         key: "index.irregular_deviation",

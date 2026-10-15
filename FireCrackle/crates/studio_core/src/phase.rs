@@ -5,7 +5,7 @@
 //! - executed ticks follow wall-clock time, `N(T) = floor(20 * T)`, so with the video timestamp `t` the
 //!   estimated phase `phi = (tick_rate * t - s) mod 32` fits in an arc of about one tick (plus timestamp
 //!   jitter) for as long as nothing resets the sprites (E7);
-//! - lag only delays ticks by up to 10, a reload or leaving the world shifts the phase for good (E4, E5).
+//! - capture holds can exceed 10 ticks; the vanilla cap is per game render, not video sample (E9).
 //!
 //! Policy: flag everything suspicious, excuse nothing. The user compares each flag with the footage.
 
@@ -63,8 +63,7 @@ pub struct Config {
     /// Width in ticks of the arc all phases of one run must fit in: 1 tick of floor noise plus timestamp
     /// jitter room.
     pub window_ticks: f64,
-    /// An outlier further than this many ticks from its neighbours cannot be lag (a catch-up never exceeds
-    /// the game's cap of 10 ticks per frame) and is hard; nearer ones are soft.
+    /// Historical key for the hard discrepancy threshold. It is a review priority, not a lag cap.
     pub max_lag_ticks: f64,
     /// A change of level smaller than this many ticks is inside the normal timing noise (real captures show
     /// 90% of frames within 0.7 tick of their local level) and is not flagged.
@@ -90,7 +89,7 @@ impl Default for Config {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
-    /// Not explainable by lag, a reload or leaving the world: a labelling error.
+    /// Large discrepancy worth inspecting; lag or capture holds may cause it. No cause is proved.
     Hard,
     /// Possible (lag, reload, leaving the world, a cut, drift) but suspicious: confirm by eye.
     Soft,
@@ -149,6 +148,10 @@ pub struct Analysis {
     pub points: Vec<Point>,
     pub flags: Vec<Flag>,
     pub runs: Vec<Run>,
+    pub reference_phase: Option<f64>,
+    pub flag_details: Vec<crate::phase_v2::FlagDetail>,
+    pub clock_residuals: Vec<crate::phase_compare::ClockResidual>,
+    pub lag_intervals: Vec<crate::phase_v2::LagInterval>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -379,5 +382,5 @@ pub fn analyze(obs: &[FrameObs], cfg: &Config) -> Result<Analysis, PhaseError> {
             width: a.max - a.min,
         })
         .collect();
-    Ok(Analysis { points, flags, runs })
+    Ok(Analysis { points, flags, runs, reference_phase:None,flag_details:vec![],clock_residuals:vec![],lag_intervals:vec![] })
 }

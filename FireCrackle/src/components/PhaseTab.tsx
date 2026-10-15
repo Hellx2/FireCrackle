@@ -68,7 +68,7 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
       g.fillStyle = chart.flags[i].severity === "hard" ? "rgba(255,77,79,0.28)" : "rgba(245,197,66,0.22)";
       g.fillRect(s.x0, 0, s.x1 - s.x0, h);
     }
-    const ref = chart.runs[0]?.center ?? chart.points[0]?.phase ?? 0;
+    const ref = chart.reference_phase ?? chart.runs[0]?.center ?? chart.points[0]?.phase ?? 0;
     if (kind === "phase") {
       g.strokeStyle = COLORS.grid;
       g.fillStyle = COLORS.text;
@@ -89,6 +89,11 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
         const top = phaseToY(rel + r.width / 2, h);
         const bottom = phaseToY(rel - r.width / 2, h);
         g.fillRect(x0, top, x1 - x0, Math.max(1, bottom - top));
+      }
+      if(chart.reference_phase!=null){
+        const y=phaseToY(0,h);
+        g.strokeStyle="#4cc38a";g.setLineDash([6,4]);g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();g.setLineDash([]);
+        g.fillStyle="#4cc38a";g.textAlign="right";g.fillText(`${chart.tick_rate} Hz reference`,w-6,Math.max(11,y-5));g.textAlign="left";
       }
     } else {
       g.strokeStyle = COLORS.grid;
@@ -164,7 +169,7 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
         <div className="chart-head">
           <span className="panel-title">Phase against time</span>
           <span className="dim">
-            flat = a steady clock (20 ticks/s). Each shaded band is one run; a step is a cut, a reload or a lag drop. Red/amber = flags.
+            Green line = the shared {chart?.tick_rate ?? 20} Hz clock through holds and gaps. Red/amber = review priority; lag can cause either.
           </span>
         </div>
         {chart && chart.points.length === 0 ? (
@@ -181,7 +186,7 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
         )}
         <div className="chart-hover">{hover ?? " "}</div>
       </section>
-      <FlagsPanel flags={chart?.flags ?? []} fps={fps} current={view.current} onSeek={onJump} />
+      <FlagsPanel flags={chart?.flags ?? []} details={chart?.flag_details} fps={fps} current={view.current} onSeek={onJump} />
     </main>
   );
 }

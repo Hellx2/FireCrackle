@@ -3,7 +3,7 @@
 
 use crate::config::Settings;
 use crate::label::{log_line, Label, LabelError, LabelStore};
-use crate::phase::{analyze, Analysis, Flag, FrameObs, STEPS};
+use crate::phase::{Analysis, Flag, FrameObs, STEPS};
 use crate::project::Project;
 use serde::Serialize;
 
@@ -363,7 +363,7 @@ impl Session {
                 .filter(|(_, l)| l.is_fire())
                 .map(|(frame, label)| FrameObs { frame, pts: self.project.frames[frame as usize].pts, label })
                 .collect();
-            self.analysis = Some(analyze(&obs, &self.settings.phase).expect("labels and project timestamps are valid"));
+            self.analysis = Some(crate::phase_v2::analyze(&obs, &self.settings).expect("labels, settings and project timestamps are valid"));
         }
         self.analysis.as_ref().expect("just computed")
     }

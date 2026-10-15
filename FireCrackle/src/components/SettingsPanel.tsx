@@ -4,6 +4,7 @@ import type { SettingInfo } from "../lib/api";
 const GROUP_TITLES: Record<string, string> = {
   label: "Labelling",
   phase: "Phase check",
+  phase_v2: "Clock and recovery",
   index: "Video timing",
   decode: "Frame decoding",
   autosave: "Autosave",

@@ -1,12 +1,20 @@
 use studio_core::config::*;
 
-const KEYS: [&str; 36] = [
+const KEYS: [&str; 44] = [
     "phase.min_run",
     "phase.tick_rate",
     "phase.window_ticks",
     "phase.max_lag_ticks",
     "phase.min_shift_ticks",
     "phase.max_excursion_seconds",
+    "phase_v2.bin_seconds",
+    "phase_v2.penalty_ticks2",
+    "phase_v2.anchor_bins",
+    "phase_v2.held_seconds",
+    "phase_v2.held_max_gap_seconds",
+    "phase_v2.recovery_samples",
+    "phase_v2.recovery_ticks",
+    "phase_v2.supplement_min_ticks",
     "index.irregular_deviation",
     "index.vfr_fraction",
     "project.fingerprint_window_bytes",

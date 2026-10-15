@@ -29,6 +29,19 @@ export interface PhaseChart {
   flags: Flag[];
   tick_rate: number;
   window_ticks: number;
+  reference_phase?: number | null;
+  flag_details?: FlagDetail[];
+  clock_residuals?: {first_frame:number;last_frame:number;phase_delta:number}[];
+  lag_intervals?: {first_frame:number;last_frame:number;elapsed_ticks:number;recovered:boolean|null;recovery_phase_delta:number|null}[];
+}
+
+export interface FlagDetail {
+  frame:number;
+  end_frame:number;
+  kind:Flag["kind"];
+  explanation:string;
+  clock_delta:number;
+  held_ticks:number|null;
 }
 
 /** Signed shortest offset from `reference` to `phase` on the 32-tick circle, in (-16, 16]. */

@@ -161,3 +161,12 @@ fn the_chart_serialises_to_json_the_ui_can_read() {
     let _ = Label::Unset;
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_session_chart_includes_the_fixed_clock_and_event_evidence() {
+    let (dir,mut w)=ws("clock_evidence",64);label_run(&mut w,40,20,5);
+    let v=serde_json::to_value(w.phase_chart(1000)).unwrap();
+    assert!(v["reference_phase"].is_number());assert!(v["flag_details"].as_array().is_some_and(|a|!a.is_empty()));
+    assert!(v["clock_residuals"].as_array().is_some_and(|a|!a.is_empty()));
+    let _=std::fs::remove_dir_all(&dir);
+}

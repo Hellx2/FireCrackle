@@ -81,10 +81,13 @@ gameRenderer.render(...)                                              // :1046, 
 ```
 - Ticks run **before** the world is drawn in the same `render()`, so a frame shows the row produced by the
   last tick that ran at or before it.
-- Between two consecutive rendered frames the step advances by **0..10**: 0 when `i == 0` (typical above
+- Between two consecutive **game** renders on this vanilla path the step advances by **0..10**: 0 when `i == 0` (typical above
   20 fps, ~3 frames per tick at 60 fps), more after a lag spike. `i` above 10 is clamped, the extra ticks
   are **dropped** (the fractional remainder is kept, `RenderTickCounter.java`): such a drop does not
   advance the sprite either, so a counter of *executed* client ticks stays consistent with the sprite.
+- This bound does **not** apply between recorded video samples. OBS can repeat an older captured picture
+  while many game renders run, then capture a newer picture. See E9 for the measured 47-tick jump over
+  206 game renders. A visible recording freeze does not prove that the game render thread froze.
 - `render(false)` callers (`:1854, :2002, :2026, :2033`: loading / screen switches) run no ticks.
 - Tick rate is fixed at 20 (`new RenderTickCounter(20.0F, 0L)`, `MinecraftClient.java:302`).
 
@@ -150,8 +153,9 @@ tick at 60 fps; mkv rounds to 1 ms = 0.02 tick). The check is therefore "fits in
   by up to 10 ticks and comes back: a short, soft, explainable excursion (`max_lag_ticks` = 10).
 - A frame so slow that `i > 10`: the extra ticks are dropped for good (E4): a permanent shift of `phi`.
 - A resource reload resets `s` to 0 (E5), leaving the world stops the sprites (E3): permanent shifts.
-- A short run that returns to the same phase afterwards and is more than 10 ticks away is not explainable by
-  lag (a catch-up never exceeds 10): a labelling error (a wrong sheet is exactly 16 away).
+- A short run that returns to the same phase afterwards can be a capture stall even when its departure
+  exceeds 10 ticks. The game's per-render cap cannot classify video-sample departures. A wrong sheet is
+  16 ticks away, but magnitude alone cannot establish a labelling error.
 
 **Limits (cannot be fixed without ticks).**
 - A label that is wrong by about 1 row sits inside the 1-tick floor noise plus jitter and may not be flagged.
@@ -185,10 +189,41 @@ the ticks were used only to judge it. Reproduce: `cargo run --release --example 
 - **A cut that lands back on a level the footage had a moment ago** reads as a lag stall that ends at the cut
   (an excursion whose `end_frame` is the frame before the cut, usually Hard when the jump exceeds 10 ticks).
 
+## E9. Re-check of clip2's freeze and catch-up (job 11)
+
+Re-read the exact local sources jar named above, not just this document:
+`MinecraftClient.java:1015-1024`, `RenderTickCounter.java:18-24`, `TextureManager.java:142-145`,
+`SpriteAtlasTexture.java:270-275`, `Sprite.java:244-253`. The cap and immediate animation tick chain are
+unchanged. `FireLabelClient.java:14` registers `END_CLIENT_TICK`; `FireLabel.java:40-41` increments the
+counter once per callback. `GameRendererMixin.java:17-19` invokes `FireLabel.onFrameRendered()` at the
+tail of each game render; `FireLabel.java:45-47` allocates its render ID.
+
+The joined recording itself distinguishes recorded frame `n` from game render ID `f`:
+
+| Recorded frame n | Game render f | Executed tick | Sheet-1 row |
+|---|---|---|---|
+| 13862 | 22322 | 5733 | 10 |
+| 13863 | 22323 | 5733 | 10 |
+| 14003 | 22323 | 5733 | 10 |
+| 14004 | 22529 | 5780 | 25 |
+| 14005 | 22530 | 5781 | 26 |
+
+Thus the held samples repeat game render 22323; the next captured render is 22529, **206 game renders
+later**, and its tick is 47 later. The displayed row changes by `47 mod 32 = 15`, exactly as recorded.
+This is compatible with the vanilla cap. It is not evidence of 47 ticks executed in one game render.
+The earlier assertion that this was a proven 2.4-second *client* freeze was too strong: it is a proven
+hold in the recording/capture path, with game renders absent from that interval in the video. The
+joined evidence does not establish which OBS/GPU/capture component caused it.
+
+Consequences: preserve the event for review, describe the observable held animation/capture and phase
+recovery, and do not call a large recovered departure a proven label error. In real uninstrumented
+footage only rows and timestamps are available: repeated row != proof of identical full-frame pixels.
+There is no 10-tick upper bound on a recovered video departure.
+
 ## What this does NOT prove (do not treat as verified)
 
-- That the mod's `tick` counter increments exactly once per `MinecraftClient.tick()` (mod code, not vanilla;
-  only relevant to strip-carrying training data, not to FireCrackle).
+- That an arbitrary recorder captures every game render (E9 demonstrates a counterexample). The mod's
+  counter registration was checked in E9; uninstrumented target footage does not provide that counter.
 - That a given video's timestamps are real time (uncut, not sped up): E7 depends on it; `tick_rate` and the
   shift flags exist because it is not guaranteed.
 - The mirror *convention* for entity fire (which of swapped/unswapped the picker calls "mirrored").

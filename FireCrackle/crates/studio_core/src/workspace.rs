@@ -293,6 +293,10 @@ pub struct PhaseChart {
     pub tick_rate: f64,
     /// Width of the arc one steady run fits in (the `phase.window_ticks` setting), for the chart's bands.
     pub window_ticks: f64,
+    pub reference_phase: Option<f64>,
+    pub flag_details: Vec<crate::phase_v2::FlagDetail>,
+    pub clock_residuals: Vec<crate::phase_compare::ClockResidual>,
+    pub lag_intervals: Vec<crate::phase_v2::LagInterval>,
 }
 
 pub struct Workspace {
@@ -563,6 +567,10 @@ impl Workspace {
             flags: a.flags.clone(),
             tick_rate,
             window_ticks,
+            reference_phase:a.reference_phase,
+            flag_details:a.flag_details.clone(),
+            clock_residuals:a.clock_residuals.clone(),
+            lag_intervals:a.lag_intervals.clone(),
         }
     }
 
