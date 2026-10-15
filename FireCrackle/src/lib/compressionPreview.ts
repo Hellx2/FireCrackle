@@ -5,7 +5,9 @@ export interface CompressionTexel { points: Array<[number, number]>; colour: str
 
 /** Delivery coordinates only: CSS size, devicePixelRatio, zoom and pan never enter here. */
 export function compressionGeometry(width: number, height: number, targetHeight: number, quad: ManualQuad) {
-  const h = Math.max(1, Math.round(Math.min(height, targetHeight)));
+  // The decoder may supply a reduced preview. Its aspect ratio locates the quad,
+  // but only the selected delivery resolution determines the fire's raster size.
+  const h = Math.max(1, Math.round(targetHeight));
   const w = Math.max(1, Math.round(width * h / height));
   return { width:w, height:h,
     quadWidth:(Math.max(...quad.map(p=>p[0]))-Math.min(...quad.map(p=>p[0])))*w,

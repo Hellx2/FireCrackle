@@ -23,7 +23,7 @@ export function CompressedQuad(props:Props) {
   },[request]);
   const current=result?.request===request?result:null;
   return current?.url
-    ? <image href={current.url} width={displayWidth} height={displayHeight} opacity={opacity} preserveAspectRatio="none" style={{imageRendering:"pixelated"}} />
+    ? <image href={current.url} width={displayWidth} height={displayHeight} opacity={opacity} preserveAspectRatio="none" style={{imageRendering:"auto"}} />
     : <text x="12" y="24" fill="white" stroke="black" paintOrder="stroke" strokeWidth="2" role={current?.error?"alert":"status"}>
       {current?.error?`Compression preview failed: ${current.error}`:"Rendering compression preview…"}
     </text>;

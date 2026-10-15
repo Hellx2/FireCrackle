@@ -12,8 +12,13 @@ describe("compression at delivery pixels", () => {
     expect(g.quadHeight).toBeCloseTo(43.2);
     expect(compressionGeometry(2560, 1440, 540, quad).quadWidth).toBeCloseTo(19.2);
   });
-  it("preserves aspect ratio, never upscales a decoded frame, and permits off-frame quads", () => {
-    expect(compressionGeometry(640, 360, 1080, quad)).toMatchObject({ width:640, height:360 });
+  it("honors selected delivery resolution even when the decoded preview is smaller", () => {
+    expect(compressionGeometry(640, 360, 1080, quad)).toMatchObject({ width:1920, height:1080 });
+    const from720 = compressionGeometry(1280,720,1080,quad);
+    expect(from720).toEqual(compressionGeometry(2560,1440,1080,quad));
+    expect(from720.quadWidth).toBeCloseTo(38.4);
+  });
+  it("preserves aspect ratio and permits off-frame quads", () => {
     const outside: ManualQuad = [[-0.1,0], [0.1,0], [0.1,1], [-0.1,1]];
     expect(compressionGeometry(1920,1080,720,outside).quadWidth).toBeCloseTo(256);
     expect(compressionGeometry(1080,1920,720,quad)).toMatchObject({ width:405,height:720 });
