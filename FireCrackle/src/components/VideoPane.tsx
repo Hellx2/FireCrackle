@@ -131,6 +131,7 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
 
   function panDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
+    e.preventDefault(); // Keep native image/text dragging from cancelling pointer capture.
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = { x: e.clientX, y: e.clientY };
   }
@@ -152,6 +153,8 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
       <div
         className="video-frame zoomed"
         ref={frameRef}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
         onPointerDown={panDown}
         onPointerMove={panMove}
         onPointerUp={panUp}
