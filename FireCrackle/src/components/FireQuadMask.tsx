@@ -19,12 +19,13 @@ interface Props {
   zoom?: number;
   compression?: CompressionSettings;
   frameUrl?: string;
+  placementEnabled?: boolean;
   quad: ManualQuad;
   onQuad: (quad: ManualQuad) => void;
 }
 
 /** Independent manual reference: dragging it never edits a frame label. */
-export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false, zoom = 1, compression, frameUrl }: Props) {
+export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, quad, onQuad, pixelGrid = false, zoom = 1, compression, frameUrl, placementEnabled = true }: Props) {
   const clipId = useId();
   const svgRef = useRef<SVGSVGElement>(null);
   const dragging = useRef<{ corner: number; last: QuadPoint } | null>(null);
@@ -134,7 +135,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       }
     };
     const click = (e: MouseEvent) => {
-      if (!e.altKey || e.shiftKey || e.button !== 0 || selectedCorner === null || dragging.current || transformDrag.current) return;
+      if (!placementEnabled || !e.altKey || e.shiftKey || e.button !== 0 || selectedCorner === null || dragging.current || transformDrag.current) return;
       e.preventDefault();
       e.stopPropagation();
       snap(e.clientX, e.clientY);
@@ -160,7 +161,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       window.removeEventListener("pointermove", modifiers, true);
       window.removeEventListener("blur", blur);
     };
-  }, [width, height, selectedCorner, onQuad]);
+  }, [width, height, selectedCorner, onQuad, placementEnabled]);
 
   // Convert a screen-pixel handle size into SVG units, including image fit and zoom.
   useEffect(() => {

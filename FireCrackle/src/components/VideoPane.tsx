@@ -93,6 +93,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   const unitPixels = rulerUnit(ruler.points, imageSize.width, imageSize.height);
   useEffect(() => { writeRuler(ruler); }, [ruler]);
   const resizeRulerUnit = (pixels: number) => setRuler(current => ({ ...current, points: scaleRulerUnit(current.points, pixels, imageSize.width, imageSize.height) }));
+  const [rulerSelected, setRulerSelected] = useState(false);
 
   function selectPreview(sprite: PreviewSprite): boolean {
     const mode = manualEnabled ? "manual" : hudEnabled ? "firstPerson" : "none";
@@ -205,8 +206,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} pixelGrid={pixelGrid} />}
           {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale}
-            frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
-          {ruler.enabled && url && imageSize.width > 0 && <VideoRuler {...imageSize} zoom={xf.scale} points={ruler.points} onChange={points => setRuler(current => ({ ...current, points }))} />}
+            placementEnabled={!ruler.enabled || !rulerSelected} frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
+          {ruler.enabled && url && imageSize.width > 0 && <VideoRuler {...imageSize} zoom={xf.scale} points={ruler.points} locked={ruler.locked} onSelect={setRulerSelected} onChange={points => setRuler(current => ({ ...current, points }))} />}
         </div>
         {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
@@ -232,11 +233,12 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         }}>Quad mask</IconButton>
       </div>
       {ruler.enabled && <div className="hud-controls ruler-controls" aria-label="Ruler settings" onKeyDown={(e) => e.stopPropagation()}>
-          <label>1 unit = <input className="ruler-unit-input" aria-label="Video pixels per ruler unit" type="number" min={0.01} step={0.25} disabled={unitPixels <= 0} value={unitPixels > 0 ? Number(unitPixels.toFixed(3)) : ""} onChange={e => resizeRulerUnit(e.target.valueAsNumber)} /> video px</label>
-          <IconButton icon="zoomOut" label="Shrink ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels / 1.1)} />
-          <IconButton icon="zoomIn" label="Enlarge ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels * 1.1)} />
-          <IconButton icon="reset" label="Reset ruler calibration" onClick={() => setRuler({ enabled: true, points: DEFAULT_RULER.points })} />
-          <span className="hud-hint">Drag 0 and 1 to set unit / direction · drag line to move · extends both ways</span>
+          <label><input type="checkbox" checked={ruler.locked} onChange={e => setRuler(current => ({ ...current, locked: e.target.checked }))} /> Lock unit</label>
+          <label>1 unit = <input className="ruler-unit-input" aria-label="Video pixels per ruler unit" type="number" min={0.01} step={0.25} disabled={ruler.locked || unitPixels <= 0} value={unitPixels > 0 ? Number(unitPixels.toFixed(3)) : ""} onChange={e => resizeRulerUnit(e.target.valueAsNumber)} /> video px</label>
+          <IconButton icon="zoomOut" label="Shrink ruler unit" disabled={ruler.locked || unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels / 1.1)} />
+          <IconButton icon="zoomIn" label="Enlarge ruler unit" disabled={ruler.locked || unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels * 1.1)} />
+          <IconButton icon="reset" label="Reset ruler calibration" disabled={ruler.locked} onClick={() => setRuler({ ...DEFAULT_RULER, enabled: true })} />
+          <span className="hud-hint">Ctrl: lock unit · locked 0: move / 1: rotate · select 0 or 1 + Alt+click: place · drag line: move</span>
       </div>}
       {hudEnabled && <div className="hud-controls" aria-label="First-person fire settings" onKeyDown={(e) => e.stopPropagation()}>
           <IconButton icon="left" label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))} />

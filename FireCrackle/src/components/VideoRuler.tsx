@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { moveRuler, rulerTicks, type RulerPoints } from "../lib/ruler";
+import { editRuler, rulerTicks, type RulerPoints } from "../lib/ruler";
 import { screenToQuadPoint, type QuadPoint } from "../lib/quadMask";
 import "./VideoRuler.css";
 
-interface Props { width: number; height: number; zoom: number; points: RulerPoints; onChange: (points: RulerPoints) => void }
-export function VideoRuler({ width, height, zoom, points, onChange }: Props) {
+interface Props { width: number; height: number; zoom: number; points: RulerPoints; locked?: boolean; onSelect?: (selected: boolean) => void; onChange: (points: RulerPoints) => void }
+export function VideoRuler({ width, height, zoom, points, locked = false, onSelect, onChange }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const drag = useRef<{ handle: 0 | 1 | "move"; start: QuadPoint; points: RulerPoints } | null>(null);
+  const drag = useRef<{ handle: 0 | 1 | "move"; start: QuadPoint; points: RulerPoints; locked: boolean } | null>(null);
+  const selected = useRef<0 | 1 | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<0 | 1 | null>(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const svg = svgRef.current; if (!svg) return;
@@ -14,6 +16,23 @@ export function VideoRuler({ width, height, zoom, points, onChange }: Props) {
     measure(); const observer = new ResizeObserver(measure); observer.observe(svg);
     return () => observer.disconnect();
   }, [width, height, zoom]);
+  useEffect(() => {
+    const place = (e: globalThis.PointerEvent) => {
+      if (!e.altKey) {
+        if (!svgRef.current?.contains(e.target as Node)) { selected.current = null; setSelectedPoint(null); onSelect?.(false); }
+        return;
+      }
+      if (selected.current === null || e.button !== 0 || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test((e.target as HTMLElement | null)?.tagName ?? "")) return;
+      const matrix = svgRef.current?.getScreenCTM();
+      const point = matrix ? screenToQuadPoint(matrix, e.clientX, e.clientY, width, height) : null;
+      if (!point) return;
+      e.preventDefault(); e.stopPropagation(); drag.current = null;
+      const handle = selected.current;
+      onChange(editRuler(points, handle, [point[0] - points[handle][0], point[1] - points[handle][1]], locked || e.ctrlKey, width, height));
+    };
+    window.addEventListener("pointerdown", place, true);
+    return () => window.removeEventListener("pointerdown", place, true);
+  }, [points, locked, width, height, onChange, onSelect]);
   const geometry = rulerTicks(points, width, height, scale);
   function cursor(e: PointerEvent<SVGElement>) {
     const matrix = svgRef.current?.getScreenCTM();
@@ -23,7 +42,8 @@ export function VideoRuler({ width, height, zoom, points, onChange }: Props) {
     if (e.button !== 0) return;
     const start = cursor(e); if (!start) return;
     e.preventDefault(); e.stopPropagation();
-    drag.current = { handle, start, points };
+    if (handle !== "move") { selected.current = handle; setSelectedPoint(handle); onSelect?.(true); }
+    drag.current = { handle, start, points, locked: locked || e.ctrlKey };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function move(e: PointerEvent<SVGSVGElement>) {
@@ -31,7 +51,7 @@ export function VideoRuler({ width, height, zoom, points, onChange }: Props) {
     e.preventDefault(); e.stopPropagation();
     const point = cursor(e); if (!point) return;
     const { handle, start, points: initial } = drag.current;
-    onChange(moveRuler(initial, handle, [point[0] - start[0], point[1] - start[1]]));
+    onChange(editRuler(initial, handle, [point[0] - start[0], point[1] - start[1]], locked || drag.current.locked || e.ctrlKey, width, height));
   }
   function stop(e: PointerEvent<SVGSVGElement>) { if (drag.current) e.stopPropagation(); drag.current = null; }
   if (!geometry) return null;
@@ -46,7 +66,7 @@ export function VideoRuler({ width, height, zoom, points, onChange }: Props) {
       <line className="ruler-hit" x1={geometry.min} x2={geometry.max} strokeWidth={14 / scale} onPointerDown={e => begin(e, "move")}><title>Move the ruler without changing its unit</title></line>
     </g>
     {points.map(([x, y], i) => <g key={i} className={`ruler-calibration point-${i}`} transform={`translate(${x * width} ${y * height})`} onPointerDown={e => begin(e, i as 0 | 1)}>
-      <circle r={7 / scale} strokeWidth={2 / scale} />
+      <circle className={selectedPoint === i ? "selected" : ""} r={7 / scale} strokeWidth={2 / scale} />
       <text className="ruler-number" y={-14 / scale} fontSize={12 / scale} strokeWidth={3 / scale}>{i}</text>
       <title>{i === 0 ? "0: ruler origin" : "1: one unit from the origin; drag to set scale and direction"}</title>
     </g>)}

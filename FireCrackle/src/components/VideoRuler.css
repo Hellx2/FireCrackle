@@ -6,4 +6,5 @@
 .ruler-calibration { pointer-events: all; cursor: move; touch-action: none; }
 .ruler-calibration circle { fill: #d9ff89; stroke: #15200c; }
 .ruler-calibration.point-1 circle { fill: #fff; }
+.ruler-calibration circle.selected { stroke: #ffbb40; }
 .ruler-controls .ruler-unit-input { width: 85px; }

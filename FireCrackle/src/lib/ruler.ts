@@ -1,7 +1,7 @@
 import type { QuadPoint } from "./quadMask";
 export type RulerPoints = [QuadPoint, QuadPoint];
-export interface RulerState { enabled: boolean; points: RulerPoints }
-export const DEFAULT_RULER: RulerState = { enabled: false, points: [[0.35, 0.5], [0.4, 0.5]] };
+export interface RulerState { enabled: boolean; locked: boolean; points: RulerPoints }
+export const DEFAULT_RULER: RulerState = { enabled: false, locked: false, points: [[0.35, 0.5], [0.4, 0.5]] };
 export const RULER_KEY = "firecrackle.ruler.v1";
 export function validRuler(points: unknown): points is RulerPoints {
   return Array.isArray(points) && points.length === 2 && points.every(p => Array.isArray(p) && p.length === 2 && p.every(n => typeof n === "number" && Number.isFinite(n))) && Math.hypot(points[1][0] - points[0][0], points[1][1] - points[0][1]) > 1e-8;
@@ -9,7 +9,7 @@ export function validRuler(points: unknown): points is RulerPoints {
 export function readRuler(storage?: Pick<Storage, "getItem">): RulerState {
   try {
     const saved = JSON.parse((storage ?? localStorage).getItem(RULER_KEY) ?? "null");
-    if (saved && typeof saved.enabled === "boolean" && validRuler(saved.points)) return saved;
+    if (saved && typeof saved.enabled === "boolean" && validRuler(saved.points)) return { enabled: saved.enabled, locked: saved.locked === true, points: saved.points };
   } catch { /* Storage is optional. */ }
   return DEFAULT_RULER;
 }
@@ -28,6 +28,17 @@ export function scaleRulerUnit(points: RulerPoints, pixels: number, width: numbe
 }
 export function moveRuler(points: RulerPoints, handle: 0 | 1 | "move", delta: QuadPoint): RulerPoints {
   const next = points.map(([x, y], i) => handle === "move" || handle === i ? [x + delta[0], y + delta[1]] : [x, y]) as RulerPoints;
+  return validRuler(next) ? next : points;
+}
+/** Locked origin edits translate; locked point 1 edits rotate about 0 in video pixels. */
+export function editRuler(points: RulerPoints, handle: 0 | 1 | "move", delta: QuadPoint, locked: boolean, width: number, height: number): RulerPoints {
+  if (!locked || handle === "move") return moveRuler(points, handle, delta);
+  if (handle === 0) return moveRuler(points, "move", delta);
+  const dx = (points[1][0] + delta[0] - points[0][0]) * width;
+  const dy = (points[1][1] + delta[1] - points[0][1]) * height;
+  const length = Math.hypot(dx, dy), unit = rulerUnit(points, width, height);
+  if (!Number.isFinite(length) || length <= 1e-8 || width <= 0 || height <= 0) return points;
+  const next: RulerPoints = [points[0], [points[0][0] + dx / length * unit / width, points[0][1] + dy / length * unit / height]];
   return validRuler(next) ? next : points;
 }
 function niceStep(value: number): number {

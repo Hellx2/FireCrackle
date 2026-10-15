@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { DEFAULT_RULER, moveRuler, readRuler, rulerTicks, rulerUnit, scaleRulerUnit, type RulerPoints } from "./ruler";
+import { DEFAULT_RULER, editRuler, moveRuler, readRuler, rulerTicks, rulerUnit, scaleRulerUnit, type RulerPoints } from "./ruler";
 
 it("uses only0 and1 as calibration and expands into negative and positive units", () => {
   const points: RulerPoints = [[0.4, 0.5], [0.5, 0.5]];
@@ -38,8 +38,21 @@ it("bounds tick density for tiny units, huge zoom, and off-image calibration", (
   expect(scaleRulerUnit(DEFAULT_RULER.points, NaN, 1000, 500)).toBe(DEFAULT_RULER.points);
 });
 it("restores valid calibration and ignores malformed or collapsed saved state", () => {
-  const state = { enabled: true, points: [[-0.5, 0], [0.5, 0.1]] };
+  const state = { enabled: true, locked: true, points: [[-0.5, 0], [0.5, 0.1]] };
   expect(readRuler({ getItem: () => JSON.stringify(state) })).toEqual(state);
   expect(readRuler({ getItem: () => '{"enabled":true,"points":[null,null]}' })).toEqual(DEFAULT_RULER);
   expect(readRuler({ getItem: () => '{"enabled":true,"points":[[0,0],[0,0]]}' })).toEqual(DEFAULT_RULER);
+});
+it("keeps locked unit length during translation and rotation on rectangular video", () => {
+  const points: RulerPoints = [[0.2, 0.3], [0.3, 0.3]];
+  const moved = editRuler(points, 0, [0.2, -0.1], true, 2000, 1000);
+  expect(moved[0][0]).toBeCloseTo(0.4);
+  expect(moved[1][0]).toBeCloseTo(0.5);
+  const rotated = editRuler(points, 1, [-0.1, 0.8], true, 2000, 1000);
+  expect(rotated[0]).toBe(points[0]);
+  expect(rotated[1][0]).toBeCloseTo(0.2);
+  expect(rotated[1][1]).toBeCloseTo(0.5);
+  expect(rulerUnit(rotated, 2000, 1000)).toBeCloseTo(200);
+  expect(editRuler(points, 1, [-0.1, 0], true, 2000, 1000)).toBe(points);
+  expect(readRuler({ getItem: () => JSON.stringify({ enabled: true, points }) }).locked).toBe(false);
 });
