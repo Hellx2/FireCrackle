@@ -181,7 +181,7 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       aria-label="Manual fire matching mask: drag the four corner handles" onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={stop}>
       <defs><clipPath id={clipId}><rect width={width} height={height} /></clipPath></defs>
       <g opacity={compression ? 1 : opacity} clipPath={`url(#${clipId})`}>
-        {compression && frameUrl && delivery ? rgba && <CompressedQuad frameUrl={frameUrl} texels={texels}
+        {compression && frameUrl && delivery ? rgba && <CompressedQuad rgba={rgba} quad={quad} row={row} mirrored={mirrored}
           width={delivery.width} height={delivery.height} displayWidth={width} displayHeight={height} opacity={opacity} quality={compression.quality} />
           : <FireTexels texels={texels} pixelGrid={pixelGrid} scaleX={width} scaleY={height} />}
         {compression && pixelGrid && <g fill="none">{texels.map((p,i)=><polygon key={i} points={points(p.points)} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={0.7} vectorEffect="non-scaling-stroke" />)}</g>}

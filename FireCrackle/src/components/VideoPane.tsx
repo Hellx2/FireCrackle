@@ -228,16 +228,16 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <IconButton icon="reset" label="Reset quad corners" onClick={() => setManualQuad(DEFAULT_QUAD)} />
           <IconButton icon="parallel" label="Make quad a parallelogram" title="Make a parallelogram · P · keeps the center" onClick={() => setManualQuad(parallelizeQuad)} />
-          <label title="Single-frame approximation: render at video-relative size, reduce colour detail, then apply JPEG block compression. No motion artifacts or exact YouTube bitrate model."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> YouTube-style compression</label>
+          <label title="FFmpeg encodes all 32 fire rows at their video-relative pixel size on white, using H.264 at 60 fps. Only the extracted fire is displayed. This is a real codec stress test, not YouTube's exact encoding recipe."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> FFmpeg compression</label>
           {compressionEnabled && <>
             <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
               <option value={2160}>2160p</option><option value={1440}>1440p</option><option value={1080}>1080p</option><option value={720}>720p</option><option value={480}>480p</option><option value={360}>360p</option>
             </select></label>
             <label>Damage <select aria-label="Compression damage" value={compressionQuality} onChange={e=>setCompressionQuality(Number(e.target.value))}>
-              <option value={0.8}>Light</option><option value={0.45}>Medium</option><option value={0.15}>Heavy</option><option value={0.05}>Extreme</option>
+              <option value={0.8}>Light · CRF 20</option><option value={0.45}>Medium · CRF 28</option><option value={0.15}>Heavy · CRF 36</option><option value={0.05}>Extreme · CRF 42</option>
             </select></label>
             {delivery && <span className="hud-hint">{delivery.width}×{delivery.height} frame · quad ≈{delivery.quadWidth.toFixed(1)}×{delivery.quadHeight.toFixed(1)} px · simulated output pixels · zoom only magnifies</span>}
-            <span className="hud-hint">Approximation: colour bleed + JPEG blocks, single frame</span>
+            <span className="hud-hint">H.264 · 4:2:0 · 60 fps · animated fire on white · extracted mask only</span>
           </>}
           <IconButton icon="copy" label="Use frame label for manual mask" disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }} />
           <span className="hud-hint">Shift: resize / rotate · P: parallelogram · Ctrl+drag: move all · select corner + Alt+click: place</span>

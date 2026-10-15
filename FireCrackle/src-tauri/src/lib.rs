@@ -10,6 +10,15 @@ use studio_core::phase::Flag;
 use studio_core::workspace::{PhaseChart, UiAction, View, Workspace};
 use tauri::ipc::Response;
 use tauri::State;
+mod compression;
+
+#[tauri::command]
+async fn compress_fire_cycle(width: u32, height: u32, frames: Vec<Vec<u8>>, crf: u8) -> Result<Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        compression::encode(&Tools::default().ffmpeg, width, height, frames, crf).map(Response::new)
+    }).await.map_err(err)?
+}
+
 
 #[derive(Default)]
 struct AppState {
@@ -128,6 +137,7 @@ pub fn run_app() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             startup_video,
+            compress_fire_cycle,
             open_video,
             view,
             act,
