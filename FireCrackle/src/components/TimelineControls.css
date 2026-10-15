@@ -1,0 +1,4 @@
+.timeline-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 0; font-size: 12px; }
+.timeline-controls button { padding: 3px 8px; }
+.timeline-controls span { color: var(--dim); }
+.phase-tab .chart { touch-action: none; }

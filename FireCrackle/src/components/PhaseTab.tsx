@@ -14,6 +14,9 @@ import {
 import { formatTime } from "../lib/timeline";
 import { messageOf } from "../hooks/useWorkspace";
 import { FlagsPanel } from "./FlagsPanel";
+import { useWheel } from "../hooks/useWheel";
+import { fitViewport, pan, zoomAt, type Viewport } from "../lib/timeline";
+import "./TimelineControls.css";
 
 /** Most points the backend sends: a bit more than the pixels a wide window has. */
 const MAX_POINTS = 4000;
@@ -36,7 +39,24 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
   const phaseRef = useRef<HTMLCanvasElement>(null);
   const rowRef = useRef<HTMLCanvasElement>(null);
   const fps = view.fps || 1;
-  const t1 = Math.max(view.frame_count - 1, 1) / fps;
+  const total = Math.max(view.frame_count, 1);
+  // A fixed logical width keeps the two charts on exactly the same time range.
+  const logicalWidth = 1000;
+  const [viewport, setViewport] = useState(() => fitViewport(total, logicalWidth));
+  const drag = useRef<{ x: number; viewport: Viewport; moved: boolean } | null>(null);
+  const t0 = viewport.start / fps;
+  const t1 = (viewport.start + logicalWidth / viewport.pxPerFrame) / fps;
+  useEffect(() => setViewport(fitViewport(total, logicalWidth)), [total]);
+  const zoomChart = (factor: number, anchor = logicalWidth / 2) =>
+    setViewport((v) => zoomAt(v, anchor, factor, 32, logicalWidth, total));
+  const wheelChart = (e: WheelEvent) => {
+    const r = (e.currentTarget as HTMLCanvasElement).getBoundingClientRect();
+    if (!r.width || !e.deltaY) return false;
+    zoomChart(e.deltaY < 0 ? 1.5 : 1 / 1.5, (e.clientX - r.left) / r.width * logicalWidth);
+    return true;
+  };
+  useWheel(phaseRef, wheelChart);
+  useWheel(rowRef, wheelChart);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +84,7 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
     g.clearRect(0, 0, w, h);
     g.font = "11px system-ui, sans-serif";
     // flags first, behind the dots
-    for (const [i, s] of flagSpans(chart.flags, timeOf, 0, t1, w).entries()) {
+    for (const [i, s] of flagSpans(chart.flags, timeOf, t0, t1, w).entries()) {
       g.fillStyle = chart.flags[i].severity === "hard" ? "rgba(255,77,79,0.28)" : "rgba(245,197,66,0.22)";
       g.fillRect(s.x0, 0, s.x1 - s.x0, h);
     }
@@ -83,8 +103,8 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
       // each run's arc as a band: the stretch a steady clock would stay in
       g.fillStyle = COLORS.band;
       for (const r of chart.runs) {
-        const x0 = timeToX(timeOf(r.first_frame), 0, t1, w);
-        const x1 = Math.max(timeToX(timeOf(r.last_frame), 0, t1, w), x0 + 1);
+        const x0 = timeToX(timeOf(r.first_frame), t0, t1, w);
+        const x1 = Math.max(timeToX(timeOf(r.last_frame), t0, t1, w), x0 + 1);
         const rel = relativePhase(r.center, ref);
         const top = phaseToY(rel + r.width / 2, h);
         const bottom = phaseToY(rel - r.width / 2, h);
@@ -109,12 +129,13 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
     }
     g.fillStyle = COLORS.dot;
     for (const p of chart.points) {
-      const x = timeToX(p.pts, 0, t1, w);
+      if (p.pts < t0 || p.pts > t1) continue;
+      const x = timeToX(p.pts, t0, t1, w);
       const y = kind === "phase" ? phaseToY(relativePhase(p.phase, ref), h) : rowToY(p.step, h);
       g.fillRect(x - 1, y - 1, 2.5, 2.5);
     }
     // where the Label tab currently is
-    const cx = timeToX(timeOf(view.current), 0, t1, w);
+    const cx = timeToX(timeOf(view.current), t0, t1, w);
     g.strokeStyle = "#f08a24";
     g.beginPath();
     g.moveTo(cx, 0);
@@ -131,19 +152,32 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
     const ro = new ResizeObserver(redraw);
     if (phaseRef.current) ro.observe(phaseRef.current);
     return () => ro.disconnect();
-  }, [chart, view.current, t1]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chart, view.current, t0, t1]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function locate(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!chart) return null;
     const r = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - r.left;
-    const spans = flagSpans(chart.flags, timeOf, 0, t1, r.width);
+    const spans = flagSpans(chart.flags, timeOf, t0, t1, r.width);
     const flagIdx = hitFlag(spans, x);
-    const t = xToTime(x, 0, t1, r.width);
-    return { flagIdx, point: nearestPoint(chart.points, t), t };
+    const t = xToTime(x, t0, t1, r.width);
+    const nearest = nearestPoint(chart.points, t);
+    const point = nearest && nearest.pts >= t0 && nearest.pts <= t1 ? nearest : null;
+    return { flagIdx, point, t };
   }
 
   function onMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    const d = drag.current;
+    if (d) {
+      const dx = e.clientX - d.x;
+      if (Math.abs(dx) > 4) d.moved = true;
+      if (d.moved) {
+        const width = e.currentTarget.getBoundingClientRect().width;
+        if (width > 0) setViewport(pan(d.viewport, dx / width * logicalWidth, logicalWidth, total));
+        setHover(null);
+        return;
+      }
+    }
     const hit = locate(e);
     if (!hit) return;
     if (hit.flagIdx !== null) {
@@ -162,6 +196,30 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
     else if (hit.point) onJump(hit.point.frame);
   }
 
+  const chartEvents = {
+    onPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.button !== 0) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current = { x: e.clientX, viewport, moved: false };
+    },
+    onPointerMove: onMove,
+    onPointerLeave: () => setHover(null),
+    onPointerUp: (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const d = drag.current;
+      drag.current = null;
+      if (d && !d.moved) onClick(e);
+    },
+    onPointerCancel: () => { drag.current = null; },
+    onLostPointerCapture: () => { drag.current = null; },
+  };
+
+  const controls = (name: string) => <div className="timeline-controls" aria-label={`${name} timeline zoom`}>
+    <button aria-label={`Zoom out ${name} timeline`} onClick={() => zoomChart(1 / 1.5)}>−</button>
+    <button aria-label={`Zoom in ${name} timeline`} onClick={() => zoomChart(1.5)}>+</button>
+    <button onClick={() => setViewport(fitViewport(total, logicalWidth))}>Fit all</button>
+    <span>{formatTime(t0, 0.01)} – {formatTime(t1, 0.01)} · wheel to zoom · drag to pan · linked charts</span>
+  </div>;
+
   return (
     <main className="phase-tab">
       {error && <div className="banner error">{error}</div>}
@@ -176,12 +234,14 @@ export function PhaseTab({ backend, view, version, onJump }: Props) {
           <div className="empty big-empty">No fire frames labelled yet. Label some in the Label tab and the chart appears here.</div>
         ) : (
           <>
-            <canvas ref={phaseRef} className="chart phase" onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerUp={onClick} />
+            {controls("phase")}
+            <canvas ref={phaseRef} className="chart phase" {...chartEvents} />
             <div className="chart-head">
               <span className="panel-title">Sprite row against time</span>
               <span className="dim">the sawtooth you should see: 32 rows, one step per tick (about every 3rd frame at 60 fps).</span>
             </div>
-            <canvas ref={rowRef} className="chart row" onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerUp={onClick} />
+            {controls("sprite row")}
+            <canvas ref={rowRef} className="chart row" {...chartEvents} />
           </>
         )}
         <div className="chart-hover">{hover ?? " "}</div>

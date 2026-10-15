@@ -30,7 +30,7 @@ export interface HudTexel {
 
 /** Project each texel independently for true perspective, in game draw order. */
 export function hudTexels(rgba: Uint8ClampedArray, row: number, width: number, height: number, fov: number): HudTexel[] {
-  if (rgba.length !== 16 * 512 * 4 || !Number.isInteger(row) || row < 0 || row >= 32) throw new Error("Invalid HUD sprite row");
+  if (rgba.length !== 16 * 512 * 4 || !Number.isInteger(row) || row < 0 || row >= 32 || (fov !== 60 && fov !== 70)) throw new Error("Invalid HUD sprite row or FOV");
   projectHud([0, 0, -1], width, height, fov);
   const output: HudTexel[] = [];
   hudQuads().forEach((q, quad) => {

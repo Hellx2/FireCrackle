@@ -22,10 +22,10 @@ describe("first-person HUD geometry", () => {
   it("reverses both UV axes exactly as the HUD renderer does", () => {
     const rgba = new Uint8ClampedArray(16 * 512 * 4);
     rgba.set([255, 100, 0, 255], 0); // top-left texel in row 0
-    const pixels = hudTexels(rgba, 0, 100, 100, 90);
+    const pixels = hudTexels(rgba, 0, 100, 100, 70);
     expect(pixels).toHaveLength(2);
     const topLeft = pixels[0].points[0];
-    const projectedTopRight = projectHud(hudQuads()[0][2], 100, 100, 90);
+    const projectedTopRight = projectHud(hudQuads()[0][2], 100, 100, 70);
     expect(topLeft[0]).toBeCloseTo(projectedTopRight[0], 10);
     expect(topLeft[1]).toBeCloseTo(projectedTopRight[1], 10);
     expect(pixels[0].colour).toBe("rgb(255, 100, 0)");
@@ -42,7 +42,7 @@ describe("first-person HUD geometry", () => {
   });
   it("rejects invalid geometry and assets", () => {
     const rgba = new Uint8ClampedArray(16 * 512 * 4);
-    for (const [row, w, h, fov] of [[32,100,100,70], [-1,100,100,70], [0,0,100,70], [0,100,100,180], [0,100,100,NaN]]) {
+    for (const [row, w, h, fov] of [[32,100,100,70], [-1,100,100,70], [0,0,100,70], [0,100,100,180], [0,100,100,NaN], [0,100,100,90]]) {
       expect(() => hudTexels(rgba, row, w, h, fov)).toThrow();
     }
     expect(() => hudTexels(new Uint8ClampedArray(4), 0, 100, 100, 70)).toThrow();

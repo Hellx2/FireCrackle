@@ -6,6 +6,8 @@ import { isFire, type Label } from "../lib/grid";
 import { formatTime } from "../lib/timeline";
 import { HudOverlay } from "./HudOverlay";
 import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
+import { FireQuadMask } from "./FireQuadMask";
+import { DEFAULT_QUAD, type ManualQuad } from "../lib/quadMask";
 
 export function describeLabel(label: Label): string {
   if (label === "unset") return "unlabelled";
@@ -34,8 +36,13 @@ export function VideoPane({ backend, view, onError }: Props) {
   const urlRef = useRef<string | null>(null);
   const [hudEnabled, setHudEnabled] = useState(false);
   const [hudRow, setHudRow] = useState(0);
-  const [hudOpacity, setHudOpacity] = useState(0.6);
   const [hudFov, setHudFov] = useState(70);
+  const [manualEnabled, setManualEnabled] = useState(false);
+  const [manualQuad, setManualQuad] = useState<ManualQuad>(DEFAULT_QUAD);
+  const [manualSheet, setManualSheet] = useState<0 | 1>(1);
+  const [manualRow, setManualRow] = useState(0);
+  const [manualMirrored, setManualMirrored] = useState(false);
+  const [manualOpacity, setManualOpacity] = useState(0.6);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
 
@@ -122,7 +129,9 @@ export function VideoPane({ backend, view, onError }: Props) {
           style={{ transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.scale})` }}
         >
           {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
-          {hudEnabled && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={hudOpacity} />}
+          {hudEnabled && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={1} />}
+          {manualEnabled && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
+            opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} />}
         </div>
         {xf.scale > 1 && <div className="zoom-tag">{xf.scale.toFixed(1)}× · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
@@ -137,15 +146,28 @@ export function VideoPane({ backend, view, onError }: Props) {
         )}
       </div>
       <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => setHudEnabled(e.target.checked)} /> HUD fire preview</label>
+        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) setManualEnabled(false); }} /> First-person fire</label>
         {hudEnabled && <>
           <button aria-label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))}>◀</button>
           <label>Row <input aria-label="HUD texture row" type="number" min={0} max={31} value={hudRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setHudRow(n); }} /></label>
           <button aria-label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))}>▶</button>
           <button disabled={labelRow === null || shown !== view.current} onClick={() => labelRow !== null && setHudRow(labelRow)} title="Copies this frame's label into the preview; sheet 0 is converted to the equivalent sheet 1 row">Use frame label</button>
-          <label>View <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>Normal</option><option value={60}>Submerged</option></select></label>
-          <label>Opacity <input aria-label="HUD preview opacity" type="range" min={0} max={1} step={0.05} value={hudOpacity} onChange={(e) => setHudOpacity(e.target.valueAsNumber)} />{Math.round(hudOpacity*100)}%</label>
-          <span className="hud-hint">sheet 1 · preview only</span>
+          <label>FOV <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>70° · normal</option><option value={60}>60° · submerged</option></select></label>
+          <span className="hud-hint">Fixed first-person preview</span>
+        </>}
+      </div>
+      <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
+        <label><input type="checkbox" checked={manualEnabled} onChange={(e) => { setManualEnabled(e.target.checked); if (e.target.checked) setHudEnabled(false); }} /> Manual fire quad mask</label>
+        {manualEnabled && <>
+          <label>Sheet <select aria-label="Manual mask sheet" value={manualSheet} onChange={(e) => setManualSheet(Number(e.target.value) as 0 | 1)}><option value={0}>0</option><option value={1}>1</option></select></label>
+          <button aria-label="Previous manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, -1))}>◀</button>
+          <label>Row <input aria-label="Manual mask row" type="number" min={0} max={31} value={manualRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setManualRow(n); }} /></label>
+          <button aria-label="Next manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, 1))}>▶</button>
+          <label><input type="checkbox" checked={manualMirrored} onChange={(e) => setManualMirrored(e.target.checked)} /> Mirrored</label>
+          <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
+          <button onClick={() => setManualQuad(DEFAULT_QUAD)}>Reset corners</button>
+          <button disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }}>Use frame label</button>
+          <span className="hud-hint">drag the four blue corners · reference only, labels unchanged</span>
         </>}
       </div>
       <div className="video-meta">

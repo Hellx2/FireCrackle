@@ -14,6 +14,8 @@ import {
   type Viewport,
 } from "../lib/timeline";
 import { thumbSlots, uniqueFrames, type ThumbStatus } from "../lib/thumbs";
+import { useWheel } from "../hooks/useWheel";
+import "./TimelineControls.css";
 
 const RULER_H = 26;
 const THUMB_Y = 30;
@@ -280,26 +282,28 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
   }, [vp, width, buckets, flags, view.current, view.fps, total, spacing, slots, nearest, imageTick, thumbStatus, showThumbs, thumbW, laneY, flagY, height]);
 
   // wheel zoom needs a non-passive listener so the page does not scroll
-  useEffect(() => {
+  useWheel(canvasRef, (e) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const x = e.clientX - canvas.getBoundingClientRect().left;
-      const factor = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
-      setVp((v) => zoomAt(v, x, factor, maxPx, width, total));
-    };
-    canvas.addEventListener("wheel", onWheel, { passive: false });
-    return () => canvas.removeEventListener("wheel", onWheel);
-  }, [zoomFactor, maxPx, width, total]);
+    if (!canvas || !e.deltaY) return false;
+    const x = e.clientX - canvas.getBoundingClientRect().left;
+    setVp((v) => zoomAt(v, x, e.deltaY < 0 ? zoomFactor : 1 / zoomFactor, maxPx, width, total));
+    return true;
+  });
 
   const localX = (e: React.PointerEvent) => e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left;
 
   return (
     <div className="timeline" ref={wrapRef}>
+      <div className="timeline-controls" aria-label="Video timeline zoom">
+        <button aria-label="Zoom out video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, 1 / zoomFactor, maxPx, width, total))}>−</button>
+        <button aria-label="Zoom in video timeline" onClick={() => setVp((v) => zoomAt(v, width / 2, zoomFactor, maxPx, width, total))}>+</button>
+        <button onClick={() => setVp(fitViewport(total, width))}>Fit all</button>
+        <span>{(vp.pxPerFrame / fitViewport(total, width).pxPerFrame).toFixed(1)}×</span>
+      </div>
       <canvas
         ref={canvasRef}
         onPointerDown={(e) => {
+          if (e.button !== 0) return;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           drag.current = { x0: localX(e), start0: vp.start, moved: false };
         }}
@@ -317,6 +321,8 @@ export function Timeline({ backend, view, flags, version, settings, onSeek }: Pr
           if (d && !d.moved) onSeek(xToFrame(vp, localX(e), total));
         }}
         onDoubleClick={() => setVp(fitViewport(total, width))}
+        onPointerCancel={() => { drag.current = null; }}
+        onLostPointerCapture={() => { drag.current = null; }}
       />
       <div className="timeline-hint">wheel: zoom · drag: pan · click: seek · double-click: show all · {vp.pxPerFrame.toFixed(3)} px/frame</div>
     </div>
