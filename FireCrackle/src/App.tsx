@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import "./App.css";
 import { FlagsPanel } from "./components/FlagsPanel";
 import { Icon, IconButton } from "./components/Icon";
@@ -8,7 +8,9 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Splitter } from "./components/Splitter";
 import { Timeline } from "./components/Timeline";
 import { VideoPane, type VideoPreviewHandle } from "./components/VideoPane";
-import { selectAtlasCell } from "./lib/firePreview";
+import { selectAtlasCell, atlasSprite, type PreviewSprite } from "./lib/firePreview";
+import { candidateConfirmation, candidateDigit, candidateText, currentCandidate, spriteText, type CandidateDraft } from "./lib/labelCandidate";
+import { isFire } from "./lib/grid";
 import { useLayout } from "./hooks/useLayout";
 import { usePanelZooms } from "./hooks/usePanelZooms";
 import { useWheel } from "./hooks/useWheel";
@@ -23,15 +25,16 @@ const KEY_HELP: Array<[string, string]> = [
   ["Shift + ← →", "big step"],
   ["Home / End", "first / last frame"],
   ["Space · L · J · K", "play / faster forward / faster backward / stop"],
-  ["0–9", "type a row (12, 31 …); 4–9 label at once"],
-  ["Enter", "accept the suggested row"],
+  ["0–9", "choose a candidate animation index; nothing is saved yet"],
+  ["Enter", "confirm the candidate and advance"],
   ["S · M", "toggle sheet · toggle mirrored"],
-  ["X · Shift+X", "no fire · skip"],
+  ["X · Shift+X", "choose no fire · skip, then confirm"],
   ["Backspace · Ctrl+Z", "clear · undo"],
   ["Ctrl+S", "save labels and current video position"],
   ["N · Shift+N", "next / previous unlabelled"],
   ["F · Shift+F", "next / previous flag"],
-  ["Esc", "cancel a half-typed row"],
+  ["Esc", "discard the selected candidate"],
+  ["Atlas click", "select candidate and preview; Confirm/Enter saves it"],
   ["Ctrl + atlas click", "select sprite for the enabled fire preview without labeling"],
   ["Ctrl + quad drag", "move all four corners together"],
   ["Hold Shift", "quad transform box: corners resize proportionally, edges resize one axis, top handle rotates"],
@@ -58,6 +61,26 @@ export default function App() {
   const { zooms, wheel: zoomWheel, reset: resetZoom } = usePanelZooms();
   const pickerBoxRef = useRef<HTMLDivElement | null>(null);
   const videoPreviewRef = useRef<VideoPreviewHandle | null>(null);
+  const [draft, setDraft] = useState<CandidateDraft | null>(null);
+  const [previewSprite, setPreviewSprite] = useState<PreviewSprite | null>(null);
+  const candidate = view ? currentCandidate(view, draft) : null;
+  const candidatePick = candidate && isFire(candidate.label) ? candidate.label.fire : view?.pick;
+  const stageSprite = useCallback((sprite: PreviewSprite) => {
+    if (!view) return;
+    setPlayback(STOPPED);
+    setDraft({ frame: view.current, label: { fire: sprite }, origin: "picked" });
+  }, [view?.current]);
+  const confirmCandidate = useCallback(() => {
+    if (!view || ws.busy.current) return;
+    const action = candidateConfirmation(currentCandidate(view, draft));
+    if (!action) return;
+    setPlayback(STOPPED);
+    void act(action);
+  }, [view, draft, act, ws.busy]);
+  useEffect(() => { setDraft(null); }, [view?.current]);
+  useEffect(() => {
+    if (draft && draft.frame === view?.current && isFire(draft.label)) videoPreviewRef.current?.selectSprite(draft.label.fire as PreviewSprite);
+  }, [draft?.frame, draft?.label, view?.current]);
   const flagsBoxRef = useRef<HTMLDivElement | null>(null);
   // ctrl + wheel zooms the panel under the cursor (and not the whole window)
   useWheel(pickerBoxRef, (e) => (e.ctrlKey ? (zoomWheel("picker", e.deltaY), true) : false));
@@ -102,13 +125,30 @@ export default function App() {
       );
       if (!a) return;
       e.preventDefault();
+      if (a.type === "acceptSuggestion") { confirmCandidate(); return; }
+      if (a.type === "digit") {
+        setPlayback(STOPPED);
+        setDraft(previous => candidateDigit(view!.current, previous, a.digit, candidatePick ?? view!.pick));
+        return;
+      }
+      if (a.type === "noFire" || a.type === "skip") {
+        setPlayback(STOPPED);
+        setDraft({ frame: view!.current, label: a.type === "noFire" ? "no_fire" : "skip", origin: "picked" });
+        return;
+      }
+      if (a.type === "cancelTyping") { setDraft(null); return; }
+      if (a.type === "toggleSheet" || a.type === "toggleMirror") {
+        const pick = candidatePick ?? view!.pick;
+        stageSprite({ sheet: (a.type === "toggleSheet" ? 1 - pick.sheet : pick.sheet) as 0 | 1, mirrored: a.type === "toggleMirror" ? !pick.mirrored : pick.mirrored, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0 });
+        return;
+      }
       const ui = toUiAction(a);
       if (ui) void act(ui);
       else if (a.type === "playPause" || a.type === "shuttle") setPlayback((p) => nextPlayback(p, a, maxSpeed));
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [view !== null, tab, act, maxSpeed]); // eslint-disable-line react-hooks/exhaustive-deps
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite]);
 
   // playback is a Label-tab thing: it must not keep stepping behind the chart
   useEffect(() => {
@@ -132,18 +172,20 @@ export default function App() {
     if ((playback.dir > 0 && view.current >= view.frame_count - 1) || (playback.dir < 0 && view.current <= 0)) setPlayback(STOPPED);
   }, [view?.current, view?.frame_count, playback.dir]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // a single typed digit that could start a two-digit row is committed after the timeout
+  // Finish interpreting a single digit without saving or advancing the frame.
   useEffect(() => {
-    if (view?.typed_pending == null) return;
-    const id = setTimeout(() => void act({ type: "flushTyped" }), typeTimeout);
+    if (!draft?.digits || draft.digits.length !== 1) return;
+    const id = setTimeout(() => setDraft(previous => previous === draft ? { ...previous, digits: undefined } : previous), typeTimeout);
     return () => clearTimeout(id);
-  }, [view?.typed_pending, typeTimeout, act]);
+  }, [draft, typeTimeout]);
 
   async function chooseVideo() {
     if (!backend) return;
     const picked = await backend.pickVideo();
     if (picked) {
       setPlayback(STOPPED);
+      setDraft(null);
+      setPreviewSprite(null);
       await ws.open(picked);
     }
   }
@@ -245,7 +287,7 @@ export default function App() {
           }
         >
           <section className="left">
-            <VideoPane backend={backend} view={view} previewRef={videoPreviewRef} onError={(m) => console.error(m)} />
+            <VideoPane backend={backend} view={view} previewRef={videoPreviewRef} onPreviewChange={setPreviewSprite} onMatchCandidate={stageSprite} onError={(m) => console.error(m)} />
             <Splitter
               direction="row"
               label="Video height"
@@ -289,23 +331,39 @@ export default function App() {
           />
           <aside className="right">
             <div className="pick-state">
-              <IconButton icon="layers" label={`Toggle sprite sheet · current sheet ${view.pick.sheet}`} className={view.pick.sheet === 1 ? "on" : ""} onClick={() => void act({ type: "toggleSheet" })} title="Toggle sheet · S">
-                {view.pick.sheet}
+              <IconButton icon="layers" label={`Toggle candidate sheet · current sheet ${candidatePick?.sheet ?? view.pick.sheet}`} className={candidatePick?.sheet === 1 ? "on" : ""} onClick={() => stageSprite({ sheet: (1 - (candidatePick?.sheet ?? view.pick.sheet)) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: candidatePick?.mirrored ?? view.pick.mirrored })} title="Toggle candidate sheet · S">
+                {candidatePick?.sheet ?? view.pick.sheet}
               </IconButton>
-              <IconButton icon="mirror" label="Mirror sprite" aria-pressed={view.pick.mirrored} className={view.pick.mirrored ? "on" : ""} onClick={() => void act({ type: "toggleMirror" })} title="Toggle mirror · M">
-                {view.pick.mirrored ? "mirrored" : "normal"}
+              <IconButton icon="mirror" label="Mirror candidate" aria-pressed={candidatePick?.mirrored ?? view.pick.mirrored} className={candidatePick?.mirrored ? "on" : ""} onClick={() => stageSprite({ sheet: (candidatePick?.sheet ?? view.pick.sheet) as 0 | 1, row: candidate && isFire(candidate.label) ? candidate.label.fire.row : 0, mirrored: !(candidatePick?.mirrored ?? view.pick.mirrored) })} title="Toggle candidate mirror · M">
+                {candidatePick?.mirrored ? "mirrored" : "normal"}
               </IconButton>
-              <IconButton icon="noFire" label="Label no fire" onClick={() => void act({ type: "noFire" })} title="No fire · X" />
-              <IconButton icon="skip" label="Skip frame" onClick={() => void act({ type: "skip" })} title="Skip frame · Shift+X" />
+              <IconButton icon="noFire" label="Choose no fire" onClick={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "no_fire", origin: "picked" }); }} title="Choose no fire · X · then Confirm" />
+              <IconButton icon="skip" label="Choose skip" onClick={() => { setPlayback(STOPPED); setDraft({ frame: view.current, label: "skip", origin: "picked" }); }} title="Choose skip · Shift+X · then Confirm" />
               <IconButton icon="erase" label="Clear label" onClick={() => void act({ type: "clear" })} title="Clear label · Backspace" />
+            </div>
+            <div className="candidate-panel">
+              <div className="candidate-heading"><strong>Candidate</strong><span>{candidate?.origin === "guess" ? "time guess · not saved" : candidate?.origin === "saved" ? "current saved label" : "not saved"}</span></div>
+              <div className="candidate-value">{draft?.frame === view.current && draft.label === "unset" ? `Invalid animation index ${draft.digits} (use 0–31)` : candidateText(candidate?.label ?? null)}{draft?.digits?.length === 1 && draft.frame === view.current && Number(draft.digits) <= 3 && <span className="dim"> · {draft.digits}_</span>}</div>
+              <div className="candidate-actions">
+                <IconButton icon="check" label="Confirm candidate" className="confirm-label" disabled={!candidateConfirmation(candidate) || ws.opening || ws.transferring} onClick={confirmCandidate} title="Confirm this candidate · Enter · saves and advances">Confirm <kbd>↵</kbd></IconButton>
+                <IconButton icon="copy" label="Use displayed preview as candidate" disabled={!previewSprite} onClick={() => previewSprite && stageSprite(previewSprite)} title="Select the displayed preview as the candidate; does not save" />
+              </div>
+              <div className="atlas-state preview-state"><b>Preview</b><span>{previewSprite ? spriteText(previewSprite) : "Mask off"}</span></div>
+              <div className="atlas-state guess-state"><b>Time guess</b><span>{view.suggestion ? spriteText(view.suggestion) : "Unavailable"}</span></div>
+              {view.suggestion && <div className="prediction-source">Extrapolated from <button onClick={() => { setPlayback(STOPPED); void act({ type: "goTo", frame: view.suggestion!.from_frame }); }}>labeled frame {view.suggestion.from_frame}</button>{view.suggestion.alt_row !== null && <span> · alternate row {view.suggestion.alt_row}</span>}</div>}
+              <div className="atlas-state saved-state"><b>Saved</b><span>{view.label === "unset" ? "Unreviewed" : candidateText(view.label)}</span></div>
+              <div className="atlas-legend"><span className="candidate-state">C Candidate</span><span className="preview-state">P Preview</span><span className="guess-state">T Time guess</span><span className="saved-state">✓ Saved</span></div>
+              <div className="candidate-help">Click selects · Ctrl+click previews only · Confirm saves</div>
             </div>
             <div className="picker-box" ref={pickerBoxRef} onDoubleClick={(e) => e.ctrlKey && resetZoom("picker")}>
               <Picker
                 view={view}
+                candidate={candidate?.label ?? null}
+                preview={previewSprite}
                 cell={clampSize(pickerCellSize(layout.sideWidth) * zooms.picker, 16, 240)}
-                onCell={(col, row, ctrlKey) => selectAtlasCell(ctrlKey, col, row,
+                onCell={(col, row, ctrlKey) => { setPlayback(STOPPED); selectAtlasCell(ctrlKey, col, row,
                   (sprite) => videoPreviewRef.current?.selectSprite(sprite) ?? false,
-                  (col, row) => { void act({ type: "clickCell", col, row }); })}
+                  (col, row) => { const sprite = atlasSprite(col, row); if (sprite) stageSprite(sprite); }); }}
               />
             </div>
           </aside>

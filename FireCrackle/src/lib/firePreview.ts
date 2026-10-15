@@ -19,10 +19,12 @@ export function atlasSprite(col: number, row: number): PreviewSprite | null {
   return column ? previewSprite("manual", { ...column, row }) : null;
 }
 
-export function selectAtlasCell(ctrlKey: boolean, col: number, row: number, preview: (sprite: PreviewSprite) => boolean, label: (col: number, row: number) => void): void {
+/** Clicks only choose or preview. Saving is an explicit, separate action. */
+export function selectAtlasCell(ctrlKey: boolean, col: number, row: number, preview: (sprite: PreviewSprite) => boolean, select: (col: number, row: number) => void): void {
   const sprite = atlasSprite(col, row);
-  if (ctrlKey && sprite && preview(sprite)) return;
-  label(col, row);
+  if (!sprite) return;
+  if (!ctrlKey) select(col, row);
+  preview(sprite);
 }
 
 /** Prefer the destination prediction; an explicit label is a useful fallback. */

@@ -32,9 +32,9 @@ export type UiAction =
 export function toUiAction(a: Action): UiAction | null {
   switch (a.type) {
     case "step":
-      return a.frames > 0 ? { type: "manualStep", frames: a.frames } : { type: "step", frames: a.frames };
+      return { type: "step", frames: a.frames };
     case "bigStep":
-      return a.dir > 0 ? { type: "manualBigStep", dir: a.dir } : { type: "bigStep", dir: a.dir };
+      return { type: "bigStep", dir: a.dir };
     case "home":
     case "end":
     case "toggleSheet":

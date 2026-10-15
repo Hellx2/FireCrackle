@@ -497,6 +497,23 @@ input {
   flex-wrap: wrap;
   gap: 6px;
 }
+.candidate-panel { flex: 0 0 auto; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; display: grid; gap: 7px; }
+.candidate-heading, .candidate-actions { display: flex; align-items: center; gap: 8px; }
+.candidate-heading { justify-content: space-between; }
+.candidate-heading strong, .candidate-value, .candidate-state { color: #f08a24; }
+.candidate-heading > span, .candidate-help, .prediction-source, .dim { color: var(--dim); }
+.candidate-value { font-size: 13px; font-weight: 600; }
+button.confirm-label { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 700; flex: 1; }
+button.confirm-label:hover:not(:disabled) { background: #ffa33d; }
+.confirm-label kbd { background: #0002; border: 0; color: inherit; margin: 0 0 0 auto; }
+.atlas-state { display: flex; align-items: baseline; gap: 8px; }
+.atlas-state b { min-width: 65px; font-weight: 600; }
+.atlas-state > span { color: var(--text); }
+.preview-state { color: #61e9ff; }
+.guess-state { color: #4cc38a; }
+.saved-state { color: #bb9af7; }
+.prediction-source button { padding: 0; background: none; border: 0; color: #4cc38a; text-decoration: underline; font-size: inherit; }
+.atlas-legend { display: flex; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 7px; font-size: 11px; }
 .pick-state button {
   padding: 3px 8px;
   font-size: 12px;

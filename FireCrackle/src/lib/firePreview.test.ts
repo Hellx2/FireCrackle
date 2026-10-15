@@ -8,14 +8,14 @@ describe("atlas preview selection", () => {
     expect(preview).toHaveBeenCalledExactlyOnceWith({ sheet: 0, row: 31, mirrored: true });
     expect(label).not.toHaveBeenCalled();
   });
-  it("keeps ordinary clicks and Ctrl+clicks without an active mask as labeling", () => {
+  it("ordinary clicks select a candidate; Ctrl clicks never select even without a mask", () => {
     const preview = vi.fn(() => false), label = vi.fn();
     selectAtlasCell(false, 1, 0, preview, label);
-    expect(preview).not.toHaveBeenCalled();
+    expect(preview).toHaveBeenCalledExactlyOnceWith({ sheet: 1, row: 0, mirrored: false });
     expect(label).toHaveBeenCalledExactlyOnceWith(1, 0);
     label.mockClear();
     selectAtlasCell(true, 3, 9, preview, label);
-    expect(label).toHaveBeenCalledExactlyOnceWith(3, 9);
+    expect(label).not.toHaveBeenCalled();
   });
   it("keeps manual appearance but restricts first-person preview to legal geometry", () => {
     const sprite = { sheet: 0, row: 12, mirrored: true } as const;

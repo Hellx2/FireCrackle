@@ -14,10 +14,10 @@ import { DEFAULT_BINDINGS, type Action } from "./keymap";
 describe("key action -> backend action", () => {
   it("maps every default binding that the backend handles", () => {
     const expected: Array<[Action, unknown]> = [
-      [{ type: "step", frames: 1 }, { type: "manualStep", frames: 1 }],
+      [{ type: "step", frames: 1 }, { type: "step", frames: 1 }],
       [{ type: "step", frames: -1 }, { type: "step", frames: -1 }],
       [{ type: "bigStep", dir: -1 }, { type: "bigStep", dir: -1 }],
-      [{ type: "bigStep", dir: 1 }, { type: "manualBigStep", dir: 1 }],
+      [{ type: "bigStep", dir: 1 }, { type: "bigStep", dir: 1 }],
       [{ type: "home" }, { type: "home" }],
       [{ type: "end" }, { type: "end" }],
       [{ type: "toggleSheet" }, { type: "toggleSheet" }],
