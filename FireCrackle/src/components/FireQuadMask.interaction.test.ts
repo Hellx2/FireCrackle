@@ -36,7 +36,7 @@ function render(zoom = 1, matrixScale = 2) {
   Object.assign(hooks.refs[0].current ??= {}, { getScreenCTM: () => ({ a: matrixScale, b: 0, c: 0, d: matrixScale, e: 100, f: 50 }) });
   // Texture decoding is independent; execute only interaction listener setup.
   cleanup = hooks.effects[1]();
-  return { svg: find(tree, "svg")[0], corners: find(tree, "circle"), edge: find(tree, "polygon")[0] };
+  return { svg: find(tree, "svg")[0], corners: find(tree, "circle").filter(p => p.props.className?.startsWith("fire-quad-handle")), edge: find(tree, "polygon")[0], handles: find(tree, "rect").filter(p => p.props.className === "quad-transform-handle"), rotation: find(tree, "g").find(p => p.props.className === "quad-rotate-handle") };
 }
 function pointer(clientX: number, clientY: number, ctrlKey = false) {
   return { button: 0, pointerId: 1, clientX, clientY, ctrlKey, preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: { setPointerCapture: vi.fn() } };
@@ -59,6 +59,46 @@ beforeEach(() => {
 afterEach(() => { cleanup?.(); cleanup = undefined; vi.unstubAllGlobals(); });
 
 describe("manual quad controls", () => {
+  it("routes edge resize and rotation handles separately from vertex edits", () => {
+    render(); dispatch("keydown", { key: "Shift", shiftKey: true });
+    let mask = render();
+    mask.handles[3].props.onPointerDown(pointer(240, 150));
+    mask.svg.props.onPointerMove(pointer(280, 150));
+    DEFAULT_QUAD.forEach(([x, y], i) => {
+      expect(onQuad.mock.calls[0][0][i][0]).toBeCloseTo(0.3 + (x - 0.3) * 1.5);
+      expect(onQuad.mock.calls[0][0][i][1]).toBe(y);
+    });
+    mask.svg.props.onPointerUp(pointer(280, 150));
+    mask = render(); onQuad.mockClear();
+    mask.rotation!.props.onPointerDown(pointer(200, 50));
+    mask.svg.props.onPointerMove(pointer(100, 150));
+    expect(onQuad.mock.calls[0][0][0][0]).toBeCloseTo(0.2);
+    expect(onQuad.mock.calls[0][0][0][1]).toBeCloseTo(0.7);
+  });
+
+  it("Shift replaces vertices with box controls and a corner scales the entire quad", () => {
+    render();
+    dispatch("keydown", { key: "Shift", shiftKey: true });
+    let mask = render();
+    expect(mask.corners).toHaveLength(0);
+    expect(mask.handles).toHaveLength(8);
+    mask.handles[4].props.onPointerDown(pointer(240, 210));
+    mask.svg.props.onPointerMove(pointer(280, 270));
+    const next = onQuad.mock.calls[0][0];
+    expect(next[0]).toEqual(DEFAULT_QUAD[0]);
+    DEFAULT_QUAD.forEach(([x, y], i) => {
+      expect(next[i][0]).toBeCloseTo(0.3 + (x - 0.3) * 1.5);
+      expect(next[i][1]).toBeCloseTo(0.2 + (y - 0.2) * 1.5);
+    });
+    dispatch("keyup", { key: "Shift", shiftKey: false });
+    mask = render();
+    expect(mask.handles).toHaveLength(8); // Finish an in-flight drag even after releasing Shift.
+    mask.svg.props.onPointerUp(pointer(280, 270));
+    mask = render();
+    expect(mask.handles).toHaveLength(0);
+    expect(mask.corners).toHaveLength(4);
+  });
+
   it("keeps handles at eight screen pixels through zoom and fitted-image resizing", () => {
     let resized = () => {};
     const disconnect = vi.fn();

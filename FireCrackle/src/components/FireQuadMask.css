@@ -2,3 +2,8 @@
 .fire-quad-handle { pointer-events: all; cursor: move; touch-action: none; }
 .fire-quad-guide { stroke: #61e9ff; fill: transparent; pointer-events: all; }
 .fire-quad-handle.selected { fill: #f5c542; stroke: #fff; }
+.quad-transform-box { fill: none; stroke: #f5c542; pointer-events: none; }
+.quad-transform-handle { fill: #161b24; stroke: #f5c542; pointer-events: all; touch-action: none; }
+.quad-transform-handle:hover { fill: #f5c542; }
+.quad-rotate-handle { pointer-events: all; cursor: grab; touch-action: none; stroke: #f5c542; }
+.quad-rotate-handle circle { fill: #161b24; }

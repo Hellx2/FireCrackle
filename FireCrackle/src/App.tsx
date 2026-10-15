@@ -34,6 +34,8 @@ const KEY_HELP: Array<[string, string]> = [
   ["Esc", "cancel a half-typed row"],
   ["Ctrl + atlas click", "select sprite for the enabled fire preview without labeling"],
   ["Ctrl + quad drag", "move all four corners together"],
+  ["Hold Shift", "quad transform box: corners resize proportionally, edges resize one axis, top handle rotates"],
+  ["P", "make the manual quad a parallelogram"],
   ["Select corner + Alt+click", "place that corner at the click, including outside the image; Esc deselects"],
 ];
 

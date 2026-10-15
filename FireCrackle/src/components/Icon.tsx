@@ -20,6 +20,7 @@ const shapes = {
   left: <path d="m15 5-7 7 7 7" />,
   right: <path d="m9 5 7 7-7 7" />,
   reset: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8" /></>,
+  parallel: <path d="M7 5h15l-5 14H2Z" />,
   copy: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V3H3v13h5" /></>,
   zoomIn: <><circle cx="10" cy="10" r="7" /><path d="m15 15 6 6M7 10h6M10 7v6" /></>,
   zoomOut: <><circle cx="10" cy="10" r="7" /><path d="m15 15 6 6M7 10h6" /></>,

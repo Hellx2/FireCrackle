@@ -6,6 +6,7 @@ import "./FireQuadMask.css";
 import { FireTexels } from "./FireTexels";
 import { CompressedQuad } from "./CompressedQuad";
 import { compressionGeometry, type CompressionSettings } from "../lib/compressionPreview";
+import { BOX_HANDLES, boxPoint, quadBounds, resizeQuad, rotateQuad, type BoxHandle } from "../lib/quadTransform";
 
 interface Props {
   width: number;
@@ -33,6 +34,9 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
   const [rgba, setRgba] = useState<Uint8ClampedArray | null>(null);
   const [error, setError] = useState(false);
   const [screenScale, setScreenScale] = useState(1);
+  const [shiftHeld, setShiftHeld] = useState(false);
+  const [transformActive, setTransformActive] = useState(false);
+  const transformDrag = useRef<{ quad: ManualQuad; start: QuadPoint; handle: BoxHandle | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
     setRgba(null);
@@ -74,6 +78,19 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function move(e: PointerEvent<SVGSVGElement>) {
+    const transform = transformDrag.current;
+    if (transform) {
+      e.stopPropagation();
+      e.preventDefault();
+      const point = cursorPoint(e.clientX, e.clientY);
+      if (!point) return;
+      const next = transform.handle
+        ? resizeQuad(transform.quad, transform.handle, transform.start, point, width, height)
+        : rotateQuad(transform.quad, transform.start, point, width, height);
+      latestQuad.current = next;
+      onQuad(next);
+      return;
+    }
     const drag = dragging.current;
     if (!drag) return;
     e.stopPropagation();
@@ -87,14 +104,27 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     onQuad(next);
   }
   function stop(e: PointerEvent<SVGSVGElement>) {
-    if (dragging.current !== null) e.stopPropagation();
+    if (dragging.current !== null || transformDrag.current !== null) e.stopPropagation();
     dragging.current = null;
+    transformDrag.current = null;
+    setTransformActive(false);
+  }
+  function beginTransform(e: PointerEvent<SVGElement>, handle: BoxHandle | null) {
+    if (e.button !== 0) return;
+    const start = cursorPoint(e.clientX, e.clientY);
+    if (!start) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedCorner(null);
+    transformDrag.current = { quad: latestQuad.current, start, handle };
+    setTransformActive(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
   }
 
   // Alt+click places the selected corner once, including outside the image.
   useEffect(() => {
     const snap = (x: number, y: number) => {
-      if (selectedCorner === null || dragging.current) return;
+      if (selectedCorner === null || dragging.current || transformDrag.current) return;
       const matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? screenToQuadPoint(matrix, x, y, width, height) : null;
       if (point) {
@@ -104,19 +134,26 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
       }
     };
     const click = (e: MouseEvent) => {
-      if (!e.altKey || e.button !== 0 || selectedCorner === null || dragging.current) return;
+      if (!e.altKey || e.shiftKey || e.button !== 0 || selectedCorner === null || dragging.current || transformDrag.current) return;
       e.preventDefault();
       e.stopPropagation();
       snap(e.clientX, e.clientY);
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") setSelectedCorner(null);
+      if (e.key === "Shift") setShiftHeld(true);
     };
+    const keyUp = (e: KeyboardEvent) => { if (e.key === "Shift" || !e.shiftKey) setShiftHeld(false); };
+    const blur = () => { setShiftHeld(false); setTransformActive(false); dragging.current = null; transformDrag.current = null; };
     window.addEventListener("click", click, true);
     window.addEventListener("keydown", key);
+    window.addEventListener("keyup", keyUp);
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("click", click, true);
       window.removeEventListener("keydown", key);
+      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("blur", blur);
     };
   }, [width, height, selectedCorner, onQuad]);
 
@@ -135,6 +172,9 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
     observer.observe(svg);
     return () => observer.disconnect();
   }, [width, height, zoom]);
+  const transformMode = shiftHeld || transformActive;
+  const bounds = quadBounds(quad);
+  const rotationX = bounds.cx * width, rotationY = bounds.top * height - 28 / screenScale;
   return <>
     {error && <div className="hud-error" role="alert">Could not load the manual fire sprite.</div>}
     <svg ref={svgRef} className="fire-quad-mask" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet"
@@ -147,11 +187,28 @@ export function FireQuadMask({ width, height, sheet, row, mirrored, opacity, qua
         {compression && pixelGrid && <g fill="none">{texels.map((p,i)=><polygon key={i} points={points(p.points)} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={0.7} vectorEffect="non-scaling-stroke" />)}</g>}
       </g>
       <polygon className="fire-quad-guide" points={points(quad)} strokeWidth={2 / screenScale} onPointerDown={(e) => { if (e.ctrlKey) begin(e, selectedCorner ?? 0, false); }} />
-      {quad.map(([x, y], i) => <circle key={i} className={`fire-quad-handle${selectedCorner === i ? " selected" : ""}`} cx={x * width} cy={y * height}
+      {!transformMode && quad.map(([x, y], i) => <circle key={i} className={`fire-quad-handle${selectedCorner === i ? " selected" : ""}`} cx={x * width} cy={y * height}
         r={8 / screenScale} fill="#61e9ff" stroke="#10202a" strokeWidth={2 / screenScale}
         onPointerDown={(e) => begin(e, i, true)}>
         <title>{`Corner ${i + 1}: drag to move; Ctrl+drag moves all; select then Alt+click to place`}</title>
       </circle>)}
+      {transformMode && <g className="quad-transform">
+        <rect className="quad-transform-box" x={bounds.left * width} y={bounds.top * height} width={(bounds.right - bounds.left) * width} height={(bounds.bottom - bounds.top) * height} strokeWidth={1.5 / screenScale} strokeDasharray={`${4 / screenScale} ${3 / screenScale}`} />
+        {BOX_HANDLES.map((handle, i) => {
+          const [x, y] = boxPoint(quad, handle);
+          const corner = !!(handle.x && handle.y);
+          const cursor = corner ? (handle.x === handle.y ? "nwse-resize" : "nesw-resize") : handle.x ? "ew-resize" : "ns-resize";
+          return <rect key={i} className="quad-transform-handle" x={x * width - 5 / screenScale} y={y * height - 5 / screenScale} width={10 / screenScale} height={10 / screenScale} strokeWidth={1.5 / screenScale} style={{ cursor }} onPointerDown={(e) => beginTransform(e, handle)}>
+            <title>{corner ? "Resize proportionally from opposite corner" : handle.x ? "Resize width" : "Resize height"}</title>
+          </rect>;
+        })}
+        <line className="quad-transform-box" x1={rotationX} y1={bounds.top * height} x2={rotationX} y2={rotationY} strokeWidth={1.5 / screenScale} />
+        <g className="quad-rotate-handle" transform={`translate(${rotationX} ${rotationY}) scale(${1 / screenScale})`} onPointerDown={(e) => beginTransform(e, null)}>
+          <circle r={11} strokeWidth={1.5} />
+          <path d="M-5 0a5 5 0 1 1 4 5M-5-5v5h5" fill="none" strokeWidth={1.5} />
+          <title>Rotate around the mask center</title>
+        </g>
+      </g>}
     </svg>
   </>;
 }

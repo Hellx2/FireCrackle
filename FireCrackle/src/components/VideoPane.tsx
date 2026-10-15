@@ -11,6 +11,8 @@ import { IconButton } from "./Icon";
 import { DEFAULT_QUAD, type ManualQuad } from "../lib/quadMask";
 import { framePreview, previewSprite, type PreviewSprite } from "../lib/firePreview";
 import { compressionGeometry } from "../lib/compressionPreview";
+import { readMaskState, writeMaskState, type MaskState } from "../lib/maskState";
+import { parallelizeQuad } from "../lib/quadTransform";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -43,19 +45,36 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
   const urlRef = useRef<string | null>(null);
-  const [hudEnabled, setHudEnabled] = useState(false);
-  const [hudRow, setHudRow] = useState(0);
-  const [hudFov, setHudFov] = useState(70);
-  const [manualEnabled, setManualEnabled] = useState(false);
-  const [manualQuad, setManualQuad] = useState<ManualQuad>(DEFAULT_QUAD);
-  const [manualSheet, setManualSheet] = useState<0 | 1>(1);
-  const [manualRow, setManualRow] = useState(0);
-  const [manualMirrored, setManualMirrored] = useState(false);
-  const [manualOpacity, setManualOpacity] = useState(0.6);
-  const [pixelGrid, setPixelGrid] = useState(false);
-  const [compressionEnabled, setCompressionEnabled] = useState(false);
-  const [compressionHeight, setCompressionHeight] = useState(720);
-  const [compressionQuality, setCompressionQuality] = useState(0.45);
+  const restored = useRef<MaskState | null>(null);
+  if (!restored.current) restored.current = readMaskState();
+  const saved = restored.current;
+  const [hudEnabled, setHudEnabled] = useState(saved.hudEnabled);
+  const [hudRow, setHudRow] = useState(saved.hudRow);
+  const [hudFov, setHudFov] = useState(saved.hudFov);
+  const [manualEnabled, setManualEnabled] = useState(saved.manualEnabled);
+  const [manualQuad, setManualQuad] = useState<ManualQuad>(saved.manualQuad);
+  const [manualSheet, setManualSheet] = useState<0 | 1>(saved.manualSheet);
+  const [manualRow, setManualRow] = useState(saved.manualRow);
+  const [manualMirrored, setManualMirrored] = useState(saved.manualMirrored);
+  const [manualOpacity, setManualOpacity] = useState(saved.manualOpacity);
+  const [pixelGrid, setPixelGrid] = useState(saved.pixelGrid);
+  const [compressionEnabled, setCompressionEnabled] = useState(saved.compressionEnabled);
+  const [compressionHeight, setCompressionHeight] = useState(saved.compressionHeight);
+  const [compressionQuality, setCompressionQuality] = useState(saved.compressionQuality);
+  useEffect(() => {
+    writeMaskState({ hudEnabled, hudRow, hudFov, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality });
+  }, [hudEnabled, hudRow, hudFov, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality]);
+  useEffect(() => {
+    if (!manualEnabled) return;
+    const key = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (e.key.toLowerCase() !== "p" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat || target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? "")) return;
+      e.preventDefault();
+      setManualQuad(parallelizeQuad);
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [manualEnabled]);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const labelRow = hudRowFromLabel(view.label);
   const delivery = imageSize.width > 0 ? compressionGeometry(imageSize.width,imageSize.height,compressionHeight,manualQuad) : null;
@@ -208,6 +227,7 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
           <label>Opacity <input aria-label="Manual mask opacity" type="range" min={0} max={1} step={0.05} value={manualOpacity} onChange={(e) => setManualOpacity(e.target.valueAsNumber)} /></label>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
           <IconButton icon="reset" label="Reset quad corners" onClick={() => setManualQuad(DEFAULT_QUAD)} />
+          <IconButton icon="parallel" label="Make quad a parallelogram" title="Make a parallelogram · P · keeps the center" onClick={() => setManualQuad(parallelizeQuad)} />
           <label title="Single-frame approximation: render at video-relative size, reduce colour detail, then apply JPEG block compression. No motion artifacts or exact YouTube bitrate model."><input type="checkbox" checked={compressionEnabled} onChange={e=>setCompressionEnabled(e.target.checked)} /> YouTube-style compression</label>
           {compressionEnabled && <>
             <label>Resolution <select aria-label="Compression resolution" value={compressionHeight} onChange={e=>setCompressionHeight(Number(e.target.value))}>
@@ -216,11 +236,11 @@ export function VideoPane({ backend, view, onError, previewRef }: Props) {
             <label>Damage <select aria-label="Compression damage" value={compressionQuality} onChange={e=>setCompressionQuality(Number(e.target.value))}>
               <option value={0.8}>Light</option><option value={0.45}>Medium</option><option value={0.15}>Heavy</option><option value={0.05}>Extreme</option>
             </select></label>
-            {delivery && <span className="hud-hint">{delivery.width}×{delivery.height} frame · quad ≈{delivery.quadWidth.toFixed(1)}×{delivery.quadHeight.toFixed(1)} px · capped at decoded frame size · zoom only magnifies</span>}
+            {delivery && <span className="hud-hint">{delivery.width}×{delivery.height} frame · quad ≈{delivery.quadWidth.toFixed(1)}×{delivery.quadHeight.toFixed(1)} px · simulated output pixels · zoom only magnifies</span>}
             <span className="hud-hint">Approximation: colour bleed + JPEG blocks, single frame</span>
           </>}
           <IconButton icon="copy" label="Use frame label for manual mask" disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }} />
-          <span className="hud-hint">Ctrl+atlas: preview · Ctrl+drag: move all · select corner + Alt+click: place · Esc: deselect</span>
+          <span className="hud-hint">Shift: resize / rotate · P: parallelogram · Ctrl+drag: move all · select corner + Alt+click: place</span>
         </>}
       </div>
       <div className="video-meta">
