@@ -34,6 +34,18 @@ async fn run<T: Send + 'static>(
     .map_err(err)?
 }
 
+/// Optional initial video supplied by a desktop launch or file shortcut.
+#[tauri::command]
+fn startup_video() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--video" {
+            return args.next();
+        }
+    }
+    None
+}
+
 /// Import (or load) the project for a video and make it the open workspace.
 #[tauri::command]
 async fn open_video(state: State<'_, AppState>, path: String) -> Result<View, String> {
@@ -100,6 +112,7 @@ pub fn run_app() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
+            startup_video,
             open_video,
             view,
             act,

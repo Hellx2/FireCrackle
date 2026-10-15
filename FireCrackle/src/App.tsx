@@ -26,6 +26,7 @@ const KEY_HELP: Array<[string, string]> = [
   ["S · M", "toggle sheet · toggle mirrored"],
   ["X · Shift+X", "no fire · skip"],
   ["Backspace · Ctrl+Z", "clear · undo"],
+  ["Ctrl+S", "save labels and current video position"],
   ["N · Shift+N", "next / previous unlabelled"],
   ["F · Shift+F", "next / previous flag"],
   ["Esc", "cancel a half-typed row"],
@@ -63,6 +64,18 @@ export default function App() {
   const maxSpeed = settingValue(ws.settings, "label.max_play_speed", 8);
   const minTick = settingValue(ws.settings, "label.min_play_tick_ms", 16);
   const typeTimeout = settingValue(ws.settings, "label.row_type_timeout_ms", 700);
+
+  // hotkeys
+  useEffect(() => {
+    const onSave = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void ws.save();
+      }
+    };
+    window.addEventListener("keydown", onSave);
+    return () => window.removeEventListener("keydown", onSave);
+  }, [ws.save]);
 
   // hotkeys
   useEffect(() => {
@@ -153,6 +166,12 @@ export default function App() {
           </button>
           {view && (
             <>
+              <button onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Ctrl+S · labels also autosave after every edit">
+                Save
+              </button>
+              <span className="tag" role="status" title="Labels save after every edit; the last video and frame reopen next launch">
+                {backend.mock ? "Preview only" : ws.saveStatus}
+              </span>
               <button onClick={() => void act({ type: "undo" })} title="Ctrl+Z">
                 Undo
               </button>

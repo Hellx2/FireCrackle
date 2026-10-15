@@ -70,6 +70,8 @@ export interface Backend {
   readonly mock: boolean;
   /** Ask the user for a video file (a native dialog); null when cancelled or unsupported. */
   pickVideo(): Promise<string | null>;
+  /** An optional video passed to the desktop app on launch. */
+  startupVideo?(): Promise<string | null>;
   openVideo(path: string): Promise<View>;
   view(): Promise<View>;
   act(action: UiAction): Promise<View>;
@@ -102,6 +104,7 @@ export async function createBackend(): Promise<Backend> {
   const { open } = await import("@tauri-apps/plugin-dialog");
   return {
     mock: false,
+    startupVideo: () => invoke<string | null>("startup_video"),
     async pickVideo() {
       const picked = await open({
         multiple: false,
