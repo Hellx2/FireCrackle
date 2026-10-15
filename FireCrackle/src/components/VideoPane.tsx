@@ -220,19 +220,25 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           </div>
         )}
       </div>
-      <div className="hud-controls ruler-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
-        {ruler.enabled && <>
+      <div className="hud-controls video-tools" role="group" aria-label="Video tools" onKeyDown={(e) => e.stopPropagation()}>
+        <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} aria-expanded={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
+        <IconButton icon="fire" label="Toggle first-person fire" aria-pressed={hudEnabled} aria-expanded={hudEnabled} onClick={() => {
+          setHudEnabled(!hudEnabled);
+          if (!hudEnabled) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); }
+        }}>First-person fire</IconButton>
+        <IconButton icon="quad" label="Toggle manual fire quad mask" aria-pressed={manualEnabled} aria-expanded={manualEnabled} onClick={() => {
+          setManualEnabled(!manualEnabled);
+          if (!manualEnabled) { setHudEnabled(false); const next = framePreview(view); if (next) { setManualSheet(next.sheet); setManualRow(next.row); setManualMirrored(next.mirrored); } }
+        }}>Quad mask</IconButton>
+      </div>
+      {ruler.enabled && <div className="hud-controls ruler-controls" aria-label="Ruler settings" onKeyDown={(e) => e.stopPropagation()}>
           <label>1 unit = <input className="ruler-unit-input" aria-label="Video pixels per ruler unit" type="number" min={0.01} step={0.25} disabled={unitPixels <= 0} value={unitPixels > 0 ? Number(unitPixels.toFixed(3)) : ""} onChange={e => resizeRulerUnit(e.target.valueAsNumber)} /> video px</label>
           <IconButton icon="zoomOut" label="Shrink ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels / 1.1)} />
           <IconButton icon="zoomIn" label="Enlarge ruler unit" disabled={unitPixels <= 0} onClick={() => resizeRulerUnit(unitPixels * 1.1)} />
           <IconButton icon="reset" label="Reset ruler calibration" onClick={() => setRuler({ enabled: true, points: DEFAULT_RULER.points })} />
           <span className="hud-hint">Drag 0 and 1 to set unit / direction · drag line to move · extends both ways</span>
-        </>}
-      </div>
-      <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <label><input type="checkbox" checked={hudEnabled} onChange={(e) => { setHudEnabled(e.target.checked); if (e.target.checked) { setManualEnabled(false); const next = framePreview(view); if (next) setHudRow(next.row); } }} /> First-person fire</label>
-        {hudEnabled && <>
+      </div>}
+      {hudEnabled && <div className="hud-controls" aria-label="First-person fire settings" onKeyDown={(e) => e.stopPropagation()}>
           <IconButton icon="left" label="Previous HUD row" onClick={() => setHudRow((r) => stepHudRow(r, -1))} />
           <label>Row <input aria-label="HUD animation index" type="number" min={0} max={31} value={hudRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setHudRow(n); }} /></label>
           <IconButton icon="right" label="Next HUD row" onClick={() => setHudRow((r) => stepHudRow(r, 1))} />
@@ -240,11 +246,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           <label>FOV <select aria-label="HUD view" value={hudFov} onChange={(e) => setHudFov(Number(e.target.value))}><option value={70}>70° · normal</option><option value={60}>60° · submerged</option></select></label>
           <span className="hud-hint">Ctrl+click atlas to preview · follows the next frame's guess</span>
           <label><input type="checkbox" checked={pixelGrid} onChange={(e) => setPixelGrid(e.target.checked)} /> Pixel grid</label>
-        </>}
-      </div>
-      <div className="hud-controls" onKeyDown={(e) => e.stopPropagation()}>
-        <label><input type="checkbox" checked={manualEnabled} onChange={(e) => { setManualEnabled(e.target.checked); if (e.target.checked) { setHudEnabled(false); const next = framePreview(view); if (next) { setManualSheet(next.sheet); setManualRow(next.row); setManualMirrored(next.mirrored); } } }} /> Manual fire quad mask</label>
-        {manualEnabled && <>
+      </div>}
+      {manualEnabled && <div className="hud-controls" aria-label="Quad mask settings" onKeyDown={(e) => e.stopPropagation()}>
           <label>Sheet <select aria-label="Manual mask sheet" value={manualSheet} onChange={(e) => setManualSheet(Number(e.target.value) as 0 | 1)}><option value={0}>0</option><option value={1}>1</option></select></label>
           <IconButton icon="left" label="Previous manual mask row" onClick={() => setManualRow((r) => stepHudRow(r, -1))} />
           <label>Row <input aria-label="Manual mask row" type="number" min={0} max={31} value={manualRow} onChange={(e) => { const n = e.target.valueAsNumber; if (Number.isInteger(n) && n >= 0 && n < 32) setManualRow(n); }} /></label>
@@ -271,8 +274,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           </>}
           <IconButton icon="copy" label="Use frame label for manual mask" disabled={!isFire(view.label)} onClick={() => { if (isFire(view.label)) { setManualSheet(view.label.fire.sheet as 0 | 1); setManualRow(view.label.fire.row); setManualMirrored(view.label.fire.mirrored); } }} />
           <span className="hud-hint">Shift: resize / rotate · P: parallelogram · Ctrl+drag: move all · select corner + Alt+click: place</span>
-        </>}
-      </div>
+      </div>}
       <div className="video-meta">
         <span>
           frame <b>{view.current}</b> / {view.frame_count - 1}

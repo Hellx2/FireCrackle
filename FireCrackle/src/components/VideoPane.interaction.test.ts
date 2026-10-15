@@ -28,16 +28,47 @@ function viewport(node: Element): Element | undefined {
   }
 }
 async function pane() {
+  return viewport(await tree())!;
+}
+async function tree() {
   hooks.stateCursor = hooks.refCursor = 0;
   hooks.effects = [];
   const backend = createMockBackend();
-  return viewport(VideoPane({ backend, view: await backend.view(), onError: vi.fn() }))!;
+  return VideoPane({ backend, view: await backend.view(), onError: vi.fn() });
+}
+function find(node: Element, label: string): Element | undefined {
+  if (node.props.label === label || node.props["aria-label"] === label) return node;
+  for (const child of [node.props.children].flat(Infinity)) {
+    if (child && typeof child === "object" && "props" in child) {
+      const match = find(child, label); if (match) return match;
+    }
+  }
 }
 function pointer(x: number, y: number, button = 0) {
   return { clientX: x, clientY: y, button, pointerId: 7, preventDefault: vi.fn(), currentTarget: { setPointerCapture: vi.fn() } };
 }
 beforeEach(() => { hooks.states = []; hooks.refs = []; });
 afterEach(() => vi.unstubAllGlobals());
+
+it("groups all tools and reveals only the enabled mask settings", async () => {
+  let root = await tree();
+  const toolbar = find(root, "Video tools")!;
+  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask"]) expect(find(toolbar, label)).toBeDefined();
+  expect(find(root, "First-person fire settings")).toBeUndefined();
+  expect(find(root, "Quad mask settings")).toBeUndefined();
+  find(root, "Toggle first-person fire")!.props.onClick();
+  root = await tree();
+  expect(find(root, "Toggle first-person fire")!.props["aria-expanded"]).toBe(true);
+  expect(find(root, "First-person fire settings")).toBeDefined();
+  find(root, "Toggle manual fire quad mask")!.props.onClick();
+  root = await tree();
+  expect(find(root, "First-person fire settings")).toBeUndefined();
+  expect(find(root, "Quad mask settings")).toBeDefined();
+  expect(find(root, "Toggle first-person fire")!.props["aria-pressed"]).toBe(false);
+  find(root, "Toggle manual fire quad mask")!.props.onClick();
+  root = await tree();
+  expect(find(root, "Quad mask settings")).toBeUndefined();
+});
 
 it("restores saved mask settings and persists a keyboard parallelogram edit", async () => {
   let stored = JSON.stringify({ ...DEFAULT_MASK_STATE, manualEnabled: true, hudRow: 19, hudFov: 60, manualQuad: [[0.1, 0.1], [0.8, 0.2], [0.7, 0.9], [0.2, 0.7]] });

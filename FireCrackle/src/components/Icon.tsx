@@ -21,6 +21,8 @@ const shapes = {
   right: <path d="m9 5 7 7-7 7" />,
   reset: <><path d="M3 4v6h6M3 10a9 9 0 1 1 1 8" /></>,
   parallel: <path d="M7 5h15l-5 14H2Z" />,
+  fire: <path d="M12 3c1 5-4 6-4 10 0 2 1 3 3 4-1-3 2-4 3-6 3 3 5 5 5 8a7 7 0 0 1-14 0c0-4 2-7 7-16Z" />,
+  quad: <><path d="m5 5 15-2-2 17L3 18Z" /><path d="M3 3h4v4H3ZM18 1h4v4h-4ZM16 18h4v4h-4ZM1 16h4v4H1Z" /></>,
   ruler: <><path d="m3 16 13-13 5 5L8 21ZM7 12l3 3M10 9l2 2M13 6l3 3" /></>,
   copy: <><rect x="8" y="8" width="13" height="13" rx="2" /><path d="M16 8V3H3v13h5" /></>,
   zoomIn: <><circle cx="10" cy="10" r="7" /><path d="m15 15 6 6M7 10h6M10 7v6" /></>,
