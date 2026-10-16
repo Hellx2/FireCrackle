@@ -291,6 +291,7 @@ pub fn run_app() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             startup_video,
@@ -303,7 +304,7 @@ pub fn run_app() {
             pov_cancel,
             pov_apply,
             compress_fire_cycle,
-            comparison_proof::save_comparison_proof,
+            comparison_proof::copy_comparison_proof,
             open_video,
             view,
             act,

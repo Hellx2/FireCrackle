@@ -1,23 +1,29 @@
-use std::path::Path;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
-fn validate(path: &Path, png: &[u8]) -> Result<(), String> {
-    if !path
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
-    {
-        return Err("Choose a .png filename for the comparison proof.".into());
-    }
+fn decode(png: &[u8]) -> Result<tauri::image::Image<'static>, String> {
     if png.len() < 24 || png.len() > 128 * 1024 * 1024 || !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("Invalid or oversized comparison PNG.".into());
     }
-    Ok(())
+    let width = u32::from_be_bytes(png[16..20].try_into().unwrap());
+    let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+    if width == 0
+        || height == 0
+        || width > 16384
+        || height > 16384
+        || u64::from(width) * u64::from(height) > 64_000_000
+    {
+        return Err("Invalid or oversized comparison dimensions.".into());
+    }
+    tauri::image::Image::from_bytes(png).map_err(|e| format!("Could not read comparison PNG: {e}"))
 }
 
 #[tauri::command]
-pub async fn save_comparison_proof(path: String, png: Vec<u8>) -> Result<(), String> {
-    validate(Path::new(&path), &png)?;
+pub async fn copy_comparison_proof(app: tauri::AppHandle, png: Vec<u8>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        std::fs::write(path, png).map_err(|e| e.to_string())
+        let image = decode(&png)?;
+        app.clipboard()
+            .write_image(&image)
+            .map_err(|e| format!("Could not copy comparison image: {e}"))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -28,11 +34,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_accepts_png_data_at_png_paths() {
-        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-        png.resize(24, 0);
-        assert!(validate(Path::new("proof.PNG"), &png).is_ok());
-        assert!(validate(Path::new("video.mp4"), &png).is_err());
-        assert!(validate(Path::new("proof.png"), b"not an image").is_err());
+    fn decodes_png_to_clipboard_pixels_and_rejects_invalid_data() {
+        let png = include_bytes!("../icons/32x32.png");
+        let image = decode(png).unwrap();
+        assert_eq!((image.width(), image.height()), (32, 32));
+        assert_eq!(image.rgba().len(), 32 * 32 * 4);
+        assert!(decode(b"not an image").is_err());
+        let mut oversized = png.to_vec();
+        oversized[16..20].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert!(decode(&oversized).is_err());
     }
 }

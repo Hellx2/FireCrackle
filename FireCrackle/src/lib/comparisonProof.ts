@@ -95,23 +95,19 @@ export async function createComparisonProof(picture: HTMLImageElement, masks: Pr
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(Error("Could not create the comparison PNG.")), "image/png"));
 }
 
-export function proofFilename(source: string): string {
-  const name = source.replace(/\.[a-z0-9]{1,6}$/i, "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "-").trim().slice(0, 100) || "picture";
-  return `${name}-comparison-proof.png`;
-}
-
-export async function saveComparisonProof(blob: Blob, filename: string): Promise<boolean> {
+/** Copy only: never open a save dialog or silently download a file. */
+export async function copyComparisonProof(proof: Blob | Promise<Blob>): Promise<void> {
   if (inTauri()) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const path = await save({ title: "Save comparison proof", defaultPath: filename, filters: [{ name: "PNG image", extensions: ["png"] }] });
-    if (!path) return false;
+    const blob = await proof;
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("save_comparison_proof", { path, png: Array.from(new Uint8Array(await blob.arrayBuffer())) });
-    return true;
+    await invoke("copy_comparison_proof", { png: Array.from(new Uint8Array(await blob.arrayBuffer())) });
+    return;
   }
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a"); link.href = url; link.download = filename;
-  document.body.appendChild(link); link.click(); link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  return true;
+  if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+    // Observe render failures even when the browser cannot copy images.
+    void Promise.resolve(proof).catch(() => {});
+    throw Error("Image clipboard is unavailable. Use the desktop app to copy the comparison proof.");
+  }
+  // Start the clipboard write in the click handler so rendering retains user activation.
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": Promise.resolve(proof) })]);
 }

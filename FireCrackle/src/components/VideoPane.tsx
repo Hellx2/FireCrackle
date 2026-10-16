@@ -23,7 +23,7 @@ import { readVideoView, writeVideoView } from "../lib/viewState";
 import { OpacityControl } from "./OpacityControl";
 import { scopedStorage } from "../lib/scopedStorage";
 import { VideoRotation } from "./VideoRotation";
-import { createComparisonProof, proofFilename, saveComparisonProof, type ProofMask } from "../lib/comparisonProof";
+import { createComparisonProof, copyComparisonProof, type ProofMask } from "../lib/comparisonProof";
 import { spriteText } from "../lib/labelCandidate";
 
 export interface VideoPreviewHandle {
@@ -213,9 +213,11 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   }
 
   const [proofBusy, setProofBusy] = useState(false);
+  const [proofCopied, setProofCopied] = useState(false);
+  useEffect(() => { if (!proofCopied) return; const timer = setTimeout(() => setProofCopied(false), 2000); return () => clearTimeout(timer); }, [proofCopied]);
   async function comparisonProof() {
     if (proofBusy) return;
-    setProofBusy(true); setAnimationStop(value => value + 1); onAnimationStart?.();
+    setProofBusy(true); setProofCopied(false); setAnimationStop(value => value + 1); onAnimationStart?.();
     try {
       const picture = frameRef.current?.querySelector<HTMLImageElement>(".video-zoom > img");
       const svg = frameRef.current?.querySelector<SVGSVGElement>(manualEnabled ? "svg.fire-quad-mask" : "svg.hud-overlay");
@@ -225,8 +227,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         opacity: manualEnabled ? manualOpacity : hudOpacity,
         details: manualEnabled ? (compressionEnabled ? `H.264 · ${compressionHeight}p` : undefined) : `FOV ${hudFov}°` };
       const source = stillImage?.name ?? `Frame ${view.current} · ${formatTimecode(view.pts, view.fps)}`;
-      const blob = await createComparisonProof(picture, [mask], source);
-      await saveComparisonProof(blob, proofFilename(stillImage?.name ?? `frame-${view.current}`));
+      await copyComparisonProof(createComparisonProof(picture, [mask], source));
+      setProofCopied(true);
     } catch (error) { onError(`Comparison proof: ${String(error)}`); }
     finally { setProofBusy(false); }
   }
@@ -296,7 +298,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           setAnimationOpen(!animationOpen);
           if (!animationOpen) { setManualEnabled(true); setHudEnabled(false); }
         }}>Animation</IconButton>
-        <IconButton icon="copy" label="Comparison proof" title="Save original and mask side by side, with the displayed sprite details" disabled={proofBusy || !url || shown !== view.current || imageSize.width <= 0 || (!manualEnabled && !hudEnabled)} onClick={() => void comparisonProof()}>{proofBusy ? "Saving…" : "Comparison proof"}</IconButton>
+        <IconButton icon="copy" label="Comparison proof" title="Copy original and mask side by side to the clipboard, with the displayed sprite details" disabled={proofBusy || !url || shown !== view.current || imageSize.width <= 0 || (!manualEnabled && !hudEnabled)} onClick={() => void comparisonProof()}>{proofBusy ? "Copying…" : proofCopied ? "Copied!" : "Comparison proof"}</IconButton>
       </div>
       {ruler.enabled && <div className="hud-controls ruler-controls" aria-label="Ruler settings" onKeyDown={(e) => e.stopPropagation()}>
           <label><input type="checkbox" checked={ruler.locked} onChange={e => setRuler(current => ({ ...current, locked: e.target.checked }))} /> Lock unit</label>
