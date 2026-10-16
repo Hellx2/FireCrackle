@@ -10,6 +10,7 @@ use studio_core::phase::Flag;
 use studio_core::workspace::{PhaseChart, ThumbStatus, UiAction, View, Workspace};
 use tauri::State;
 use tauri::ipc::Response;
+mod comparison_proof;
 mod compression;
 mod pov;
 
@@ -260,6 +261,7 @@ pub fn run_app() {
             pov_cancel,
             pov_apply,
             compress_fire_cycle,
+            comparison_proof::save_comparison_proof,
             open_video,
             view,
             act,

@@ -74,7 +74,8 @@ it("steps exactly one frame and disables navigation at the video boundaries", as
 it("groups all tools and reveals only the enabled mask settings", async () => {
   let root = await tree();
   const toolbar = find(root, "Video tools")!;
-  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask"]) expect(find(toolbar, label)).toBeDefined();
+  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask", "Comparison proof"]) expect(find(toolbar, label)).toBeDefined();
+  expect(find(toolbar, "Comparison proof")!.props.disabled).toBe(true);
   expect(find(root, "First-person fire settings")).toBeUndefined();
   expect(find(root, "Quad mask settings")).toBeUndefined();
   find(root, "Toggle first-person fire")!.props.onClick();
@@ -229,7 +230,7 @@ it("image mode shares every viewer tool without decoding or labelling a video fr
   expect(frame).not.toHaveBeenCalled();
   hooks.stateCursor = hooks.refCursor = 0; hooks.effects = []; root = VideoPane(props);
   const tools = find(root, "Image tools")!;
-  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask", "Toggle sprite matching tool", "Toggle sprite animation tool"]) expect(find(tools, label)).toBeDefined();
+  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask", "Toggle sprite matching tool", "Toggle sprite animation tool", "Comparison proof"]) expect(find(tools, label)).toBeDefined();
   expect(find(root, "Previous photo")).toBeDefined();
   expect(find(root, "Frame navigation")).toBeUndefined();
 });

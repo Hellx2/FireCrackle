@@ -23,6 +23,8 @@ import { readVideoView, writeVideoView } from "../lib/viewState";
 import { OpacityControl } from "./OpacityControl";
 import { scopedStorage } from "../lib/scopedStorage";
 import { VideoRotation } from "./VideoRotation";
+import { createComparisonProof, proofFilename, saveComparisonProof, type ProofMask } from "../lib/comparisonProof";
+import { spriteText } from "../lib/labelCandidate";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -210,6 +212,24 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
     dragRef.current = null;
   }
 
+  const [proofBusy, setProofBusy] = useState(false);
+  async function comparisonProof() {
+    if (proofBusy) return;
+    setProofBusy(true); setAnimationStop(value => value + 1); onAnimationStart?.();
+    try {
+      const picture = frameRef.current?.querySelector<HTMLImageElement>(".video-zoom > img");
+      const svg = frameRef.current?.querySelector<SVGSVGElement>(manualEnabled ? "svg.fire-quad-mask" : "svg.hud-overlay");
+      if (!picture || !svg || shown !== view.current || picture.getAttribute("src") !== url) throw Error("Wait for the picture and mask to load.");
+      const sprite = manualEnabled ? { sheet: manualSheet, row: manualRow, mirrored: manualMirrored } : { sheet: 1, row: hudRow, mirrored: false };
+      const mask: ProofMask = { svg, description: `${manualEnabled ? "Quad" : "First-person"} · ${spriteText(sprite)}`,
+        opacity: manualEnabled ? manualOpacity : hudOpacity,
+        details: manualEnabled ? (compressionEnabled ? `H.264 · ${compressionHeight}p` : undefined) : `FOV ${hudFov}°` };
+      const source = stillImage?.name ?? `Frame ${view.current} · ${formatTimecode(view.pts, view.fps)}`;
+      const blob = await createComparisonProof(picture, [mask], source);
+      await saveComparisonProof(blob, proofFilename(stillImage?.name ?? `frame-${view.current}`));
+    } catch (error) { onError(`Comparison proof: ${String(error)}`); }
+    finally { setProofBusy(false); }
+  }
   const s = view.suggestion;
   return (
     <div className="video-pane">
@@ -276,6 +296,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           setAnimationOpen(!animationOpen);
           if (!animationOpen) { setManualEnabled(true); setHudEnabled(false); }
         }}>Animation</IconButton>
+        <IconButton icon="copy" label="Comparison proof" title="Save original and mask side by side, with the displayed sprite details" disabled={proofBusy || !url || shown !== view.current || imageSize.width <= 0 || (!manualEnabled && !hudEnabled)} onClick={() => void comparisonProof()}>{proofBusy ? "Saving…" : "Comparison proof"}</IconButton>
       </div>
       {ruler.enabled && <div className="hud-controls ruler-controls" aria-label="Ruler settings" onKeyDown={(e) => e.stopPropagation()}>
           <label><input type="checkbox" checked={ruler.locked} onChange={e => setRuler(current => ({ ...current, locked: e.target.checked }))} /> Lock unit</label>
