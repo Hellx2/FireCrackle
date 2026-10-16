@@ -363,7 +363,11 @@ pub fn generate(
         "-i",
     ])
     .arg(video)
-    .args(["-fps_mode", "passthrough", "-vf"])
+    .args([
+        crate::import::PASSTHROUGH_ARGS[0],
+        crate::import::PASSTHROUGH_ARGS[1],
+        "-vf",
+    ])
     .arg(filter)
     .args(["-f", "image2pipe", "-c:v", "mjpeg", "-q:v"])
     .arg(plan.quality.to_string())

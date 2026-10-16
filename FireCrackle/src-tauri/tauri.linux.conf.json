@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "category": "Video",
+    "licenseFile": "../../LICENSE",
+    "resources": {
+      "../../LICENSE": "LICENSE.txt",
+      "../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.txt",
+      "../release/README-linux.txt": "README-linux.txt"
+    },
+    "linux": {
+      "deb": { "depends": ["ffmpeg", "libwebkit2gtk-4.1-0", "libgtk-3-0"] }
+    }
+  }
+}

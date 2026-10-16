@@ -1,12 +1,19 @@
-name: FireCrackle Windows release
+name: FireCrackle release
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Packages to build
+        type: choice
+        options: [all, windows, linux]
+        default: all
   push:
     tags: ['v*']
 permissions:
   contents: read
 jobs:
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'linux'
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -35,5 +42,37 @@ jobs:
             FireCrackle/releases/**/*.zip
             FireCrackle/releases/**/*-Setup.exe
             FireCrackle/releases/**/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+  linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'windows'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+    defaults:
+      run:
+        working-directory: FireCrackle
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: FireCrackle/package-lock.json
+      - name: Install Linux build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 xdg-utils ffmpeg xvfb dbus-x11
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Build, test and verify Linux packages
+        run: bash scripts/release-linux.sh
+      - name: Upload Linux tester downloads
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: FireCrackle-linux-x64
+          path: FireCrackle/releases/**/linux-x64-*/*
           if-no-files-found: error
           retention-days: 30

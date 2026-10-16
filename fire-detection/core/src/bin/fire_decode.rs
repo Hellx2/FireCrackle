@@ -153,7 +153,11 @@ fn run() -> Result<(), Failure> {
     let mut child = Command::new("ffmpeg")
         .args(["-nostdin", "-loglevel", "error", "-nostats", "-i"])
         .arg(&args.video)
-        .args(["-fps_mode", "passthrough", "-vf"])
+        .args([
+            fire_core::video::PASSTHROUGH_ARGS[0],
+            fire_core::video::PASSTHROUGH_ARGS[1],
+            "-vf",
+        ])
         .arg(format!("crop=iw:{crop_h}:0:0"))
         .args(["-pix_fmt", "gray", "-f", "rawvideo", "-"])
         .stdout(Stdio::piped())

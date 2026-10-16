@@ -7,6 +7,13 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command;
 
+/// Ubuntu 22.04's FFmpeg 4.4 predates `-fps_mode`; both spellings preserve every frame.
+pub const PASSTHROUGH_ARGS: [&str; 2] = if cfg!(target_os = "linux") {
+    ["-vsync", "0"]
+} else {
+    ["-fps_mode", "passthrough"]
+};
+
 /// Video tools shipped next to the app, with PATH fallback for development.
 #[derive(Clone, Debug)]
 pub struct Tools {

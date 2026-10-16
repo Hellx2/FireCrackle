@@ -18,6 +18,8 @@ The tracked `fire-detection/mod/gradle/wrapper/gradle-wrapper.jar` is the Gradle
 
 Release preparation downloads the Gyan Windows essentials package pinned by `FireCrackle/release/runtime-lock.json`. FFmpeg and FFprobe are separate executable programs, not linked into the app. This build is GPLv3; its original LICENSE, README with build/dependency details, and source links are copied into the packaged `tools` directory. Do not remove those notices or represent FFmpeg as MIT-licensed. The runtime is generated locally and is not committed to this repository.
 
+Linux packages use the system FFmpeg/FFprobe installed through the user's distribution; they do not redistribute the Windows runtime. The Debian package declares FFmpeg as a dependency. Distribution-provided libraries and tools retain their own license terms.
+
 ## Libraries and build tools
 
 React, Tauri, Rust crates, Python packages, Fabric/Loom and Gradle retain their own licenses. Exact JavaScript/Rust versions are recorded in their lockfiles; Python requirements and Gradle coordinates are recorded with the corresponding tools. Check their upstream notices when redistributing dependencies.

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { inspectTrackedFile } from './check-repository.mjs';
 
 test('rejects local recordings, label projects, generated tables and build output', () => {
-  for (const path of ['recording.mkv', 'clip.mkv.firecrackle/project.json', 'fire-detection/data/joined/table.csv', '.claude/launch.json', 'FireCrackle/dist/app.js', '.env', 'release.rar']) {
+  for (const path of ['recording.mkv', 'clip.mkv.firecrackle/project.json', 'fire-detection/data/joined/table.csv', '.claude/launch.json', 'FireCrackle/dist/app.js', '.env', 'release.rar', 'app.AppImage', 'app.deb', 'app.rpm', 'app.tar.gz', 'app.tgz']) {
     assert.ok(inspectTrackedFile(path, 10).length, path);
   }
 });

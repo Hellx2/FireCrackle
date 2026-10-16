@@ -20,7 +20,7 @@ export function inspectTrackedFile(path, bytes, content = '') {
   if (/(^|\/)(?:node_modules|target|dist|build|\.gradle|\.board|\.claude|\.codex|\.agents|\.venv|__pycache__|releases|\.release-cache)(\/|$)/.test(p)) problems.push('generated/local tooling directory');
   if (/(?:^|\/)\.env(?:\..+)?$/.test(p) && !p.endsWith('.env.example')) problems.push('local environment file');
   if (/\.firecrackle(?:\/|$)/.test(p) || p.startsWith('fire-detection/data/joined/')) problems.push('private/generated video data');
-  if (/\.(?:mp4|mkv|mov|avi|webm|exe|dll|zip|rar|7z|pem|key|class|tiny|mapping)$/i.test(p)) problems.push('binary, credential or upstream mapping artifact');
+  if (/\.(?:mp4|mkv|mov|avi|webm|exe|dll|zip|rar|7z|appimage|deb|rpm|tgz|tar\.gz|pem|key|class|tiny|mapping)$/i.test(p)) problems.push('binary, credential or upstream mapping artifact');
   if (/\.jar$/i.test(p) && p !== wrapper) problems.push('JAR other than the Gradle wrapper');
   if (/(?:^|\/)(?:net\/minecraft|net\/fabricmc\/yarn)(?:\/|$)/.test(p)) problems.push('upstream Minecraft/Yarn source tree');
   if (/^\s*package\s+net\.(?:minecraft|fabricmc\.yarn)\b/m.test(content)) problems.push('upstream Minecraft/Yarn Java package');

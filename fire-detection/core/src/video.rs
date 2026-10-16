@@ -2,6 +2,13 @@
 
 use std::io::{self, ErrorKind, Read};
 
+/// Frame-preserving output, including the FFmpeg 4.4 shipped by Ubuntu 22.04.
+pub const PASSTHROUGH_ARGS: [&str; 2] = if cfg!(target_os = "linux") {
+    ["-vsync", "0"]
+} else {
+    ["-fps_mode", "passthrough"]
+};
+
 /// Decode on one producer while a bounded pool processes independent frames. Buffers are reused.
 /// Results arrive in completion order; their original frame numbers are always retained.
 pub fn parallel_frames<R, T, F, U>(

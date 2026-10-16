@@ -107,8 +107,8 @@ fn run() -> Result<(), String> {
             .args([
                 "-map",
                 "0:v:0",
-                "-fps_mode",
-                "passthrough",
+                fire_core::video::PASSTHROUGH_ARGS[0],
+                fire_core::video::PASSTHROUGH_ARGS[1],
                 "-pix_fmt",
                 "rgb24",
                 "-f",

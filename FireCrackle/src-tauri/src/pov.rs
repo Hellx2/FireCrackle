@@ -180,8 +180,8 @@ fn scan(
         .args([
             "-map",
             "0:v:0",
-            "-fps_mode",
-            "passthrough",
+            studio_core::import::PASSTHROUGH_ARGS[0],
+            studio_core::import::PASSTHROUGH_ARGS[1],
             "-pix_fmt",
             "rgb24",
             "-f",

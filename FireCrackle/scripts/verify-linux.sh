@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 1 ]] || { echo 'Usage: verify-linux.sh RELEASE_DIRECTORY' >&2; exit 1; }
+output="$(cd -- "$1" && pwd)"
+project="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+version="$(node -p "JSON.parse(require('fs').readFileSync('$project/package.json')).version")"
+image="$output/FireCrackle-$version-linux-x86_64.AppImage"
+deb="$output/FireCrackle-$version-linux-amd64.deb"
+(cd "$output" && sha256sum --check SHA256SUMS-linux-x64.txt)
+[[ $(dpkg-deb --field "$deb" Architecture) == amd64 ]]
+[[ $(dpkg-deb --field "$deb" Version) == "$version" ]]
+dpkg-deb --field "$deb" Depends | grep -Eq '(^|[, ])ffmpeg([, (]|$)'
+work="$(mktemp -d)"
+# Only this newly allocated directory is removed; never remove a caller-provided path.
+trap 'rm -rf -- "$work"' EXIT
+dpkg-deb --extract "$deb" "$work/deb"
+binary="$work/deb/usr/bin/firecrackle"
+test -x "$binary"
+file "$binary" | grep -q 'ELF 64-bit.*x86-64'
+ldd "$binary" > "$work/dependencies.txt"
+if grep -q 'not found' "$work/dependencies.txt"; then echo 'Missing native dependency.' >&2; exit 1; fi
+for notice in LICENSE.txt THIRD_PARTY_NOTICES.txt README-linux.txt; do
+  packaged="$(find "$work/deb" -type f -name "$notice" -print -quit)"
+  [[ -n $packaged ]] || { echo "Missing packaged notice: $notice" >&2; exit 1; }
+done
+if find "$work/deb" -type f \( -iname '*.exe' -o -iname '*.mkv' -o -name project.json -o -name labels.jsonl \) -print -quit | grep -q .; then
+  echo 'Unexpected Windows runtime or personal video data in Linux package.' >&2; exit 1
+fi
+(
+  cd "$work"
+  "$image" --appimage-extract >/dev/null
+)
+test -x "$work/squashfs-root/AppRun"
+for notice in LICENSE.txt THIRD_PARTY_NOTICES.txt README-linux.txt; do
+  [[ -n $(find "$work/squashfs-root" -type f -name "$notice" -print -quit) ]] || {
+    echo "Missing AppImage notice: $notice" >&2; exit 1;
+  }
+done
+# Remote CI only: exercise both packages under a virtual display, without touching the user's desktop.
+for app in "$binary" "$work/squashfs-root/AppRun"; do
+  status=0
+  WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+    dbus-run-session -- xvfb-run -a timeout --signal=TERM 12s "$app" >"$work/startup.log" 2>&1 || status=$?
+  if [[ $status != 124 ]]; then
+    cat "$work/startup.log" >&2
+    echo "Linux startup failed (exit $status): $app" >&2
+    exit 1
+  fi
+done
+echo 'Linux package contents, dependencies, checksums and headless startup verified.'

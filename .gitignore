@@ -39,6 +39,11 @@ runs/
 *.rar
 *.exe
 *.dll
+*.AppImage
+*.deb
+*.rpm
+*.tar.gz
+*.tgz
 
 # Large generated caches
 *.pkl

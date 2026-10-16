@@ -1,6 +1,6 @@
 # FireCrackle
 
-Video labelling and fire-sprite matching app. Current test release: **0.1.0**, Windows x64.
+Video labelling and fire-sprite matching app. Current test release: **0.1.0**, Windows x64 and Linux x86_64. Downloads are published to [KhiemGOM/FireCrackle](https://github.com/KhiemGOM/FireCrackle/releases); access follows that repository's visibility.
 
 ## Build something to share
 
@@ -33,7 +33,20 @@ FFmpeg comes from [Gyan's Windows builds](https://www.gyan.dev/ffmpeg/builds/), 
 
 ## Automated build
 
-The repository's **FireCrackle Windows release** GitHub Actions workflow builds a ZIP and setup EXE on manual dispatch or a `v*` tag. Tags must match `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. Download the files from workflow artifacts; it does not publish a public GitHub Release. The whole repository is required because the app uses `fire-detection/core` and embedded fire assets.
+The repository's **FireCrackle release** GitHub Actions workflow builds Windows ZIP/setup EXE and Linux AppImage/Debian packages on manual dispatch or a `v*` tag. A manual run can select Windows, Linux or both. Tags must match `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. Download the files from workflow artifacts; this build workflow does not publish a GitHub Release. The whole repository is required because the app uses `fire-detection/core` and embedded fire assets.
+
+## Linux builds
+
+Linux packages target x86_64 glibc-based desktops and are built on Ubuntu 22.04. ARM and musl/Alpine are not included. The AppImage needs system `ffmpeg`/`ffprobe`; install FFmpeg with your distribution's package manager. On Ubuntu, `sudo apt install ffmpeg libfuse2`, then make the AppImage executable and open it. Without FUSE, launch it with `--appimage-extract-and-run`. For Debian/Ubuntu, `sudo apt install ./FireCrackle-*-linux-amd64.deb` installs the declared dependencies.
+
+To build on Linux, install Node.js 24, Rust stable, FFmpeg, the [Tauri Linux dependencies](https://v2.tauri.app/start/prerequisites/#linux), plus `patchelf`, `libfuse2`, `xvfb` and `dbus-x11`. Then run:
+
+```sh
+cd FireCrackle
+bash scripts/release-linux.sh
+```
+
+The script runs frontend, video-core, detector and desktop tests, including a real FFmpeg encode/decode check. It builds AppImage and Debian bundles, packages original-code/third-party notices and build metadata, verifies checksums and contents, and starts both packages under a virtual display. Outputs go to a fresh `releases/v0.1.0/linux-x64-<build>/` directory. FFmpeg is supplied and licensed by the Linux distribution; Windows runtime files are not bundled into Linux packages.
 
 ## Develop
 
