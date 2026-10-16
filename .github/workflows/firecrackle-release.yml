@@ -7,12 +7,31 @@ on:
         type: choice
         options: [all, windows, linux]
         default: all
+      publish:
+        description: Publish after both platform builds pass (requires platform=all)
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.platform || 'all' }}
+  cancel-in-progress: false
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Release safety regressions
+        run: python3 -m unittest discover -s FireCrackle/scripts -p 'test_*release.py'
+      - name: Check version and publication plan
+        id: version
+        run: python3 FireCrackle/scripts/publish_release.py validate --platform "${{ inputs.platform || 'all' }}" --publish "${{ github.event_name == 'push' || inputs.publish }}" --ref "$GITHUB_REF" >> "$GITHUB_OUTPUT"
   windows:
+    needs: validate
     if: github.event_name != 'workflow_dispatch' || inputs.platform != 'linux'
     runs-on: windows-latest
     timeout-minutes: 60
@@ -45,6 +64,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   linux:
+    needs: validate
     if: github.event_name != 'workflow_dispatch' || inputs.platform != 'windows'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
@@ -76,3 +96,16 @@ jobs:
           path: FireCrackle/releases/**/linux-x64-*/*
           if-no-files-found: error
           retention-days: 30
+  publish:
+    if: github.event_name == 'push' || inputs.publish
+    needs: [validate, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Verify both platforms and publish through a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 FireCrackle/scripts/publish_release.py publish --repo "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --windows-run "$GITHUB_RUN_ID" --linux-run "$GITHUB_RUN_ID"

@@ -33,7 +33,7 @@ FFmpeg comes from [Gyan's Windows builds](https://www.gyan.dev/ffmpeg/builds/), 
 
 ## Automated build
 
-The repository's **FireCrackle release** GitHub Actions workflow builds Windows ZIP/setup EXE and Linux AppImage/Debian packages on manual dispatch or a `v*` tag. A manual run can select Windows, Linux or both. Tags must match `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. Download the files from workflow artifacts; this build workflow does not publish a GitHub Release. The whole repository is required because the app uses `fire-detection/core` and embedded fire assets.
+The repository's **FireCrackle release** workflow builds Windows ZIP/setup EXE and Linux AppImage/Debian packages. Manual runs default to build-only; enabling Publish requires both platforms to pass. A matching `v*` tag also builds and publishes both. Use the [isolated release command](release/README.md) to freeze a committed source ref, update all version files together and start the workflow while development continues separately. Packages are verified locally and against uploaded checksums before publication through a draft. The whole repository is required because the app uses `fire-detection/core` and embedded fire assets.
 
 ## Linux builds
 
