@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { UiAction } from "../lib/actions";
 import type { Backend, Flag, SettingInfo, View } from "../lib/api";
 import { openSession, readSession, writeSession } from "../lib/sessionRestore";
+import { readProjects, recordProject, removeProject, seedFromSession, writeProjects, type ProjectEntry } from "../lib/projects";
 
 /** Actions that change labels: after them the timeline lanes and the flag list must be refreshed. */
 const MUTATING = new Set<UiAction["type"]>([
@@ -28,8 +29,21 @@ export function messageOf(e: unknown): string {
   }
 }
 
+/** The saved project list; the old single "last video" becomes the first project once. */
+function loadProjects(): ProjectEntry[] {
+  try {
+    return seedFromSession(readProjects(localStorage), readSession(localStorage), Date.now());
+  } catch {
+    return [];
+  }
+}
+
 export interface WorkspaceState {
   videoPath?: string;
+  /** One project per imported video, most recently opened first. */
+  projects: ProjectEntry[];
+  /** Forget a project; its video and labels stay on disk. */
+  forgetProject: (videoPath: string) => void;
   view: View | null;
   flags: Flag[];
   settings: SettingInfo[];
@@ -44,7 +58,8 @@ export interface WorkspaceState {
   applyAutomation: (id:number) => Promise<void>;
   /** True while an action is in flight (playback skips ticks instead of queueing them). */
   busy: React.MutableRefObject<boolean>;
-  open: (path: string) => Promise<void>;
+  /** True when the video opened. */
+  open: (path: string, frame?: number) => Promise<boolean>;
   act: (a: UiAction) => Promise<void>;
   setSetting: (key: string, value: number) => Promise<string | null>;
   clearError: () => void;
@@ -58,6 +73,8 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
   const [version, setVersion] = useState(0);
   const [opening, setOpening] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  const [projects, setProjects] = useState<ProjectEntry[]>(loadProjects);
+  const projectsRef = useRef(projects);
   const busy = useRef(false);
   const applyAutomation = useCallback(async (id:number) => {
     if (!backend?.povApply || busy.current) return;
@@ -77,6 +94,10 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     if (!backend || backend.mock || !videoPath.current) return;
     try {
       writeSession(localStorage, { videoPath: videoPath.current, frame: v.current });
+      const next = recordProject(projectsRef.current, { videoPath: videoPath.current, frame: v.current, frameCount: v.frame_count, labelled: v.labelled_count }, Date.now());
+      writeProjects(localStorage, next);
+      projectsRef.current = next;
+      setProjects(next);
       setSaveStatus(v.save_error ? "Save failed" : "Autosaved");
     } catch (e) {
       setSaveStatus("Resume unavailable");
@@ -84,10 +105,21 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     }
   }, [backend]);
 
+  const forgetProject = useCallback((path: string) => {
+    try {
+      const next = removeProject(projectsRef.current, path);
+      writeProjects(localStorage, next);
+      projectsRef.current = next;
+      setProjects(next);
+    } catch (e) {
+      setError(`Could not update the project list: ${messageOf(e)}`);
+    }
+  }, []);
+
   const open = useCallback(
-    async (path: string, frame = 0) => {
-      if (!backend) return;
-      if (busy.current) return;
+    async (path: string, frame = 0): Promise<boolean> => {
+      if (!backend) return false;
+      if (busy.current) return false;
       busy.current = true;
       setOpening(true);
       try {
@@ -102,8 +134,10 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
         remember(v);
         setSettings(await backend.settingsDescribe());
         setVersion((x) => x + 1);
+        return true;
       } catch (e) {
         setError(messageOf(e));
+        return false;
       } finally {
         busy.current = false;
         setOpening(false);
@@ -222,5 +256,5 @@ export function useWorkspace(backend: Backend | null): WorkspaceState {
     [backend],
   );
 
-  return { view, videoPath: videoPath.current ?? undefined, flags, settings, error, version, opening, saveStatus, save, transferLabels, transferring, applyAutomation, busy, open, act, setSetting, clearError: () => setError(null) };
+  return { view, projects, forgetProject, videoPath: videoPath.current ?? undefined, flags, settings, error, version, opening, saveStatus, save, transferLabels, transferring, applyAutomation, busy, open, act, setSetting, clearError: () => setError(null) };
 }

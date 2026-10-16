@@ -7,6 +7,7 @@ import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
 import { ImagesTab } from "./components/ImagesTab";
 import { Picker } from "./components/Picker";
+import { ProjectsHome } from "./components/ProjectsHome";
 import { Credits } from "./components/Credits";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Splitter } from "./components/Splitter";
@@ -67,6 +68,7 @@ export default function App() {
   const [showAutomation,setShowAutomation]=useState(false);
   const [path, setPath] = useState("");
   const [showLink, setShowLink] = useState(false);
+  const [home, setHome] = useState(false);
   const [tab, setTab] = useState<"label" | "phase" | "images">(readPreferences().tab);
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
   const workareaRef = useRef<HTMLElement | null>(null);
@@ -125,7 +127,7 @@ export default function App() {
 
   // hotkeys
   useEffect(() => {
-    if (!view || tab !== "label" || showAutomation || showLink) return;
+    if (!view || home || tab !== "label" || showAutomation || showLink) return;
     const onKey = (e: KeyboardEvent) => {
       // Reserve navigation/confirmation before focused inputs and buttons handle them.
       if (isGlobalKey(e)) {
@@ -174,12 +176,12 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite, previewSprite, showAutomation, showLink]);
+  }, [view, home, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite, previewSprite, showAutomation, showLink]);
 
   // playback is a Label-tab thing: it must not keep stepping behind the chart
   useEffect(() => {
-    if (tab !== "label") setPlayback(STOPPED);
-  }, [tab]);
+    if (tab !== "label" || home) setPlayback(STOPPED);
+  }, [tab, home]);
 
   // playback: one timer; ticks are skipped while the previous step is still in flight
   const fps = view?.fps ?? 0;
@@ -205,16 +207,19 @@ export default function App() {
     return () => clearTimeout(id);
   }, [draft, typeTimeout]);
 
+  /** Import a video (a new project) or reopen its project; Home closes once the video is open. */
+  async function openVideo(path: string, frame = 0) {
+    setPlayback(STOPPED);
+    setDraft(null);
+    setPreviewSprite(null);
+    setTab("label");
+    if (await ws.open(path, frame)) setHome(false);
+  }
+
   async function chooseVideo() {
     if (!backend) return;
     const picked = await backend.pickVideo();
-    if (picked) {
-      setPlayback(STOPPED);
-      setDraft(null);
-      setPreviewSprite(null);
-      setTab("label");
-      await ws.open(picked);
-    }
+    if (picked) await openVideo(picked);
   }
 
   if (startupError) return <div className="fatal">Could not start: {startupError}</div>;
@@ -229,8 +234,9 @@ export default function App() {
           {backend.mock && <span className="tag mock">mock backend</span>}
         </div>
         <nav className="tabs" aria-label="Workspace tabs">
-          <button className={tab === "label" ? "on" : ""} onClick={() => setTab("label")}><Icon name="label" /> Label</button>
-          <button className={tab === "phase" ? "on" : ""} disabled={!view} onClick={() => setTab("phase")}><Icon name="chart" /> Phase{view && view.flag_count > 0 && <span className="count">{view.flag_count}</span>}</button>
+          <button className={tab !== "images" && (!view || home) ? "on" : ""} onClick={() => { setTab("label"); setHome(true); }}><Icon name="home" /> Home</button>
+          <button className={tab === "label" && view && !home ? "on" : ""} disabled={!view} onClick={() => { setTab("label"); setHome(false); }}><Icon name="label" /> Label</button>
+          <button className={tab === "phase" && !home ? "on" : ""} disabled={!view} onClick={() => { setTab("phase"); setHome(false); }}><Icon name="chart" /> Phase{view && view.flag_count > 0 && <span className="count">{view.flag_count}</span>}</button>
           <button className={tab === "images" ? "on" : ""} onClick={() => { setTab("images"); setShowKeys(false); }}><Icon name="folder" /> Images</button>
         </nav>
         <div className="top-actions">
@@ -283,22 +289,20 @@ export default function App() {
         </details>
       )}
 
-      {tab === "images" ? null : !view ? (
-        <div className="welcome">
-          <h1>Label the fire sprites, frame by frame</h1>
-          <p>Open a video. FireCrackle reads its timestamps, you click which sprite is on screen, and the phase check flags what does not add up.</p>
-          <button className="big" onClick={() => void chooseVideo()} disabled={ws.opening}>
-            {ws.opening ? "importing…" : "Open video…"}
-          </button>
-          {!backend.mock && (
-            <div className="path-entry">
-              <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="or paste a video path or link" />
-              <button onClick={() => { if (/^https?:\/\//i.test(path.trim())) setShowLink(true); else if(path) void ws.open(path); }} disabled={!path || ws.opening}>
-                Open
-              </button>
-            </div>
-          )}
-        </div>
+      {tab === "images" ? null : !view || home ? (
+        <ProjectsHome
+          projects={ws.projects}
+          current={ws.videoPath}
+          opening={ws.opening}
+          mock={backend.mock}
+          path={path}
+          onPath={setPath}
+          onOpenProject={(videoPath, frame) => void openVideo(videoPath, frame)}
+          onForget={ws.forgetProject}
+          onChooseVideo={() => void chooseVideo()}
+          onOpenPath={() => { if (/^https?:\/\//i.test(path.trim())) setShowLink(true); else if (path) void openVideo(path.trim()); }}
+          onOpenLink={() => { setPlayback(STOPPED); setShowLink(true); }}
+        />
       ) : tab === "phase" ? (
         <PhaseTab key={ws.videoPath} videoKey={ws.videoPath} backend={backend} view={view} version={ws.version} onJump={jumpToLabel} />
       ) : (
@@ -413,7 +417,7 @@ export default function App() {
       )}
       {showSettings && <SettingsPanel settings={ws.settings} onSet={ws.setSetting} onClose={() => setShowSettings(false)} />}
       {showCredits && <Credits onClose={() => setShowCredits(false)} />}
-      {showLink && <OpenLink backend={backend} initialUrl={/^https?:\/\//i.test(path.trim()) ? path : ""} onClose={() => setShowLink(false)} onOpen={async downloaded => { setPlayback(STOPPED); setDraft(null); setPreviewSprite(null); setTab("label"); setShowLink(false); await ws.open(downloaded); }} />}
+      {showLink && <OpenLink backend={backend} initialUrl={/^https?:\/\//i.test(path.trim()) ? path : ""} onClose={() => setShowLink(false)} onOpen={async downloaded => { setShowLink(false); await openVideo(downloaded); }} />}
       {showAutomation && view && <AutomationTools key={ws.videoPath} backend={backend} videoPath={ws.videoPath} onApply={ws.applyAutomation} onClose={()=>setShowAutomation(false)} />}
     </div>
   );
