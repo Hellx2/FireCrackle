@@ -13,6 +13,7 @@ import {
 import { formatTime } from "../lib/timeline";
 import { messageOf } from "../hooks/useWorkspace";
 import { FlagsPanel } from "./FlagsPanel";
+import { PhaseSourcePicker } from "./PhaseSourcePicker";
 import { useWheel } from "../hooks/useWheel";
 import { fitViewport, pan, zoomAt, type Viewport, type FrameRange } from "../lib/timeline";
 import "./TimelineControls.css";
@@ -175,10 +176,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
     <main className="phase-tab">
       {error && <div className="banner error">{error}</div>}
       <section className="chart-area">
-        <label>Label source <select aria-label="Phase chart label source" value={source} onChange={e=>{setSource(e.target.value as typeof source);setChart(null);setHoverFlag(null);setSelectedRange(null);}}>
-          <option value="independent">Independent: human + first-person tool</option>
-          <option value="manual">Human checked</option><option value="first_person">First-person tool (including rechecked)</option><option value="time_guess">Time guesses (diagnostic only)</option>
-        </select></label>
+        <PhaseSourcePicker value={source} onChange={value=>{setSource(value);setChart(null);setHoverFlag(null);setSelectedRange(null);}} />
         <span className="dim">Tool labels have not been human checked unless both sources are shown. Inspect the timing chart for anything unusual. Time guesses are excluded from the default phase evidence.</span>
         <div className="chart-head">
           <span className="panel-title">Animation timing offset (ticks)</span>
