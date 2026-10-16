@@ -1068,7 +1068,7 @@ version = "0.1.0"
 
 [[package]]
 name = "firecrackle"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fire_core",
  "reqwest",
