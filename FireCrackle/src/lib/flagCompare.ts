@@ -2,7 +2,7 @@
 
 import type { Flag } from "./api";
 import { relativePhase, type ChartPoint } from "./chart";
-import { formatTime } from "./timeline";
+import { formatTimecode } from "./timecode";
 
 export interface FlagComparison {
   before: ChartPoint | null;
@@ -55,7 +55,6 @@ const signed = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
 
 export function describePoint(p: ChartPoint | null, reference: number, fps: number): string {
   if (!p) return "No fire evidence on this side.";
-  void fps;
   const offset = relativePhase(p.phase, reference);
-  return `frame ${p.frame} · ${formatTime(p.pts, 0.01)} · animation index ${p.step} · timing offset ${signed(offset)} ticks`;
+  return `frame ${p.frame} · ${formatTimecode(p.pts, fps)} · animation index ${p.step} · timing offset ${signed(offset)} ticks`;
 }

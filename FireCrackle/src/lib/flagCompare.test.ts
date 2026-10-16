@@ -72,7 +72,7 @@ describe("describePoint", () => {
   it("names the frame, time, animation index and timing offset", () => {
     const text = describePoint(pt(120, 4, 9), 4, FPS);
     expect(text).toMatch(/frame 120/);
-    expect(text).toMatch(/0:02/);
+    expect(text).toContain("00:00:02|00");
     expect(text).toMatch(/index 9/);
     expect(text).toMatch(/\+?0(\.0+)? ticks/);
   });

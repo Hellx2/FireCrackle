@@ -3,7 +3,7 @@ import { useWheel } from "../hooks/useWheel";
 import type { Backend, View } from "../lib/api";
 import { IDENTITY, clampView, panView, rotateView, wheelFactor, zoomAt, type Box, type ViewXform } from "../lib/zoom";
 import { isFire, type Label } from "../lib/grid";
-import { formatTime } from "../lib/timeline";
+import { formatTimecode } from "../lib/timecode";
 import { HudOverlay } from "./HudOverlay";
 import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 import { FireQuadMask } from "./FireQuadMask";
@@ -331,7 +331,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         <span>
           frame <b>{view.current}</b> / {view.frame_count - 1}
         </span>
-        <span>{formatTime(view.pts, 0.01)}</span>
+        <span>{formatTimecode(view.pts, view.fps)}</span>
         <span>{view.fps.toFixed(2)} fps</span>
         <span>
           labelled <b>{view.labelled_count}</b>

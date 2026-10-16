@@ -11,6 +11,7 @@ import {
   type PhaseChart,
 } from "../lib/chart";
 import { formatTime } from "../lib/timeline";
+import { formatTimecode } from "../lib/timecode";
 import { messageOf } from "../hooks/useWorkspace";
 import { FlagsPanel } from "./FlagsPanel";
 import { PhaseSourcePicker } from "./PhaseSourcePicker";
@@ -165,7 +166,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
       const reference = chart!.reference_phase ?? chart!.runs[0]?.center ?? chart!.points[0]?.phase ?? 0;
       const offset = relativePhase(p.phase, reference);
       const sources=(chart!.label_sources?.[p.frame]??[]).map(s=>LABEL_SOURCE_NAMES[s]).join(" + ");
-      setHover(`frame ${p.frame} · ${formatTime(p.pts, 0.01)} · row ${p.step} · timing offset ${offset > 0 ? "+" : ""}${offset.toFixed(2)} ticks${sources?` · ${sources}`:""}`);
+      setHover(`frame ${p.frame} · ${formatTimecode(p.pts, fps)} · row ${p.step} · timing offset ${offset > 0 ? "+" : ""}${offset.toFixed(2)} ticks${sources?` · ${sources}`:""}`);
     } else {
       const frame = Math.round(hit.t * fps);
       const inGap = gaps.find((g) => frame >= g.first && frame <= g.last);
@@ -236,7 +237,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
             <canvas ref={rowRef} className="chart row" {...chartEvents} />
           </>
         )}
-        <div className="chart-hover">{hoverFlag ? `Flag frame ${hoverFlag.frame}${hoverFlag.end_frame > hoverFlag.frame ? `–${hoverFlag.end_frame}` : ""} · ${formatTime(hoverFlag.frame/fps,0.01)} · click to focus · Ctrl+click to open video` : hover ?? " "}</div>
+        <div className="chart-hover">{hoverFlag ? `Flag frame ${hoverFlag.frame}${hoverFlag.end_frame > hoverFlag.frame ? `–${hoverFlag.end_frame}` : ""} · ${formatTimecode(hoverFlag.frame/fps, fps)} · click to focus · Ctrl+click to open video` : hover ?? " "}</div>
         {gaps.length > 0 && (
           <details className="gap-legend">
             <summary>
@@ -251,7 +252,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
               {gaps.map((g) => (
                 <li key={g.first}>
                   <button className="gap-row" onClick={() => focusRange({ first: g.first, last: g.last })} title={g.text}>
-                    <span className="where">frame {g.first}–{g.last} · {formatTime(g.first / fps, 0.01)}</span>
+                    <span className="where">frame {g.first}–{g.last} · {formatTimecode(g.first / fps, fps)}</span>
                     <span className="dim">{g.text}</span>
                   </button>
                 </li>
