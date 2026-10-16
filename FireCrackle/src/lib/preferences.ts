@@ -1,7 +1,7 @@
 import type { EdgeFilter } from "./atlasFilter";
 
 export interface Preferences {
-  tab: "label" | "phase";
+  tab: "label" | "phase" | "images";
   atlasFilter: EdgeFilter;
   matchOpen: boolean;
   matchOnlyFiltered: boolean;
@@ -18,7 +18,7 @@ export function readPreferences(storage?: Pick<Store, "getItem">): Preferences {
   try {
     const raw = JSON.parse((storage ?? localStorage).getItem(PREFERENCES_KEY) ?? "null");
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return result;
-    if (raw.tab === "label" || raw.tab === "phase") result.tab = raw.tab;
+    if (raw.tab === "label" || raw.tab === "phase" || raw.tab === "images") result.tab = raw.tab;
     for (const key of ["matchOpen", "matchOnlyFiltered", "matchAdjustQuad", "animationOpen", "animationOnlyFiltered"] as const) if (typeof raw[key] === "boolean") result[key] = raw[key];
     if (Number.isInteger(raw.animationDelayMs) && raw.animationDelayMs >= 30 && raw.animationDelayMs <= 10000) result.animationDelayMs = raw.animationDelayMs;
     if (Array.isArray(raw.atlasFilter?.excluded)) {

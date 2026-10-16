@@ -10,6 +10,7 @@ import { Icon, IconButton } from "./Icon";
 import "./Picker.css";
 
 interface Props {
+  previewOnly?: boolean;
   filter?: EdgeFilter;
   onFilterChange?: (filter: EdgeFilter) => void;
   onEdgesChange?: (edges: AtlasEdges | null) => void;
@@ -24,7 +25,7 @@ interface Props {
 }
 
 /** The 32 sprite rows, divided into equal blocks to fit the panel. */
-export function Picker({ view, cell, onCell, candidate = null, preview = null, filter, onFilterChange, onNoFire, onEdgesChange }: Props) {
+export function Picker({ view, cell, onCell, candidate = null, preview = null, filter, onFilterChange, onNoFire, onEdgesChange, previewOnly = false }: Props) {
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [localLeft, setLocalLeft] = useState<number | null>(null);
@@ -93,7 +94,7 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null, f
       </div>
       <p>{edgeError ? "Could not read edge counts. Sprites remain selectable." : "Outermost columns · right-click: include/exclude · all sprites stay clickable"}</p>
     </section>
-        <button type="button" className={`atlas-no-fire${view.label === "no_fire" ? " saved" : ""}`} aria-label="Choose no fire" aria-pressed={candidate === "no_fire"} onClick={onNoFire} disabled={!onNoFire} title={`Choose no fire · X · Confirm/Enter saves it as reviewed${view.label === "no_fire" ? " · current saved label" : ""}`}>
+        <button type="button" className={`atlas-no-fire${view.label === "no_fire" ? " saved" : ""}`} aria-label="Choose no fire" aria-pressed={candidate === "no_fire"} onClick={onNoFire} disabled={!onNoFire} title={previewOnly ? "Choose no fire for this image check" : `Choose no fire · X · Confirm/Enter saves it as reviewed${view.label === "no_fire" ? " · current saved label" : ""}`}>
           <span className="no-fire-art" aria-hidden="true">
             <span className="no-fire-sprite" style={{backgroundImage:`url(${fire0})`}} />
             <svg viewBox="0 0 16 16" className="no-fire-barrier" shapeRendering="crispEdges">
@@ -143,7 +144,7 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null, f
                         className={`cell${isCurrent ? " atlas-saved" : ""}${isSug ? " atlas-time" : ""}${isAlt ? " atlas-alt" : ""}${isChosen ? " atlas-candidate" : ""}${isShown ? " atlas-preview" : ""}${filteredOut ? " edge-filter-miss" : ""}${manualExcluded ? " manual-filter-miss" : ""}`}
                         aria-label={`sheet ${col.sheet}, row ${row}, ${col.mirrored ? "mirrored" : "normal"}${counts ? `; left ${counts.left}, right ${counts.right} edge pixels` : ""}${filteredOut ? "; outside filter, still selectable" : ""}${states.length ? `; ${states.join(", ")}` : ""}`}
                         aria-pressed={isChosen}
-                        title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}${counts ? `\nEdge pixels: left ${counts.left} · right ${counts.right}` : ""}${filteredOut ? "\nOutside filter · still selectable" : ""}${states.length ? `\n${states.join(" · ")}` : ""}\nClick: select candidate · Ctrl+click: preview only`}
+                        title={`sheet ${col.sheet} · row ${row} · ${col.mirrored ? "mirrored" : "normal"}${counts ? `\nEdge pixels: left ${counts.left} · right ${counts.right}` : ""}${filteredOut ? "\nOutside filter · still selectable" : ""}${states.length ? `\n${states.join(" · ")}` : ""}\n${previewOnly ? "Click: preview sprite" : "Click: select candidate · Ctrl+click: preview only"}`}
                         onClick={(e) => onCell(c, row, e.ctrlKey)}
                         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setExcluded(manualExcluded ? excluded.filter(value => value !== id) : [...excluded, id]); }}
                         tabIndex={-1}
@@ -159,8 +160,8 @@ export function Picker({ view, cell, onCell, candidate = null, preview = null, f
                         />
                         <span className="atlas-badges" aria-hidden="true">
                           {manualExcluded && <span className="excluded-state" title="Manually excluded; right-click to include">×</span>}
-                          {isChosen && <span className="candidate-state">C</span>}
                           {isShown && <span className="preview-state">P</span>}
+                          {isChosen && <span className="candidate-state">C</span>}
                           {isSug && <span className="guess-state">T</span>}
                           {isAlt && <span className="guess-state">T?</span>}
                           {isCurrent && <span className="saved-state">✓</span>}

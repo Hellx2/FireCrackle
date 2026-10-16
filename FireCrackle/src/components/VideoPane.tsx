@@ -21,6 +21,7 @@ import { AnimationControls } from "./AnimationControls";
 import { readPreferences, writePreferences } from "../lib/preferences";
 import { readVideoView, writeVideoView } from "../lib/viewState";
 import { OpacityControl } from "./OpacityControl";
+import { scopedStorage } from "../lib/scopedStorage";
 import { VideoRotation } from "./VideoRotation";
 
 export interface VideoPreviewHandle {
@@ -42,6 +43,9 @@ function labelClass(label: Label): string {
 }
 
 interface Props {
+  stillImage?: { name: string; url: string };
+  storageScope?: string;
+  stateStorage?: Pick<Storage, "getItem" | "setItem">;
   atlasEdges?: AtlasEdges | null;
   onAnimationStart?: () => void;
   videoKey?: string;
@@ -56,13 +60,14 @@ interface Props {
 }
 
 /** The current frame, with its number, time and label over it. */
-export function VideoPane({ backend, view, onError, previewRef, onPreviewChange, onMatchCandidate, onStep, atlasFilter, videoKey, atlasEdges = null, onAnimationStart }: Props) {
+export function VideoPane({ backend, view, onError, previewRef, onPreviewChange, onMatchCandidate, onStep, atlasFilter, videoKey, atlasEdges = null, onAnimationStart, stillImage, storageScope, stateStorage }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [shown, setShown] = useState<number | null>(null);
   const token = useRef(0);
   const urlRef = useRef<string | null>(null);
+  const toolStorage = storageScope ? scopedStorage(storageScope, stateStorage) : stateStorage;
   const restored = useRef<MaskState | null>(null);
-  if (!restored.current) restored.current = readMaskState();
+  if (!restored.current) restored.current = readMaskState(toolStorage);
   const saved = restored.current;
   const [hudEnabled, setHudEnabled] = useState(saved.hudEnabled);
   const [hudRow, setHudRow] = useState(saved.hudRow);
@@ -79,7 +84,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   const [compressionQuality, setCompressionQuality] = useState(saved.compressionQuality);
   const [hudOpacity, setHudOpacity] = useState(saved.hudOpacity);
   useEffect(() => {
-    writeMaskState({ hudEnabled, hudRow, hudFov, hudOpacity, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality });
+    writeMaskState({ hudEnabled, hudRow, hudFov, hudOpacity, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality }, toolStorage);
   }, [hudEnabled, hudRow, hudFov, hudOpacity, manualEnabled, manualQuad, manualSheet, manualRow, manualMirrored, manualOpacity, pixelGrid, compressionEnabled, compressionHeight, compressionQuality]);
   useEffect(() => {
     if (!manualEnabled && !hudEnabled) return;
@@ -103,17 +108,17 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
   const labelRow = hudRowFromLabel(view.label);
   const delivery = imageSize.width > 0 ? compressionGeometry(imageSize.width,imageSize.height,compressionHeight,manualQuad) : null;
   const restoredRuler = useRef<RulerState | null>(null);
-  if (!restoredRuler.current) restoredRuler.current = readRuler();
+  if (!restoredRuler.current) restoredRuler.current = readRuler(toolStorage);
   const [ruler, setRuler] = useState(restoredRuler.current);
   const unitPixels = rulerUnit(ruler.points, imageSize.width, imageSize.height);
-  useEffect(() => { writeRuler(ruler); }, [ruler]);
+  useEffect(() => { writeRuler(ruler, toolStorage); }, [ruler]);
   const resizeRulerUnit = (pixels: number) => setRuler(current => ({ ...current, points: scaleRulerUnit(current.points, pixels, imageSize.width, imageSize.height) }));
   const [rulerSelected, setRulerSelected] = useState(false);
-  const [matchingEnabled, setMatchingEnabled] = useState(saved.manualEnabled && readPreferences().matchOpen);
-  useEffect(() => { writePreferences({ matchOpen: matchingEnabled }); }, [matchingEnabled]);
-  const [animationOpen, setAnimationOpen] = useState(saved.manualEnabled && readPreferences().animationOpen);
+  const [matchingEnabled, setMatchingEnabled] = useState(saved.manualEnabled && readPreferences(toolStorage).matchOpen);
+  useEffect(() => { writePreferences({ matchOpen: matchingEnabled }, toolStorage); }, [matchingEnabled]);
+  const [animationOpen, setAnimationOpen] = useState(saved.manualEnabled && readPreferences(toolStorage).animationOpen);
   const [animationStop, setAnimationStop] = useState(0);
-  useEffect(() => { writePreferences({ animationOpen }); }, [animationOpen]);
+  useEffect(() => { writePreferences({ animationOpen }, toolStorage); }, [animationOpen]);
 
   function selectPreview(sprite: PreviewSprite): boolean {
     setAnimationStop(value => value + 1);
@@ -139,6 +144,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
 
   useEffect(() => {
     const mine = ++token.current;
+    if (stillImage) { setUrl(stillImage.url); setShown(view.current); return; }
     backend
       .frame(view.current)
       .then((bytes) => {
@@ -151,7 +157,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         if (old) URL.revokeObjectURL(old);
       })
       .catch((e) => mine === token.current && onError(`Could not decode frame ${view.current}: ${String(e)}`));
-  }, [backend, view.current]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [backend, view.current, stillImage?.url]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(
     () => () => {
@@ -162,8 +168,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
 
   // zoom (wheel, around the cursor) and pan (left-drag) of the picture
   const frameRef = useRef<HTMLDivElement | null>(null);
-  const [xf, setXf] = useState<ViewXform>(readVideoView(videoKey));
-  useEffect(() => { writeVideoView(videoKey, xf); }, [videoKey, xf]);
+  const [xf, setXf] = useState<ViewXform>(readVideoView(videoKey, stateStorage));
+  useEffect(() => { writeVideoView(videoKey, xf, stateStorage); }, [videoKey, xf]);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const boxOf = (): Box => {
     const r = frameRef.current?.getBoundingClientRect();
@@ -224,7 +230,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           className="video-zoom"
           style={{ transform: `translate(${xf.x}px, ${xf.y}px) rotate(${xf.angle ?? 0}deg) scale(${xf.scale})` }}
         >
-          {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
+          {url ? <img src={url} alt={stillImage?.name ?? `frame ${shown ?? ""}`} onError={() => onError(stillImage ? `Could not open image: ${stillImage.name}` : "Could not display frame")} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
           {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={hudOpacity} pixelGrid={pixelGrid} />}
           {manualEnabled && shown === view.current && url && imageSize.width > 0 && <FireQuadMask {...imageSize} sheet={manualSheet} row={manualRow} mirrored={manualMirrored}
             opacity={manualOpacity} quad={manualQuad} onQuad={setManualQuad} pixelGrid={pixelGrid} zoom={xf.scale}
@@ -237,7 +243,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           {!!xf.angle && <IconButton icon="reset" label="Reset video rotation" title="Reset video rotation to 0°" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onClick={() => setXf(current => rotateView(current, boxOf().w / 2, boxOf().h / 2, -(current.angle ?? 0)))}>Unrotate</IconButton>}
         </div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
-        <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>
+        {!stillImage && <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>}
         {view.typed_pending !== null && <div className="typed-chip">row: {view.typed_pending}_</div>}
         {s && (
           <div className="suggest-chip" title={`Time-based guess from frame ${s.from_frame}; not confirmed`}>
@@ -247,7 +253,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           </div>
         )}
       </div>
-      <div className="hud-controls video-tools" role="group" aria-label="Video tools" onKeyDown={(e) => e.stopPropagation()}>
+      <div className="hud-controls video-tools" role="group" aria-label={stillImage ? "Image tools" : "Video tools"} onKeyDown={(e) => e.stopPropagation()}>
         <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} aria-expanded={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
         <IconButton icon="fire" label="Toggle first-person fire" aria-pressed={hudEnabled} aria-expanded={hudEnabled} onClick={() => {
           setAnimationOpen(false);
@@ -326,11 +332,11 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         }} /> : <span className="hud-hint">Open a video to match sprites</span>}
       </div>}
       <div className="video-meta">
-        <span className="frame-step-controls" role="group" aria-label="Frame navigation">
-          <IconButton icon="left" label="Previous frame" disabled={!onStep || view.current <= 0} onClick={() => onStep?.(-1)} />
-          <IconButton icon="right" label="Next frame" disabled={!onStep || view.current >= view.frame_count - 1} onClick={() => onStep?.(1)} />
+        <span className="frame-step-controls" role="group" aria-label={stillImage ? "Photo navigation" : "Frame navigation"}>
+          <IconButton icon="left" label={stillImage ? "Previous photo" : "Previous frame"} disabled={!onStep || view.current <= 0} onClick={() => onStep?.(-1)} />
+          <IconButton icon="right" label={stillImage ? "Next photo" : "Next frame"} disabled={!onStep || view.current >= view.frame_count - 1} onClick={() => onStep?.(1)} />
         </span>
-        <span>
+        {stillImage ? <><span>Photo {view.current + 1} / {view.frame_count}</span><span className="image-name" title={stillImage.name}>{stillImage.name}</span><span>{imageSize.width} × {imageSize.height} px</span></> : <><span>
           frame <b>{view.current}</b> / {view.frame_count - 1}
         </span>
         <span>{formatTimecode(view.pts, view.fps)}</span>
@@ -338,7 +344,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         <span>
           labelled <b>{view.labelled_count}</b>
         </span>
-        <span className={view.flag_count > 0 ? "warn" : ""}>flags {view.flag_count}</span>
+        <span className={view.flag_count > 0 ? "warn" : ""}>flags {view.flag_count}</span></>}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { FlagsPanel } from "./components/FlagsPanel";
 import { AutomationTools } from "./components/AutomationTools";
 import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
+import { ImagesTab } from "./components/ImagesTab";
 import { Picker } from "./components/Picker";
 import { Credits } from "./components/Credits";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -64,7 +65,7 @@ export default function App() {
   const [showCredits, setShowCredits] = useState(false);
   const [showAutomation,setShowAutomation]=useState(false);
   const [path, setPath] = useState("");
-  const [tab, setTab] = useState<"label" | "phase">(readPreferences().tab);
+  const [tab, setTab] = useState<"label" | "phase" | "images">(readPreferences().tab);
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
   const workareaRef = useRef<HTMLElement | null>(null);
   const { zooms, wheel: zoomWheel, reset: resetZoom } = usePanelZooms();
@@ -113,12 +114,12 @@ export default function App() {
     const onSave = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        void ws.save();
+        if (tab !== "images") void ws.save();
       }
     };
     window.addEventListener("keydown", onSave);
     return () => window.removeEventListener("keydown", onSave);
-  }, [ws.save]);
+  }, [ws.save, tab]);
 
   // hotkeys
   useEffect(() => {
@@ -209,6 +210,7 @@ export default function App() {
       setPlayback(STOPPED);
       setDraft(null);
       setPreviewSprite(null);
+      setTab("label");
       await ws.open(picked);
     }
   }
@@ -224,19 +226,14 @@ export default function App() {
           FireCrackle
           {backend.mock && <span className="tag mock">mock backend</span>}
         </div>
-        {view && (
-          <nav className="tabs">
-            <button className={tab === "label" ? "on" : ""} onClick={() => setTab("label")}>
-              <Icon name="label" /> Label
-            </button>
-            <button className={tab === "phase" ? "on" : ""} onClick={() => setTab("phase")}>
-              <Icon name="chart" /> Phase{view.flag_count > 0 && <span className="count">{view.flag_count}</span>}
-            </button>
-          </nav>
-        )}
+        <nav className="tabs" aria-label="Workspace tabs">
+          <button className={tab === "label" ? "on" : ""} onClick={() => setTab("label")}><Icon name="label" /> Label</button>
+          <button className={tab === "phase" ? "on" : ""} disabled={!view} onClick={() => setTab("phase")}><Icon name="chart" /> Phase{view && view.flag_count > 0 && <span className="count">{view.flag_count}</span>}</button>
+          <button className={tab === "images" ? "on" : ""} onClick={() => { setTab("images"); setShowKeys(false); }}><Icon name="folder" /> Images</button>
+        </nav>
         <div className="top-actions">
           <IconButton icon="folder" label={ws.opening ? "Opening video…" : "Open video"} onClick={() => void chooseVideo()} disabled={ws.opening} />
-          {view && (
+          {view && tab !== "images" && (
             <>
               <IconButton icon="save" label="Save labels" onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Save labels · Ctrl+S · autosave is also on" />
               <span className={`save-status${view.save_error ? " failed" : ""}`} role="status" title={backend.mock ? "Preview only" : ws.saveStatus}>
@@ -263,13 +260,13 @@ export default function App() {
         </div>
       </header>
 
-      {ws.error && (
+      {tab !== "images" && ws.error && (
         <div className="banner error" onClick={ws.clearError}>
           {ws.error} <span className="dismiss">(click to dismiss)</span>
         </div>
       )}
-      {view?.save_error && <div className="banner error">⚠ {view.save_error}</div>}
-      {view && view.warnings.length > 0 && (
+      {tab !== "images" && view?.save_error && <div className="banner error">⚠ {view.save_error}</div>}
+      {tab !== "images" && view && view.warnings.length > 0 && (
         <details className="banner warn">
           <summary>
             {view.warnings.length} note{view.warnings.length > 1 ? "s" : ""} about this video
@@ -282,7 +279,7 @@ export default function App() {
         </details>
       )}
 
-      {!view ? (
+      {tab === "images" ? null : !view ? (
         <div className="welcome">
           <h1>Label the fire sprites, frame by frame</h1>
           <p>Open a video. FireCrackle reads its timestamps, you click which sprite is on screen, and the phase check flags what does not add up.</p>
@@ -379,7 +376,7 @@ export default function App() {
               {view.suggestion && <div className="prediction-source">Extrapolated from <button onClick={() => { setPlayback(STOPPED); void act({ type: "goTo", frame: view.suggestion!.from_frame }); }}>labeled frame {view.suggestion.from_frame}</button>{view.suggestion.alt_row !== null && <span> · alternate row {view.suggestion.alt_row}</span>}</div>}
               <div className="atlas-state saved-state"><b>Saved</b><span>{view.label === "unset" ? "Unreviewed" : candidateText(view.label)}</span></div>
               {view.label_sources?.length ? <div className="atlas-state"><b>Source</b><span>{view.label_sources.map(s=>LABEL_SOURCE_NAMES[s]).join(" + ")}</span></div> : null}
-              <div className="atlas-legend"><span className="candidate-state">C Candidate</span><span className="preview-state">P Preview</span><span className="guess-state">T Time guess</span><span className="saved-state">✓ Saved</span></div>
+              <div className="atlas-legend"><span className="preview-state">P Preview</span><span className="candidate-state">C Candidate</span><span className="guess-state">T Time guess</span><span className="saved-state">✓ Saved</span></div>
               <div className="candidate-help">Click selects · Ctrl+click previews only · Confirm saves</div>
             </div>
             <div className="picker-box" ref={pickerBoxRef} onDoubleClick={(e) => e.ctrlKey && resetZoom("picker")}>
@@ -400,6 +397,7 @@ export default function App() {
         </main>
       )}
 
+      <ImagesTab active={tab === "images"} backend={backend} />
       {showKeys && (
         <div className="keys">
           {KEY_HELP.map(([k, d]) => (

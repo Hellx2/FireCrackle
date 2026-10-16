@@ -29,6 +29,7 @@ vi.mock("./hooks/useWheel", () => ({ useWheel: () => {} }));
 import App from "./App";
 import { Picker } from "./components/Picker";
 import { VideoPane } from "./components/VideoPane";
+import { ImagesTab } from "./components/ImagesTab";
 
 type Element = ReactElement<Record<string, any>>;
 function find(node: Element, test: (e: Element) => boolean): Element | undefined {
@@ -41,7 +42,7 @@ function render() {
   fixture.stateCursor = fixture.refCursor = fixture.effectCursor = 0; fixture.pending = [];
   const tree = App() as Element;
   fixture.pending.forEach(run => run());
-  return { picker: find(tree, e => e.type === Picker)!, video: find(tree, e => e.type === VideoPane)!, confirm: find(tree, e => e.props.label === "Confirm candidate")!, noFire: find(tree, e => e.props.label === "Choose no fire")! };
+  return { tree, picker: find(tree, e => e.type === Picker)!, video: find(tree, e => e.type === VideoPane)!, confirm: find(tree, e => e.props.label === "Confirm candidate")!, noFire: find(tree, e => e.props.label === "Choose no fire")! };
 }
 function key(key: string, mods: Record<string,unknown> = {}) {
   const event=Object.assign(new Event("keydown", {cancelable: true}), {key, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, repeat: false,...mods});
@@ -59,6 +60,25 @@ beforeEach(() => {
   });
 });
 afterEach(() => { fixture.effects.forEach(e => e?.cleanup?.()); vi.unstubAllGlobals(); });
+
+it("opens Images before loading a video and keeps its component mounted across workspace tabs", () => {
+  fixture.view = null;
+  let ui = render();
+  const imagesTab = find(ui.tree, e => e.type === "button" && [e.props.children].flat().includes(" Images"))!;
+  expect(imagesTab).toBeDefined(); imagesTab.props.onClick(); ui = render();
+  expect(find(ui.tree, e => e.type === ImagesTab)!.props.active).toBe(true);
+  expect(ui.video).toBeUndefined(); expect(ui.confirm).toBeUndefined();
+  find(ui.tree, e => e.type === "button" && [e.props.children].flat().includes(" Label"))!.props.onClick(); ui = render();
+  expect(find(ui.tree, e => e.type === ImagesTab)!.props.active).toBe(false);
+});
+
+it("does not send video navigation or confirmation hotkeys while Images is selected", () => {
+  let ui = render();
+  find(ui.tree, e => e.type === "button" && [e.props.children].flat().includes(" Images"))!.props.onClick(); ui = render();
+  key("ArrowRight"); key("Enter"); key("ArrowLeft");
+  expect(fixture.act).not.toHaveBeenCalled();
+  expect(find(ui.tree, e => e.props.label === "Optional automation tools")).toBeUndefined();
+});
 
 it("atlas clicks and preview-only Ctrl clicks never save or advance; Confirm saves the staged choice", () => {
   let ui = render();

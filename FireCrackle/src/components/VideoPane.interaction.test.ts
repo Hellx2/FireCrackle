@@ -216,3 +216,20 @@ it("leaves non-primary buttons alone", async () => {
   expect(down.currentTarget.setPointerCapture).not.toHaveBeenCalled();
   expect(hooks.states).toContainEqual({ scale: 1, x: 0, y: 0 });
 });
+
+it("image mode shares every viewer tool without decoding or labelling a video frame", async () => {
+  const backend = createMockBackend();
+  const frame = vi.spyOn(backend, "frame");
+  const view = { ...await backend.view(), suggestion: null, label: "unset" as const };
+  const props = { backend, view, stillImage: { name: "screenshot.png", url: "blob:photo" }, onError: vi.fn(), onStep: vi.fn() };
+  hooks.stateCursor = hooks.refCursor = 0; hooks.effects = [];
+  let root = VideoPane(props);
+  const load = hooks.effects.find(effect => effect.toString().includes("const mine"));
+  expect(load).toBeDefined(); load!();
+  expect(frame).not.toHaveBeenCalled();
+  hooks.stateCursor = hooks.refCursor = 0; hooks.effects = []; root = VideoPane(props);
+  const tools = find(root, "Image tools")!;
+  for (const label of ["Toggle calibrated ruler", "Toggle first-person fire", "Toggle manual fire quad mask", "Toggle sprite matching tool", "Toggle sprite animation tool"]) expect(find(tools, label)).toBeDefined();
+  expect(find(root, "Previous photo")).toBeDefined();
+  expect(find(root, "Frame navigation")).toBeUndefined();
+});

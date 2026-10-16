@@ -30,7 +30,7 @@ export function candidateDigit(frame: number, draft: CandidateDraft | null, digi
   return { frame, origin: "typed", label: sprite ? { fire: sprite } : "unset", digits };
 }
 export function spriteText(sprite: PreviewSprite | { sheet: number; row: number; mirrored: boolean }): string {
-  return `sheet ${sprite.sheet} · row ${sprite.row} · ${sprite.mirrored ? "mirrored" : "normal"}`;
+  return `row ${sprite.row} · sheet ${sprite.sheet} · ${sprite.mirrored ? "mirrored" : "normal"}`;
 }
 export function candidateText(label: Label | null): string {
   return label && isFire(label) ? spriteText(label.fire) : label === "no_fire" ? "No fire" : label === "skip" ? "Skip" : "None selected";
