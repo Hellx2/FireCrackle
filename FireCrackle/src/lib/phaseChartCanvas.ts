@@ -1,4 +1,5 @@
 import { flagSpans, phaseToY, relativePhase, rowToY, timeToX, type PhaseChart } from "./chart";
+import type { GapKind } from "./evidenceGaps";
 import type { FrameRange } from "./timeline";
 
 const COLORS = { dot: "#4a90d9", band: "rgba(76,195,138,0.16)", grid: "#2a3142", text: "#8b96ab" };
@@ -12,7 +13,22 @@ export interface PhaseChartCanvasOptions {
   t1: number;
   highlighted: FrameRange | null;
   pixelRatio: number;
+  /** Stretches with no fire evidence, drawn behind everything else. */
+  gaps?: GapBand[];
 }
+
+export interface GapBand {
+  first: number;
+  last: number;
+  kind: GapKind;
+}
+
+/** Fill and edge colours per kind of gap: labelled no fire, unlabelled, or labelled only by an excluded source. */
+export const GAP_COLORS: Record<GapKind, { fill: string; edge: string; name: string }> = {
+  no_fire: { fill: "rgba(110,150,230,0.13)", edge: "rgba(110,150,230,0.55)", name: "no fire labelled · lag not ruled out" },
+  unlabelled: { fill: "rgba(160,160,170,0.10)", edge: "rgba(160,160,170,0.45)", name: "unlabelled · no evidence" },
+  other_source: { fill: "rgba(180,120,230,0.12)", edge: "rgba(180,120,230,0.5)", name: "excluded source only" },
+};
 
 /** Paint either linked chart without owning React state, observers or pointer gestures.
  * Coordinates use CSS pixels; the backing store alone scales with pixelRatio.
@@ -31,7 +47,31 @@ export function drawPhaseChart(canvas: HTMLCanvasElement | null, options: PhaseC
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, w, h);
   g.font = "11px system-ui, sans-serif";
-  // flags first, behind the dots
+  // stretches with no evidence: the furthest back, so everything else reads on top of them
+  for (const gap of options.gaps ?? []) {
+    const x0 = Math.max(0, timeToX(timeOf(gap.first), t0, t1, w));
+    const x1 = Math.min(w, timeToX(timeOf(gap.last + 1), t0, t1, w));
+    if (!(x1 > x0)) continue;
+    const c = GAP_COLORS[gap.kind];
+    g.fillStyle = c.fill;
+    g.fillRect(x0, 0, x1 - x0, h);
+    g.strokeStyle = c.edge;
+    g.setLineDash([4, 3]);
+    g.beginPath();
+    g.moveTo(x0 + 0.5, 0);
+    g.lineTo(x0 + 0.5, h);
+    g.moveTo(x1 - 0.5, 0);
+    g.lineTo(x1 - 0.5, h);
+    g.stroke();
+    g.setLineDash([]);
+    if (kind === "phase" && x1 - x0 > 150) {
+      g.fillStyle = c.edge;
+      g.textAlign = "center";
+      g.fillText(c.name, (x0 + x1) / 2, h - 6);
+      g.textAlign = "left";
+    }
+  }
+  // flags next, behind the dots
   for (const [i, s] of flagSpans(chart.flags, timeOf, t0, t1, w).entries()) {
     g.fillStyle = chart.flags[i].severity === "hard" ? "rgba(255,77,79,0.28)" : "rgba(245,197,66,0.22)";
     g.fillRect(s.x0, 0, s.x1 - s.x0, h);
