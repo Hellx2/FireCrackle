@@ -18,6 +18,7 @@ runs/
 
 # Local tooling state
 .board/
+.release-worktrees/
 .claude/settings.local.json
 .claude/
 .agents/
