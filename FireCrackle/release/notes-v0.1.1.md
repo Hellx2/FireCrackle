@@ -3,7 +3,7 @@ FireCrackle 0.1.1 for Windows x64 and Linux x86_64.
 - **Windows fix:** FFmpeg and FFprobe run without opening console windows during frame decoding, thumbnail generation and video import.
 - A Projects home keeps recent videos and their saved progress together; reopening a project resumes its last frame.
 - Photos, pasted screenshots, the selected gallery image, sprite choices and per-image mask settings now survive restarts. Removing photos and clearing the gallery are also saved.
-- **Comparison proof** saves an original/masked PNG pair with the displayed sprite's row, sheet, orientation and opacity. First-person comparisons include FOV; editing handles are excluded.
+- **Comparison proof** copies an original/masked image to the clipboard with the displayed sprite's row, sheet, orientation and opacity. First-person comparisons include FOV; editing handles are excluded. There is no save dialog.
 - Header tabs stay in place when switching views. Sprite descriptions show row before sheet, and atlas preview badges appear before candidate badges.
 - Includes the completed online-video opener and on-demand tool setup. Required downloads are verified and cached separately from the Windows installer; see the in-app credits for third-party tools.
 
