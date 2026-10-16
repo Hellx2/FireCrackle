@@ -126,8 +126,8 @@ pub fn encode(
         .args([
             "-vf",
             &format!("select=eq(mod(n\\,3)\\,1),crop={width}:{height}:0:0:exact=1"),
-            "-fps_mode",
-            "vfr",
+            studio_core::import::VARIABLE_FRAME_RATE_ARGS[0],
+            studio_core::import::VARIABLE_FRAME_RATE_ARGS[1],
             "-frames:v",
             "32",
             "-start_number",

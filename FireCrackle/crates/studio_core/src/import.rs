@@ -14,6 +14,13 @@ pub const PASSTHROUGH_ARGS: [&str; 2] = if cfg!(target_os = "linux") {
     ["-fps_mode", "passthrough"]
 };
 
+/// Preserve selected timestamps without duplicating frames after a selection filter.
+pub const VARIABLE_FRAME_RATE_ARGS: [&str; 2] = if cfg!(target_os = "linux") {
+    ["-vsync", "2"]
+} else {
+    ["-fps_mode", "vfr"]
+};
+
 /// Video tools shipped next to the app, with PATH fallback for development.
 #[derive(Clone, Debug)]
 pub struct Tools {
