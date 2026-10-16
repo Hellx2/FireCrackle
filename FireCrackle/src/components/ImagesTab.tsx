@@ -5,7 +5,8 @@ import { isFire, type Label } from "../lib/grid";
 import { spriteText } from "../lib/labelCandidate";
 import { appendImages, clipboardPhotos, IMAGE_ACCEPT, imageIndex, imageView, type GalleryImage } from "../lib/imageGallery";
 import { pickerCellSize, SIDE_LIMITS, VIDEO_LIMITS, upperBound } from "../lib/layout";
-import { memoryStorage, scopedStorage } from "../lib/scopedStorage";
+import { scopedStorage } from "../lib/scopedStorage";
+import { loadGallery, saveGallery } from "../lib/galleryStore";
 import { readPreferences, writePreferences } from "../lib/preferences";
 import { zoomPanel } from "../lib/zoom";
 import type { AtlasEdges } from "../lib/atlasFilter";
@@ -19,7 +20,7 @@ import "./ImagesTab.css";
 /** Own files and selections; the viewer, fire tools and atlas are shared with video. */
 export function ImagesTab({ active, backend }: { active: boolean; backend: Backend }) {
   const [images, setImages] = useState<GalleryImage[]>([]);
-  const [stateStorage] = useState(memoryStorage);
+  const [stateStorage] = useState(() => scopedStorage("image-gallery"));
   const currentImages = useRef(images); currentImages.current = images;
   const [index, setIndex] = useState(0);
   const [checks, setChecks] = useState<Record<string, Label>>({});
@@ -30,6 +31,27 @@ export function ImagesTab({ active, backend }: { active: boolean; backend: Backe
   const [videoHeight, setVideoHeight] = useState(520);
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(typeof indexedDB !== "undefined");
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const galleryLoaded = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadGallery().then(saved => {
+      if (cancelled) { for (const image of saved.images) URL.revokeObjectURL(image.url); return; }
+      setImages(saved.images); currentImages.current = saved.images;
+      setIndex(saved.index); setChecks(saved.checks); galleryLoaded.current = true; setRestoring(false);
+    }).catch(error => {
+      if (!cancelled) { setRestoring(false); setStorageError(`Could not restore saved photos: ${String(error)}. New photos will be temporary.`); }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!galleryLoaded.current || restoring) return;
+    let cancelled = false;
+    saveGallery(images, index, checks).then(() => { if (!cancelled) setStorageError(null); })
+      .catch(error => { if (!cancelled) setStorageError(`Photos could not be saved locally: ${String(error)}`); });
+    return () => { cancelled = true; };
+  }, [images, index, checks, restoring]);
   const input = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLElement>(null);
   const picker = useRef<HTMLDivElement>(null);
@@ -89,6 +111,7 @@ export function ImagesTab({ active, backend }: { active: boolean; backend: Backe
   }
 
   function add(files: File[]) {
+    if (restoring) return;
     try {
       const previousCount = currentImages.current.length;
       const result = appendImages(currentImages.current, files);
@@ -114,13 +137,14 @@ export function ImagesTab({ active, backend }: { active: boolean; backend: Backe
     onDrop={event => { event.preventDefault(); add(Array.from(event.dataTransfer.files)); }}>
     <div className="images-toolbar">
       <input ref={input} type="file" accept={IMAGE_ACCEPT} multiple hidden aria-label="Choose photos" onChange={event => { add(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
-      <IconButton icon="folder" label="Add photos" onClick={() => input.current?.click()}>Add photos</IconButton>
-      <IconButton icon="copy" label="Paste image" title="Paste a copied image · Ctrl+V" onClick={() => void pasteImage()}>Paste image</IconButton>
+      <IconButton icon="folder" label="Add photos" disabled={restoring} onClick={() => input.current?.click()}>Add photos</IconButton>
+      <IconButton icon="copy" label="Paste image" disabled={restoring} title="Paste a copied image · Ctrl+V" onClick={() => void pasteImage()}>Paste image</IconButton>
       <span className="dim">{images.length ? `${images.length} photo${images.length === 1 ? "" : "s"}` : "PNG · JPEG · WebP · BMP · AVIF"} · one-off checks · no video labels are changed</span>
       {item && <><IconButton icon="erase" label="Remove selected photo" onClick={remove} /><button onClick={clear}>Clear gallery</button></>}
     </div>
     {error && <div className="banner error" role="alert">{error}<button onClick={() => setError(null)}>Dismiss</button></div>}
-    {!item ? <div className="images-empty"><h2>Check fire in a photo</h2><p>Add several photos, drop them here, or paste a screenshot with Ctrl+V. Use the same fire tools as video, with a gallery in place of the timeline.</p><button className="big" onClick={() => input.current?.click()}>Add photos…</button></div>
+    {storageError && <div className="banner error" role="alert">{storageError}</div>}
+    {restoring ? <div className="images-empty" role="status">Restoring saved photos…</div> : !item ? <div className="images-empty"><h2>Check fire in a photo</h2><p>Add several photos, drop them here, or paste a screenshot with Ctrl+V. Photos and their mask settings are saved locally on this device.</p><button className="big" onClick={() => input.current?.click()}>Add photos…</button></div>
       : <main className="workarea" ref={area} style={{ "--side-w": `${sideWidth}px`, "--video-h": `${videoHeight}px` } as CSSProperties}>
         <section className="left">
           <VideoPane key={item.id} videoKey={`image:${item.id}`} storageScope={`image:${item.id}`} stateStorage={stateStorage} stillImage={item}

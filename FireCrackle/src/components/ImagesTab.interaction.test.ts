@@ -8,6 +8,8 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useEffect: (fn: any) => { hooks.effects.push(fn); }, useCallback: (fn: any) => fn,
 }));
 vi.mock("../hooks/useWheel", () => ({ useWheel: () => {} }));
+const gallery = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn() }));
+vi.mock("../lib/galleryStore", () => ({ loadGallery: gallery.load, saveGallery: gallery.save }));
 import { ImagesTab } from "./ImagesTab";
 import { VideoPane } from "./VideoPane";
 import { Picker } from "./Picker";
@@ -25,6 +27,22 @@ function importPhotos(root: any, names: string[]) {
 }
 beforeEach(() => { hooks.states = []; hooks.refs = []; vi.stubGlobal("window", new EventTarget()); vi.stubGlobal("URL", { createObjectURL: vi.fn((file: File) => `blob:${file.name}`), revokeObjectURL: vi.fn() }); });
 afterEach(() => vi.unstubAllGlobals());
+it("waits for saved photos before allowing imports or writing gallery state", async () => {
+  vi.stubGlobal("indexedDB", {});
+  let restore!: (value: unknown) => void;
+  gallery.load.mockReturnValue(new Promise(resolve => { restore = resolve; }));
+  gallery.save.mockResolvedValue(undefined); gallery.save.mockClear();
+  let root = render();
+  expect(all(root, element => element.props.label === "Add photos")[0].props.disabled).toBe(true);
+  const setup = hooks.effects.find(effect => effect.toString().includes("loadGallery"))!; setup();
+  const persist = hooks.effects.find(effect => effect.toString().includes("saveGallery"))!; persist();
+  expect(gallery.save).not.toHaveBeenCalled();
+  restore({ images: [{ id: "stored", name: "stored.png", url: "blob:stored", file: {} }], index: 0, checks: {} });
+  await Promise.resolve(); root = render();
+  expect(all(root, element => element.type === VideoPane)[0].props.stillImage.name).toBe("stored.png");
+  hooks.effects.find(effect => effect.toString().includes("saveGallery"))!();
+  expect(gallery.save).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: "stored" })]), 0, {});
+});
 it("uses the same viewer/tools and picker, with no confirmation or time guess, independently of video", () => {
   let root = render(); importPhotos(root, ["a.png", "b.png"]); root = render();
   let viewer = all(root, element => element.type === VideoPane)[0];
