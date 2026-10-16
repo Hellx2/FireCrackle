@@ -10,9 +10,53 @@ import {
   zoomAt,
   zoomPanel,
   DEFAULT_ZOOMS,
+  rotateView,
+  rotationDelta,
 } from "./zoom";
 
 const BOX = { w: 1000, h: 500 };
+
+describe("video rotation", () => {
+  const screen = (v: { scale: number; x: number; y: number; angle?: number }, x: number, y: number) => {
+    const a = (v.angle ?? 0) * Math.PI / 180;
+    return [v.x + v.scale * (Math.cos(a) * x - Math.sin(a) * y), v.y + v.scale * (Math.sin(a) * x + Math.cos(a) * y)];
+  };
+  it("keeps the exact Shift cursor anchor fixed at arbitrary zoom, pan and angle", () => {
+    const start = { scale: 3.4, x: -700, y: 230, angle: 27 };
+    const [px, py] = screen(start, 125, 76);
+    const next = rotateView(start, px, py, 83);
+    expect(next.scale).toBe(start.scale);
+    expect(next.angle).toBe(110);
+    expect(screen(next, 125, 76)[0]).toBeCloseTo(px, 8);
+    expect(screen(next, 125, 76)[1]).toBeCloseTo(py, 8);
+    const back = rotateView(next, px, py, -83);
+    expect(back.x).toBeCloseTo(start.x, 8);
+    expect(back.y).toBeCloseTo(start.y, 8);
+  });
+  it("preserves rotation during pan and keeps cursor fixed while zooming", () => {
+    const start = { scale: 2, x: 30, y: -90, angle: -54 };
+    const [px, py] = screen(start, 42, 180);
+    const next = zoomAt(start, px, py, 1.6, BOX);
+    expect(next.angle).toBe(-54);
+    expect(screen(next, 42, 180)[0]).toBeCloseTo(px, 8);
+    expect(screen(next, 42, 180)[1]).toBeCloseTo(py, 8);
+    expect(panView(next, 20, 30, BOX).angle).toBe(-54);
+  });
+  it("reset removes rotation while preserving scale and content at the pane center", () => {
+    const start = { scale: 4, x: -300, y: 600, angle: 153 };
+    const reset = rotateView(start, 500, 250, -start.angle);
+    expect(reset.angle).toBe(0);
+    expect(reset.scale).toBe(4);
+    const restored = rotateView(reset, 500, 250, start.angle);
+    expect(restored.x).toBeCloseTo(start.x, 8);
+    expect(restored.y).toBeCloseTo(start.y, 8);
+  });
+  it("crosses the angular seam smoothly in either direction", () => {
+    expect(rotationDelta(179 * Math.PI / 180, -179 * Math.PI / 180)).toBeCloseTo(2);
+    expect(rotationDelta(-179 * Math.PI / 180, 179 * Math.PI / 180)).toBeCloseTo(-2);
+    expect(rotateView(IDENTITY, NaN, 1, 4)).toBe(IDENTITY);
+  });
+});
 
 describe("wheelFactor", () => {
   it("scrolling up (negative deltaY) zooms in, down zooms out", () => {

@@ -2,6 +2,13 @@ import { expect, it } from "vitest";
 import { readTimelineView, readVideoView, writeTimelineView, writeVideoView } from "./viewState";
 
 function memory() { const values = new Map<string, string>(); return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } }; }
+it("remembers video rotation without changing old saved view shapes", () => {
+  const storage = memory();
+  writeVideoView("rotated", { scale: 2, x: -35, y: 10, angle: 47 }, storage);
+  expect(readVideoView("rotated", storage)).toEqual({ scale: 2, x: -35, y: 10, angle: 47 });
+  expect(readVideoView("old", { getItem: () => '{"scale":2,"x":3,"y":4}' })).toEqual({ scale: 2, x: 3, y: 4 });
+  expect(readVideoView("bad", { getItem: () => '{"scale":2,"x":3,"y":4,"angle":"bad"}' })).toEqual({ scale: 2, x: 3, y: 4 });
+});
 it("keeps video transforms separate by video and preserves off-image pan", () => {
   const storage = memory();
   writeVideoView("a.mkv", { scale: 3, x: -900, y: 700 }, storage);

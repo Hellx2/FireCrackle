@@ -13,7 +13,8 @@ function write(video: string | undefined, kind: string, value: unknown, storage?
 }
 export function readVideoView(video?: string, storage?: Pick<Store, "getItem">): ViewXform {
   const saved = read(video, "video", storage);
-  return saved && [saved.scale, saved.x, saved.y].every(n => typeof n === "number" && Number.isFinite(n)) && saved.scale > 0 ? { scale: saved.scale, x: saved.x, y: saved.y } : IDENTITY;
+  return saved && [saved.scale, saved.x, saved.y].every(n => typeof n === "number" && Number.isFinite(n)) && saved.scale > 0
+    ? { scale: saved.scale, x: saved.x, y: saved.y, ...(typeof saved.angle === "number" && Number.isFinite(saved.angle) ? { angle: saved.angle % 360 } : {}) } : IDENTITY;
 }
 export function writeVideoView(video: string | undefined, value: ViewXform, storage?: Pick<Store, "setItem">) { write(video, "video", value, storage); }
 export function readTimelineView(video: string | undefined, kind: "timeline" | "phase", total: number, width: number, storage?: Pick<Store, "getItem">): Viewport {
