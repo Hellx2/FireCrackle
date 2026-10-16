@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tempfile
+import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -134,6 +135,18 @@ def release_info(repo, tag):
     return next((item for item in api(repo, "releases?per_page=100") if item["tag_name"] == tag), None)
 
 
+def wait_release_info(repo, tag, *, published=False, asset_names=()):
+    # GitHub can briefly omit a newly created draft or return stale assets/state.
+    for attempt in range(10):
+        info = release_info(repo, tag)
+        if (info is not None and (not published or not info["draft"])
+                and set(asset_names).issubset({asset["name"] for asset in info["assets"]})):
+            return info
+        if attempt < 9:
+            time.sleep(2)
+    raise ValueError("GitHub release state has not settled; the draft/assets are preserved for retry")
+
+
 def verify_uploaded(repo, tag, files, info, temporary):
     assets = {asset["name"]: asset for asset in info["assets"]}
     for path in files:
@@ -180,15 +193,16 @@ def publish(args):
                                  "See the packaged README and third-party notices. Experimental analysis tool.\n")
             command("gh", "release", "create", tag, "--repo", args.repo, "--target", args.commit,
                     "--draft", "--title", f"FireCrackle v{version}", "--notes-file", str(notes))
-            info = release_info(args.repo, tag)
+            info = wait_release_info(args.repo, tag)
         if info["draft"]:
             command("gh", "release", "upload", tag, "--repo", args.repo, "--clobber", *map(str, files))
         verification = staging / "verify"
         verification.mkdir()
-        verify_uploaded(args.repo, tag, files, release_info(args.repo, tag), verification)
+        verify_uploaded(args.repo, tag, files,
+                        wait_release_info(args.repo, tag, asset_names=[path.name for path in files]), verification)
         if info["draft"]:
             command("gh", "release", "edit", tag, "--repo", args.repo, "--draft=false")
-        final = release_info(args.repo, tag)
+        final = wait_release_info(args.repo, tag, published=True)
         if final is None or final["draft"]:
             raise ValueError("Release remains unpublished; inspect the existing draft before retrying")
         print(final["html_url"])

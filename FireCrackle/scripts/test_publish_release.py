@@ -3,12 +3,23 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 import publish_release as release
 
 
 class ReleaseSafetyTests(unittest.TestCase):
+    def test_waits_for_draft_assets_and_published_state_with_a_bounded_retry(self):
+        draft = {"draft": True, "assets": []}
+        final = {"draft": False, "assets": [{"name": "app"}]}
+        with patch.object(release, "release_info", side_effect=[None, draft, final]), patch.object(release.time, "sleep"):
+            self.assertEqual(release.wait_release_info("owner/repo", "v0.1.0", published=True, asset_names=["app"]), final)
+        with patch.object(release, "release_info", return_value=None) as lookup, patch.object(release.time, "sleep"):
+            with self.assertRaisesRegex(ValueError, "preserved for retry"):
+                release.wait_release_info("owner/repo", "v0.1.0")
+            self.assertEqual(lookup.call_count, 10)
+
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory(prefix="firecrackle-release-test-")
         self.addCleanup(self.scratch.cleanup)
