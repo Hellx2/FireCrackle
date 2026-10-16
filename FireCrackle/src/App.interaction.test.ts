@@ -77,7 +77,9 @@ it("does not send video navigation or confirmation hotkeys while Images is selec
   find(ui.tree, e => e.type === "button" && [e.props.children].flat().includes(" Images"))!.props.onClick(); ui = render();
   key("ArrowRight"); key("Enter"); key("ArrowLeft");
   expect(fixture.act).not.toHaveBeenCalled();
-  expect(find(ui.tree, e => e.props.label === "Optional automation tools")).toBeUndefined();
+  const videoActions = find(ui.tree, e => String(e.props.className).includes("video-top-actions"))!;
+  expect(videoActions.props.inert).toBe(true);
+  expect(videoActions.props["aria-hidden"]).toBe(true);
 });
 
 it("atlas clicks and preview-only Ctrl clicks never save or advance; Confirm saves the staged choice", () => {

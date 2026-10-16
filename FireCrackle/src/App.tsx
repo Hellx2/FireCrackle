@@ -233,8 +233,8 @@ export default function App() {
         </nav>
         <div className="top-actions">
           <IconButton icon="folder" label={ws.opening ? "Opening video…" : "Open video"} onClick={() => void chooseVideo()} disabled={ws.opening} />
-          {view && tab !== "images" && (
-            <>
+          {view && (
+            <div className={`video-top-actions${tab === "images" ? " inactive" : ""}`} inert={tab === "images"} aria-hidden={tab === "images"}>
               <IconButton icon="save" label="Save labels" onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Save labels · Ctrl+S · autosave is also on" />
               <span className={`save-status${view.save_error ? " failed" : ""}`} role="status" title={backend.mock ? "Preview only" : ws.saveStatus}>
                 <Icon name={view.save_error ? "alert" : "check"} /><span className="sr-only">{backend.mock ? "Preview only" : ws.saveStatus}</span>
@@ -254,7 +254,7 @@ export default function App() {
               <IconButton icon="keyboard" label="Keyboard shortcuts" aria-pressed={showKeys} onClick={() => setShowKeys((s) => !s)} />
               <IconButton icon="fire" label="Optional automation tools" onClick={() => {setPlayback(STOPPED);setShowAutomation(true);}}>Auto label</IconButton>
               <IconButton icon="settings" label="Settings" onClick={() => setShowSettings(true)} />
-            </>
+            </div>
           )}
           <IconButton icon="info" label="Credits" onClick={() => setShowCredits(true)} />
         </div>
