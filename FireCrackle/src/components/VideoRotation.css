@@ -1,0 +1,7 @@
+.video-rotation { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 5; }
+.video-rotation > line { stroke: #61e9ff; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.video-rotation-pivot { fill: #61e9ff; stroke: #10202a; stroke-width: 2; }
+.video-rotation-handle { pointer-events: all; cursor: grab; }
+.video-rotation-handle:active { cursor: grabbing; }
+.video-rotation-handle circle { fill: #161b24; stroke: #61e9ff; stroke-width: 2; }
+.video-rotation-handle path { fill: none; stroke: #61e9ff; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }

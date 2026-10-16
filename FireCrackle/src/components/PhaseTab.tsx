@@ -11,16 +11,29 @@ import {
   type PhaseChart,
 } from "../lib/chart";
 import { formatTime } from "../lib/timeline";
+import { formatTimecode } from "../lib/timecode";
 import { messageOf } from "../hooks/useWorkspace";
 import { FlagsPanel } from "./FlagsPanel";
+import { PhaseSourcePicker } from "./PhaseSourcePicker";
 import { useWheel } from "../hooks/useWheel";
 import { fitViewport, pan, zoomAt, type Viewport, type FrameRange } from "../lib/timeline";
 import "./TimelineControls.css";
 import { readTimelineView, writeTimelineView } from "../lib/viewState";
-import { drawPhaseChart } from "../lib/phaseChartCanvas";
+import { drawPhaseChart, GAP_COLORS, type GapBand } from "../lib/phaseChartCanvas";
+import { bridgeStatus, findEvidenceGaps, gapKind, gapText, type EvidenceGap, type GapKind } from "../lib/evidenceGaps";
+import { FlagCompare } from "./FlagCompare";
 
 /** Most points the backend sends: a bit more than the pixels a wide window has. */
 const MAX_POINTS = 4000;
+/** Stretches without fire evidence at least this long are drawn and explained. */
+const MIN_GAP_SECONDS = 2;
+/** Gaps beyond this many are drawn as unlabelled, so a sparse recording does not cost one request each. */
+const MAX_CLASSIFIED_GAPS = 80;
+
+interface GapInfo extends GapBand {
+  gap: EvidenceGap;
+  text: string;
+}
 
 interface Props {
   videoKey?: string;
@@ -47,6 +60,8 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
   const logicalWidth = 1000;
   const [viewport, setViewport] = useState(() => readTimelineView(videoKey, "phase", total, logicalWidth));
   const [source,setSource]=useState<"independent"|LabelSource>("independent");
+  const [selectedFlag, setSelectedFlag] = useState<Flag | null>(null);
+  const [gaps, setGaps] = useState<GapInfo[]>([]);
   const drag = useRef<{ x: number; viewport: Viewport; moved: boolean } | null>(null);
   const highlighted = hoverFlag ? { first: hoverFlag.frame, last: hoverFlag.end_frame } : selectedRange;
   const t0 = viewport.start / fps;
@@ -77,9 +92,10 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
 
   const timeOf = (frame: number) => frame / fps;
 
+
   useEffect(() => {
     const redraw = () => {
-      const options = { chart, currentFrame: view.current, fps, t0, t1, highlighted, pixelRatio: window.devicePixelRatio || 1 };
+      const options = { chart, currentFrame: view.current, fps, t0, t1, highlighted, pixelRatio: window.devicePixelRatio || 1, gaps };
       drawPhaseChart(phaseRef.current, { ...options, kind: "phase" });
       drawPhaseChart(rowRef.current, { ...options, kind: "row" });
     };
@@ -87,9 +103,29 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
     const ro = new ResizeObserver(redraw);
     if (phaseRef.current) ro.observe(phaseRef.current);
     return () => ro.disconnect();
-  }, [chart, view.current, t0, t1, highlighted?.first, highlighted?.last]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chart, gaps, view.current, t0, t1, highlighted?.first, highlighted?.last]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function focusRange(range: FrameRange) {
+  // stretches with no fire evidence: found from the frames that have evidence, classified by their labels
+  useEffect(() => {
+    if (!chart) {
+      setGaps([]);
+      return;
+    }
+    let cancelled = false;
+    const frames = chart.label_sources ? Object.keys(chart.label_sources).map(Number) : chart.points.map((p) => p.frame);
+    const found = findEvidenceGaps(frames, view.frame_count, fps, MIN_GAP_SECONDS);
+    const build = (g: EvidenceGap, kind: GapKind): GapInfo => ({ first: g.first, last: g.last, kind, gap: g, text: gapText(g, kind, bridgeStatus(g, chart.points)) });
+    setGaps(found.map((g) => build(g, "unlabelled")));
+    void Promise.all(
+      found.map((g, i) => (i < MAX_CLASSIFIED_GAPS ? backend.timeline(g.first, g.last + 1, 1).then((b) => gapKind(b[0] ?? null)).catch(() => "unlabelled" as GapKind) : Promise.resolve("unlabelled" as GapKind))),
+    ).then((kinds) => !cancelled && setGaps(found.map((g, i) => build(g, kinds[i]))));
+    return () => {
+      cancelled = true;
+    };
+  }, [chart, backend, fps, view.frame_count]);
+
+  function focusRange(range: FrameRange, flag: Flag | null = null) {
+    setSelectedFlag(flag);
     setSelectedRange(range);
     setHoverFlag(null);
     setViewport(focusChartRange(range,total,logicalWidth,fps));
@@ -130,8 +166,12 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
       const reference = chart!.reference_phase ?? chart!.runs[0]?.center ?? chart!.points[0]?.phase ?? 0;
       const offset = relativePhase(p.phase, reference);
       const sources=(chart!.label_sources?.[p.frame]??[]).map(s=>LABEL_SOURCE_NAMES[s]).join(" + ");
-      setHover(`frame ${p.frame} · ${formatTime(p.pts, 0.01)} · row ${p.step} · timing offset ${offset > 0 ? "+" : ""}${offset.toFixed(2)} ticks${sources?` · ${sources}`:""}`);
-    } else setHover(null);
+      setHover(`frame ${p.frame} · ${formatTimecode(p.pts, fps)} · row ${p.step} · timing offset ${offset > 0 ? "+" : ""}${offset.toFixed(2)} ticks${sources?` · ${sources}`:""}`);
+    } else {
+      const frame = Math.round(hit.t * fps);
+      const inGap = gaps.find((g) => frame >= g.first && frame <= g.last);
+      setHover(inGap ? inGap.text : null);
+    }
   }
 
   function onClick(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -141,7 +181,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
     const frame = flag?.frame ?? hit.point?.frame;
     if (frame === undefined) return;
     if (e.ctrlKey) onJump(frame);
-    else focusRange({first:frame,last:flag?.end_frame ?? frame});
+    else focusRange({first:frame,last:flag?.end_frame ?? frame}, flag);
   }
 
   const chartEvents = {
@@ -175,10 +215,7 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
     <main className="phase-tab">
       {error && <div className="banner error">{error}</div>}
       <section className="chart-area">
-        <label>Label source <select aria-label="Phase chart label source" value={source} onChange={e=>{setSource(e.target.value as typeof source);setChart(null);setHoverFlag(null);setSelectedRange(null);}}>
-          <option value="independent">Independent: human + first-person tool</option>
-          <option value="manual">Human checked</option><option value="first_person">First-person tool (including rechecked)</option><option value="time_guess">Time guesses (diagnostic only)</option>
-        </select></label>
+        <PhaseSourcePicker value={source} onChange={value=>{setSource(value);setChart(null);setHoverFlag(null);setSelectedRange(null);setSelectedFlag(null);}} />
         <span className="dim">Tool labels have not been human checked unless both sources are shown. Inspect the timing chart for anything unusual. Time guesses are excluded from the default phase evidence.</span>
         <div className="chart-head">
           <span className="panel-title">Animation timing offset (ticks)</span>
@@ -200,10 +237,35 @@ export function PhaseTab({ backend, view, version, onJump, videoKey }: Props) {
             <canvas ref={rowRef} className="chart row" {...chartEvents} />
           </>
         )}
-        <div className="chart-hover">{hoverFlag ? `Flag frame ${hoverFlag.frame}${hoverFlag.end_frame > hoverFlag.frame ? `–${hoverFlag.end_frame}` : ""} · ${formatTime(hoverFlag.frame/fps,0.01)} · click to focus · Ctrl+click to open video` : hover ?? " "}</div>
+        <div className="chart-hover">{hoverFlag ? `Flag frame ${hoverFlag.frame}${hoverFlag.end_frame > hoverFlag.frame ? `–${hoverFlag.end_frame}` : ""} · ${formatTimecode(hoverFlag.frame/fps, fps)} · click to focus · Ctrl+click to open video` : hover ?? " "}</div>
+        {gaps.length > 0 && (
+          <details className="gap-legend">
+            <summary>
+              {gaps.length} stretch{gaps.length > 1 ? "es" : ""} with no fire evidence (shaded): lag, freezes and cuts inside them cannot be ruled out
+            </summary>
+            <div className="gap-keys">
+              {(Object.keys(GAP_COLORS) as GapKind[]).map((k) => (
+                <span key={k}><i style={{ background: GAP_COLORS[k].edge }} />{GAP_COLORS[k].name}</span>
+              ))}
+            </div>
+            <ul>
+              {gaps.map((g) => (
+                <li key={g.first}>
+                  <button className="gap-row" onClick={() => focusRange({ first: g.first, last: g.last })} title={g.text}>
+                    <span className="where">frame {g.first}–{g.last} · {formatTimecode(g.first / fps, fps)}</span>
+                    <span className="dim">{g.text}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {chart && selectedFlag && chart.flags.some((f) => f.frame === selectedFlag.frame && f.kind === selectedFlag.kind) && (
+          <FlagCompare backend={backend} chart={chart} flag={selectedFlag} fps={fps} onOpen={onJump} onClose={() => setSelectedFlag(null)} />
+        )}
       </section>
       <FlagsPanel flags={chart?.flags ?? []} details={chart?.flag_details} fps={fps} current={selectedRange?.first ?? view.current} onSeek={onJump}
-        onHover={setHoverFlag} onSelect={(flag,openVideo) => openVideo ? onJump(flag.frame) : focusRange({first:flag.frame,last:flag.end_frame})} />
+        onHover={setHoverFlag} onSelect={(flag,openVideo) => openVideo ? onJump(flag.frame) : focusRange({first:flag.frame,last:flag.end_frame}, flag)} />
     </main>
   );
 }

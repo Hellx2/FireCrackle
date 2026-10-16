@@ -1,7 +1,7 @@
 import type { Flag } from "../lib/api";
 import type { FlagDetail } from "../lib/chart";
 import { flagText,priorityHint } from "../lib/flagText";
-import { formatTime } from "../lib/timeline";
+import { formatTimecode } from "../lib/timecode";
 
 interface Props {
   flags: Flag[];
@@ -36,7 +36,7 @@ export function FlagsPanel({ flags, fps, current, onSeek,details=[],onHover,onSe
                 <span className="kind">{text.name}</span>
                 <span className="where">
                   frame {f.frame}
-                  {f.end_frame > f.frame ? `–${f.end_frame}` : ""} · {formatTime(f.frame / (fps || 1), 0.01)}
+                  {f.end_frame > f.frame ? `–${f.end_frame}` : ""} · {formatTimecode(f.frame / (fps || 1), fps)}
                 </span>
                 <span className="delta">{detail?.held_ticks!=null?`held ${detail.held_ticks.toFixed(1)} ticks · `:""}Δ {f.phase_delta > 0 ? "+" : ""}{f.phase_delta.toFixed(1)} ticks</span>
               </button>

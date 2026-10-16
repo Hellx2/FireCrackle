@@ -1,9 +1,9 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type Ref } from "react";
 import { useWheel } from "../hooks/useWheel";
 import type { Backend, View } from "../lib/api";
-import { IDENTITY, clampView, panView, wheelFactor, zoomAt, type Box, type ViewXform } from "../lib/zoom";
+import { IDENTITY, clampView, panView, rotateView, wheelFactor, zoomAt, type Box, type ViewXform } from "../lib/zoom";
 import { isFire, type Label } from "../lib/grid";
-import { formatTime } from "../lib/timeline";
+import { formatTimecode } from "../lib/timecode";
 import { HudOverlay } from "./HudOverlay";
 import { hudRowFromLabel, stepHudRow } from "../lib/hudOverlay";
 import { FireQuadMask } from "./FireQuadMask";
@@ -21,6 +21,7 @@ import { AnimationControls } from "./AnimationControls";
 import { readPreferences, writePreferences } from "../lib/preferences";
 import { readVideoView, writeVideoView } from "../lib/viewState";
 import { OpacityControl } from "./OpacityControl";
+import { VideoRotation } from "./VideoRotation";
 
 export interface VideoPreviewHandle {
   /** True when an enabled preview consumes the selection without a label write. */
@@ -217,11 +218,11 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         onPointerCancel={panUp}
         onLostPointerCapture={panUp}
         onDoubleClick={() => setXf(IDENTITY)}
-        title="scroll to zoom · drag to move · double-click to reset"
+        title="scroll to zoom · drag to move · hold Shift for rotation · double-click to reset"
       >
         <div
           className="video-zoom"
-          style={{ transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.scale})` }}
+          style={{ transform: `translate(${xf.x}px, ${xf.y}px) rotate(${xf.angle ?? 0}deg) scale(${xf.scale})` }}
         >
           {url ? <img src={url} alt={`frame ${shown ?? ""}`} draggable={false} onLoad={(e) => setImageSize({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })} /> : <div className="placeholder">decoding…</div>}
           {hudEnabled && shown === view.current && url && imageSize.width > 0 && <HudOverlay {...imageSize} row={hudRow} fov={hudFov} opacity={hudOpacity} pixelGrid={pixelGrid} />}
@@ -230,7 +231,8 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
             placementEnabled={!ruler.enabled || !rulerSelected} frameUrl={url} compression={compressionEnabled ? {height:compressionHeight,quality:compressionQuality} : undefined} />}
           {ruler.enabled && url && imageSize.width > 0 && <VideoRuler {...imageSize} zoom={xf.scale} points={ruler.points} locked={ruler.locked} onSelect={setRulerSelected} onChange={points => setRuler(current => ({ ...current, points }))} />}
         </div>
-        {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}× · double-click to reset</div>}
+        <VideoRotation frameRef={frameRef} onRotate={(degrees, x, y) => setXf(current => rotateView(current, x, y, degrees))} />
+        {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0 || !!xf.angle) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}×{xf.angle ? ` · ${Number(xf.angle.toFixed(1))}°` : ""} · double-click to reset</div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
         <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>
         {view.typed_pending !== null && <div className="typed-chip">row: {view.typed_pending}_</div>}
@@ -243,6 +245,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         )}
       </div>
       <div className="hud-controls video-tools" role="group" aria-label="Video tools" onKeyDown={(e) => e.stopPropagation()}>
+        <IconButton icon="reset" label="Reset video rotation" title="Reset video rotation to 0° · hold Shift over video to choose an anchor" disabled={!xf.angle} onClick={() => setXf(current => rotateView(current, boxOf().w / 2, boxOf().h / 2, -(current.angle ?? 0)))}>Unrotate</IconButton>
         <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} aria-expanded={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
         <IconButton icon="fire" label="Toggle first-person fire" aria-pressed={hudEnabled} aria-expanded={hudEnabled} onClick={() => {
           setAnimationOpen(false);
@@ -328,7 +331,7 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         <span>
           frame <b>{view.current}</b> / {view.frame_count - 1}
         </span>
-        <span>{formatTime(view.pts, 0.01)}</span>
+        <span>{formatTimecode(view.pts, view.fps)}</span>
         <span>{view.fps.toFixed(2)} fps</span>
         <span>
           labelled <b>{view.labelled_count}</b>

@@ -5,11 +5,12 @@ export interface Limits {
   max: number;
 }
 
-/** A zoomed, panned view: screen = content * scale + (x, y), content origin at the pane's top-left. */
+/** Screen = rotate(content * scale, angle) + (x, y), around the pane's top-left. */
 export interface ViewXform {
   scale: number;
   x: number;
   y: number;
+  angle?: number;
 }
 
 export interface Box {
@@ -57,6 +58,7 @@ export function clampView(v: ViewXform, _box: Box): ViewXform {
     scale,
     x,
     y,
+    ...(v.angle !== undefined ? { angle: Number.isFinite(v.angle) ? v.angle : 0 } : {}),
   };
 }
 
@@ -68,12 +70,26 @@ export function zoomAt(v: ViewXform, px: number, py: number, factor: number, box
   // Only numeric representation has limits: prevent zero/Infinity at underflow/overflow.
   const next = Math.min(Number.MAX_VALUE, Math.max(Number.MIN_VALUE, start.scale * f));
   const ratio = next / start.scale;
-  return clampView({ scale: next, x: px - (px - start.x) * ratio, y: py - (py - start.y) * ratio }, box);
+  return clampView({ ...start, scale: next, x: px - (px - start.x) * ratio, y: py - (py - start.y) * ratio }, box);
 }
 
 /** Move the content with the pointer by (dx, dy). */
 export function panView(v: ViewXform, dx: number, dy: number, box: Box): ViewXform {
-  return clampView({ scale: v.scale, x: v.x + dx, y: v.y + dy }, box);
+  return clampView({ ...v, x: v.x + dx, y: v.y + dy }, box);
+}
+
+/** Rotate around a screen-space pivot, preserving the content beneath it. */
+export function rotateView(v: ViewXform, px: number, py: number, degrees: number): ViewXform {
+  if (![px, py, degrees].every(Number.isFinite)) return v;
+  const radians = degrees * Math.PI / 180;
+  const c = Math.cos(radians), s = Math.sin(radians);
+  const dx = v.x - px, dy = v.y - py;
+  return { ...v, x: px + c * dx - s * dy, y: py + s * dx + c * dy, angle: ((v.angle ?? 0) + degrees) % 360 };
+}
+
+/** Short angular movement, including crossing the -180/180 degree seam. */
+export function rotationDelta(previous: number, current: number): number {
+  return Math.atan2(Math.sin(current - previous), Math.cos(current - previous)) * 180 / Math.PI;
 }
 
 function zoomField(raw: unknown, fallback: number): number {

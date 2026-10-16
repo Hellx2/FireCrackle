@@ -1,0 +1,133 @@
+.flag-compare {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.compare-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.compare-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+.compare-toggle:hover:not(:disabled) {
+  border-color: var(--line);
+}
+.compare-chevron {
+  width: 12px;
+  color: var(--accent);
+}
+.compare-heading {
+  font-weight: 600;
+}
+.compare-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flag-compare.collapsed {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.compare-note {
+  margin: 6px 0 8px;
+  font-size: 12px;
+}
+.compare-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.compare-side {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.compare-title {
+  font-weight: 600;
+}
+.compare-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.compare-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.compare-sprite {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+  background-color: #251a3a;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background-repeat: no-repeat;
+}
+.compare-text {
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.compare-side.empty .compare-frame {
+  border-style: dashed;
+}
+
+.gap-legend {
+  font-size: 12px;
+  color: var(--dim);
+}
+.gap-legend summary {
+  cursor: pointer;
+}
+.gap-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 6px 0;
+}
+.gap-keys i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+.gap-legend ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.gap-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0;
+  padding: 3px 8px;
+}
