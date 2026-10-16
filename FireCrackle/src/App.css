@@ -142,6 +142,11 @@ input {
   font-size: 11px;
   opacity: 0.8;
 }
+.tabs button.on .count {
+  color: inherit;
+  opacity: 1;
+  font-weight: 600;
+}
 
 .phase-tab {
   display: flex;
