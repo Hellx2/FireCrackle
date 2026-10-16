@@ -88,14 +88,20 @@ input {
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   padding: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   gap: 16px;
-  flex-wrap: wrap;
+}
+.topbar > .brand { justify-self: start; min-width: 0; flex-wrap: wrap; }
+.topbar > .tabs { justify-self: center; }
+.topbar > .top-actions { justify-self: end; justify-content: flex-end; min-width: 0; }
+@media (max-width: 850px) {
+  .topbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .topbar > .tabs { grid-column: 1 / -1; grid-row: 2; }
 }
 .brand {
   font-weight: 700;
