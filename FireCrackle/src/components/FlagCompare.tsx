@@ -7,6 +7,16 @@ import { flagText, priorityHint } from "../lib/flagText";
 import { IconButton } from "./Icon";
 import "./FlagCompare.css";
 
+const OPEN_KEY = "firecrackle.flagCompare.open";
+
+function loadOpen(): boolean {
+  try {
+    return localStorage.getItem(OPEN_KEY) !== "0";
+  } catch {
+    return true; // storage blocked: just stay open
+  }
+}
+
 interface Props {
   backend: Backend;
   chart: PhaseChart;
@@ -65,29 +75,47 @@ function Side({ title, point, reference, fps, backend, onOpen }: { title: string
 
 /** Before and after a flag: the evidence frames on each side, each with the sprite it was matched to. */
 export function FlagCompare({ backend, chart, flag, fps, onOpen, onClose }: Props) {
+  const [open, setOpen] = useState(loadOpen);
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(OPEN_KEY, o ? "0" : "1");
+      } catch {
+        /* not remembered */
+      }
+      return !o;
+    });
   const c = useMemo(() => compareFrames(chart.points, flag), [chart.points, flag]);
   const reference = chart.reference_phase ?? chart.runs[0]?.center ?? chart.points[0]?.phase ?? 0;
   const detail = chart.flag_details?.find((d) => d.frame === flag.frame && d.end_frame === flag.end_frame && d.kind === flag.kind);
   const text = flagText(flag.kind, detail?.explanation);
   const shift = c.before && c.after ? relativePhase(c.after.phase, c.before.phase) : null;
   return (
-    <section className="flag-compare" aria-label="Flag comparison">
+    <section className={`flag-compare${open ? "" : " collapsed"}`} aria-label="Flag comparison">
       <div className="compare-head">
-        <span className={`sev ${flag.severity}`} title={priorityHint(flag.severity)}>{flag.severity}</span>
-        <b>{text.name}</b>
-        <span className="dim">
-          frame {flag.frame}
-          {flag.end_frame > flag.frame ? `–${flag.end_frame}` : ""}
-          {shift !== null ? ` · timing offset changes ${shift > 0 ? "+" : ""}${shift.toFixed(1)} ticks across it` : ""}
-        </span>
+        <button type="button" className="compare-toggle" aria-expanded={open} aria-controls="flag-compare-body" onClick={toggle} title={open ? "Collapse the comparison" : "Expand the comparison"}>
+          <span className="compare-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span>
+          <span className="compare-heading">Compare around flag</span>
+          <span className={`sev ${flag.severity}`} title={priorityHint(flag.severity)}>{flag.severity}</span>
+          <b>{text.name}</b>
+          <span className="dim compare-where">
+            frame {flag.frame}
+            {flag.end_frame > flag.frame ? `–${flag.end_frame}` : ""}
+            {shift !== null ? ` · timing offset changes ${shift > 0 ? "+" : ""}${shift.toFixed(1)} ticks across it` : ""}
+          </span>
+        </button>
         <IconButton icon="reset" label="Close comparison" onClick={onClose} />
       </div>
-      <p className="dim compare-note">{text.hint} {priorityHint(flag.severity)} Frames shown are the nearest fire evidence on each side, not necessarily adjacent frames.</p>
-      <div className="compare-grid">
-        <Side title="Before" point={c.before} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />
-        {c.during && <Side title="Inside the flag" point={c.during} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />}
-        <Side title="After" point={c.after} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />
-      </div>
+      {open && (
+        <div id="flag-compare-body">
+          <p className="dim compare-note">{text.hint} {priorityHint(flag.severity)} Frames shown are the nearest fire evidence on each side, not necessarily adjacent frames.</p>
+          <div className="compare-grid">
+            <Side title="Before" point={c.before} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />
+            {c.during && <Side title="Inside the flag" point={c.during} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />}
+            <Side title="After" point={c.after} reference={reference} fps={fps} backend={backend} onOpen={onOpen} />
+          </div>
+        </div>
+      )}
     </section>
   );
 }
