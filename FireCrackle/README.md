@@ -11,7 +11,7 @@ Set-Location FireCrackle
 npm run release
 ```
 
-This verifies/downloads pinned FFmpeg, installs dependencies on a fresh checkout (or checks existing ones), runs checks, builds the app and creates a portable ZIP in `releases/v0.1.0/<build>/`. Send that ZIP; testers extract the whole folder and run `FireCrackle.exe`. Keep its adjacent `tools` folder. Testers need Windows 10/11 x64 and Edge WebView2, with no developer tools or separate FFmpeg installation.
+This verifies/downloads pinned FFmpeg for build tests, installs dependencies on a fresh checkout (or checks existing ones), runs checks, builds the app and creates a portable ZIP in `releases/v0.1.0/<build>/`. Send that ZIP; testers extract it and run `FireCrackle.exe`. Testers need Windows 10/11 x64 and Edge WebView2. External executables are not packaged: FFmpeg/FFprobe download on first use when an installed pair is unavailable. They are verified and cached in account app data for subsequent offline use.
 
 For a single installer EXE that installs WebView2 when missing (internet required):
 
@@ -25,11 +25,17 @@ For a RAR, install WinRAR (including `Rar.exe`), then:
 npm run release -- -Format rar
 ```
 
-ZIP is the default so Windows can extract it directly. The portable EXE alone cannot open videos without the bundled tools. Builds are unsigned; this pipeline does not publish them or configure an updater.
+ZIP is the default so Windows can extract it directly. Both portable and setup packages omit third-party tool binaries. First-use setup requires internet; later local-video use works offline with cached tools. Builds are unsigned; this pipeline does not publish them or configure an updater.
 
-Each run has a fresh output folder, `release.json` containing commit/build/runtime versions, and SHA-256 checksums. Only the executable, pinned runtime and tester instructions are packaged, never recordings or labels. Normal builds run checks; `-SkipChecks` is an explicit shortcut. `-CleanInstall` forces locked `npm ci` as CI does; stop any dev command first so its native modules can be replaced. Validate prerequisites/configuration without building with `npm run release -- -ValidateOnly`.
+Each run has a fresh output folder, `release.json` containing commit/build/runtime versions, and SHA-256 checksums. Only the executable, notices and tester instructions are packaged, never third-party tool binaries, recordings or labels. Normal builds run checks; `-SkipChecks` is an explicit shortcut. `-CleanInstall` forces locked `npm ci` as CI does; stop any dev command first so its native modules can be replaced. Validate prerequisites/configuration without building with `npm run release -- -ValidateOnly`.
 
-FFmpeg comes from [Gyan's Windows builds](https://www.gyan.dev/ffmpeg/builds/), pinned in `release/runtime-lock.json`; its original license/build notices and source links ship in `tools`. Update version, URL, SHA-256 and source together when upgrading. `.release-cache` holds downloads; `src-tauri/runtime` holds generated runtime files. Neither is committed.
+FFmpeg comes from [Gyan's Windows builds](https://www.gyan.dev/ffmpeg/builds/), pinned in `release/runtime-lock.json`; its original license/build notices and source links remain beside cached tools. Update version, URL, SHA-256 and source together when upgrading. `.release-cache` and `src-tauri/runtime` hold developer test tools, not packaged runtime files. Neither is committed.
+
+## Online video links
+
+Use **Open link** in the toolbar or paste a link on Home. Select a destination folder; the app downloads one video and opens it using the ordinary timestamp/label workspace. Progress and cancellation are available in the link panel. Existing videos and label files are preserved. Closing the panel lets a download continue; reopen it to see the result.
+
+Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp), [Deno](https://deno.com), and FFmpeg. Official x64 Windows/Linux yt-dlp and Deno releases are pinned with SHA-256 in `release/download-tools.json` and downloaded into app data only when needed. Credits and upstream license links are in the app and [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md). Site support follows yt-dlp; private, login-protected, restricted, or live videos may be unavailable. Upstream fixes require refreshing the pinned release metadata and rebuilding FireCrackle.
 
 ## Automated build
 
@@ -55,4 +61,4 @@ npm ci
 npm run tauri dev
 ```
 
-Development uses FFmpeg/FFprobe from `PATH`. Packaged apps prefer absolute paths to `tools` beside their executable, including when opened from a shortcut or another working directory. Labels autosave alongside the video; UI preferences are per Windows account.
+The app reuses FFmpeg/FFprobe from `PATH` or a legacy adjacent `tools` folder when available. Windows otherwise fetches them into app-local data; Linux uses distribution packages. Labels autosave alongside the video; UI preferences are per account.

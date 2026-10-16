@@ -38,13 +38,13 @@ if ($ArchivePath) {
     try {
         $version = (Get-Content -LiteralPath (Join-Path $project 'package.json') -Raw | ConvertFrom-Json).version
         $prefix = "FireCrackle-$version-windows-x64/"
-        foreach ($name in @('FireCrackle.exe','README.txt','LICENSE.txt','THIRD_PARTY_NOTICES.txt','release.json','SHA256SUMS.txt','tools/ffmpeg.exe','tools/ffprobe.exe','tools/LICENSE','tools/SOURCE.txt')) {
+        foreach ($name in @('FireCrackle.exe','README.txt','LICENSE.txt','THIRD_PARTY_NOTICES.txt','release.json','SHA256SUMS.txt')) {
             if (!$zip.GetEntry("$prefix$name")) { throw "Missing packaged file: $name" }
         }
         foreach ($entry in $zip.Entries) {
             if (!$entry.FullName.StartsWith($prefix) -or $entry.FullName -match '\.\.|labels\.jsonl|project\.json|\.mkv$') { throw "Unexpected archive entry: $($entry.FullName)" }
             $relative = $entry.FullName.Substring($prefix.Length)
-            if ($relative -and !$relative.StartsWith('tools/') -and $relative -notin @('FireCrackle.exe','README.txt','LICENSE.txt','THIRD_PARTY_NOTICES.txt','release.json','SHA256SUMS.txt')) { throw "Unexpected app file: $relative" }
+            if ($relative -and $relative -notin @('FireCrackle.exe','README.txt','LICENSE.txt','THIRD_PARTY_NOTICES.txt','release.json','SHA256SUMS.txt')) { throw "Unexpected app file (third-party tools must be downloaded separately): $relative" }
         }
         $reader = New-Object IO.StreamReader($zip.GetEntry("${prefix}SHA256SUMS.txt").Open())
         try { $lines = $reader.ReadToEnd() -split '\r?\n' } finally { $reader.Dispose() }

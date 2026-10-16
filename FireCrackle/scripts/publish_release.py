@@ -88,9 +88,10 @@ def verify_windows_archive(archive, version, commit):
             if not entry.filename.startswith(prefix) or ".." in parts or "\\" in entry.filename:
                 raise ValueError("Unsafe Windows ZIP layout")
         for name in ("FireCrackle.exe", "README.txt", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt",
-                     "release.json", "SHA256SUMS.txt", "tools/ffmpeg.exe", "tools/ffprobe.exe",
-                     "tools/LICENSE", "tools/SOURCE.txt"):
+                     "release.json", "SHA256SUMS.txt"):
             package.getinfo(prefix + name)
+        if any(entry.filename.startswith(prefix + "tools/") for entry in package.infolist()):
+            raise ValueError("Third-party tools must be downloaded separately, not packaged")
         info = package.getinfo(prefix + "release.json")
         if info.file_size > 64 * 1024:
             raise ValueError("Oversized build metadata")

@@ -84,6 +84,19 @@ class ReleaseSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Server checksum mismatch"):
             release.verify_uploaded("owner/repo", "v0.1.0", [artifact], info, self.root)
 
+    def test_accepts_lean_archive_but_rejects_bundled_tools(self):
+        archive = self.root / "lean.zip"
+        prefix = "FireCrackle-0.1.0-windows-x64/"
+        with zipfile.ZipFile(archive, "w") as package:
+            for name in ("FireCrackle.exe", "README.txt", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt", "SHA256SUMS.txt"):
+                package.writestr(prefix + name, "fixture")
+            package.writestr(prefix + "release.json", json.dumps(self.metadata()))
+        release.verify_windows_archive(archive, "0.1.0", "a" * 40)
+        with zipfile.ZipFile(archive, "a") as package:
+            package.writestr(prefix + "tools/ffmpeg.exe", "must download separately")
+        with self.assertRaisesRegex(ValueError, "downloaded separately"):
+            release.verify_windows_archive(archive, "0.1.0", "a" * 40)
+
     def test_retained_build_directories_are_resolved_without_ambiguity(self):
         output = self.root / "v0.1.0" / "fresh-build"
         output.mkdir(parents=True)

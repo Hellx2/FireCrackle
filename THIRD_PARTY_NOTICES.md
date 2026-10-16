@@ -16,11 +16,19 @@ The tracked `fire-detection/mod/gradle/wrapper/gradle-wrapper.jar` is the Gradle
 
 ## FFmpeg
 
-Release preparation downloads the Gyan Windows essentials package pinned by `FireCrackle/release/runtime-lock.json`. FFmpeg and FFprobe are separate executable programs, not linked into the app. This build is GPLv3; its original LICENSE, README with build/dependency details, and source links are copied into the packaged `tools` directory. Do not remove those notices or represent FFmpeg as MIT-licensed. The runtime is generated locally and is not committed to this repository.
+FFmpeg and FFprobe are separate executable programs, not linked into the app or included in Windows installers/portable archives. An installed pair is reused where available; otherwise Windows downloads the Gyan essentials package pinned by `FireCrackle/release/runtime-lock.json`, verifies its SHA-256 and caches it in app data. This build is GPLv3; its original LICENSE, README with build/dependency details, and source links are retained beside the cached executables. Build/test preparation may also download a local runtime; it must not be copied into release packages. Do not represent FFmpeg as MIT-licensed.
 
 Linux packages use the system FFmpeg/FFprobe installed through the user's distribution; they do not redistribute the Windows runtime. The Debian package declares FFmpeg as a dependency. Distribution-provided libraries and tools retain their own license terms.
 
-## Libraries and build tools
+## yt-dlp and Deno
+
+Online video importing is powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and its contributors. [Deno](https://github.com/denoland/deno) provides the JavaScript runtime used for YouTube extraction. Neither executable is included in the installer or portable archive: the app downloads official releases pinned in `FireCrackle/release/download-tools.json`, verifies SHA-256, and caches them in app data on first use.
+
+yt-dlp source is released under the [Unlicense](https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE). Its standalone binaries also contain third-party components with their own licenses (including Python and bundled libraries); consult the [upstream licensing details](https://github.com/yt-dlp/yt-dlp#license) and [third-party notices](https://github.com/yt-dlp/yt-dlp/blob/master/THIRD_PARTY_LICENSES.txt). The official binaries include yt-dlp-ejs scripts, which carry Unlicense/MIT/ISC notices. These upstream licenses are not replaced by FireCrackle's MIT license.
+
+Deno is [MIT-licensed](https://github.com/denoland/deno/blob/main/LICENSE.md) and includes separately licensed components described in its [third-party notices](https://github.com/denoland/deno/blob/main/third_party/README.md). Original licenses/notices present in downloaded archives are retained; upstream links and checksums are saved in the tool cache. Downloaded content retains its owners' rights.
+
+## App libraries and build tools
 
 React, Tauri, Rust crates, Python packages, Fabric/Loom and Gradle retain their own licenses. Exact JavaScript/Rust versions are recorded in their lockfiles; Python requirements and Gradle coordinates are recorded with the corresponding tools. Check their upstream notices when redistributing dependencies.
 

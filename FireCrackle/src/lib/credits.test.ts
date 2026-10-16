@@ -4,8 +4,8 @@ import { CREDITS, creditNames, validateCredits, type CreditSection } from "./cre
 const find = (name: string) => CREDITS.flatMap((s) => s.entries).find((e) => e.name === name);
 
 describe("the credits", () => {
-  it("has the three sections in order", () => {
-    expect(CREDITS.map((s) => s.title)).toEqual(["The research behind Fire Cracking", "Community", "Tool development"]);
+  it("keeps research credits first and credits downloaded tools", () => {
+    expect(CREDITS.map((s) => s.title)).toEqual(["The research behind Fire Cracking", "Community", "Tool development", "External tools · downloaded separately"]);
   });
 
   it("credits the research in the order it happened, with what each person did", () => {
@@ -36,7 +36,7 @@ describe("the credits", () => {
 
   it("lists every name exactly once", () => {
     const names = creditNames();
-    expect(names).toEqual(["Dijakonal", "Lagios", "Jasper", "Dart", "Minecraft Forensics", "KhiemGOM"]);
+    expect(names).toEqual(["Dijakonal", "Lagios", "Jasper", "Dart", "Minecraft Forensics", "KhiemGOM", "yt-dlp contributors", "Deno contributors", "FFmpeg contributors and Gyan Doshi"]);
     expect(new Set(names).size).toBe(names.length);
   });
 

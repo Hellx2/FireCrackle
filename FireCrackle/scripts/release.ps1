@@ -71,7 +71,6 @@ try {
     $stage = Join-Path $output $name
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'FireCrackle.exe')
-    Copy-Item -LiteralPath (Join-Path $project 'src-tauri/runtime') -Destination (Join-Path $stage 'tools') -Recurse
     $readme = (Get-Content -LiteralPath (Join-Path $project 'release/README-template.txt') -Raw).Replace('{{VERSION}}', $version)
     $readme | Set-Content -LiteralPath (Join-Path $stage 'README.txt') -Encoding UTF8
     $repo = Split-Path $project -Parent
@@ -82,7 +81,7 @@ try {
     $dirty = @(& git -c "safe.directory=$($repo.Replace('\','/'))" status --porcelain).Count -gt 0
     $runtime = Get-Content -LiteralPath (Join-Path $project 'release/runtime-lock.json') -Raw | ConvertFrom-Json
     [ordered]@{ product = 'FireCrackle'; version = $version; target = 'windows-x64'; builtUtc = $stamp;
-        commit = $commit; workingTreeDirty = $dirty; checksRun = !$SkipChecks; ffmpeg = $runtime } |
+        commit = $commit; workingTreeDirty = $dirty; checksRun = !$SkipChecks; externalTools = 'download-on-demand'; ffmpeg = $runtime } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'release.json') -Encoding UTF8
     Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object {
         "$( (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.FullName.Substring($stage.Length + 1).Replace('\','/'))"

@@ -4,7 +4,6 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use studio_core::config::{SettingInfo, Settings};
-use studio_core::import::Tools;
 use studio_core::lane::Bucket;
 use studio_core::phase::Flag;
 use studio_core::workspace::{PhaseChart, ThumbStatus, UiAction, View, Workspace};
@@ -12,7 +11,9 @@ use tauri::State;
 use tauri::ipc::Response;
 mod comparison_proof;
 mod compression;
+mod external_tools;
 mod pov;
+mod url_import;
 
 #[tauri::command]
 async fn compress_fire_cycle(
@@ -22,7 +23,14 @@ async fn compress_fire_cycle(
     crf: u8,
 ) -> Result<Response, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        compression::encode(&Tools::default().ffmpeg, width, height, frames, crf).map(Response::new)
+        compression::encode(
+            &external_tools::video_tools()?.ffmpeg,
+            width,
+            height,
+            frames,
+            crf,
+        )
+        .map(Response::new)
     })
     .await
     .map_err(err)?
@@ -32,8 +40,29 @@ async fn compress_fire_cycle(
 struct AppState {
     ws: Arc<Mutex<Option<Workspace>>>,
     pov: pov::Jobs,
+    links: url_import::Jobs,
 }
 
+#[tauri::command]
+fn tool_status() -> Option<external_tools::Progress> {
+    external_tools::status()
+}
+#[tauri::command]
+fn link_start(
+    state: State<'_, AppState>,
+    url: String,
+    folder: String,
+) -> Result<url_import::Status, String> {
+    state.links.start(url, std::path::PathBuf::from(folder))
+}
+#[tauri::command]
+fn link_status(state: State<'_, AppState>) -> Result<Option<url_import::Status>, String> {
+    state.links.status()
+}
+#[tauri::command]
+fn link_cancel(state: State<'_, AppState>, id: u64) -> Result<(), String> {
+    state.links.cancel(id)
+}
 #[tauri::command]
 fn pov_start(state: State<'_, AppState>) -> Result<pov::Status, String> {
     let guard = state.ws.lock().map_err(|_| "Workspace unavailable")?;
@@ -41,7 +70,7 @@ fn pov_start(state: State<'_, AppState>) -> Result<pov::Status, String> {
         .as_ref()
         .ok_or("No video is open")?
         .automation_project();
-    state.pov.start(project, Tools::default())
+    state.pov.start(project, external_tools::video_tools()?)
 }
 
 #[tauri::command]
@@ -110,8 +139,12 @@ async fn open_video(state: State<'_, AppState>, path: String) -> Result<View, St
     let ws = state.ws.clone();
     let pov = state.pov.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut w = Workspace::open(&Tools::default(), Path::new(&path), &Settings::default())
-            .map_err(err)?;
+        let mut w = Workspace::open(
+            &external_tools::video_tools()?,
+            Path::new(&path),
+            &Settings::default(),
+        )
+        .map_err(err)?;
         let view = w.view();
         let mut guard = ws
             .lock()
@@ -251,11 +284,20 @@ async fn settings_set(state: State<'_, AppState>, key: String, value: f64) -> Re
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run_app() {
     tauri::Builder::default()
+        .setup(|app| {
+            use tauri::Manager;
+            external_tools::configure(app.path().app_local_data_dir()?);
+            Ok(())
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             startup_video,
+            tool_status,
+            link_start,
+            link_status,
+            link_cancel,
             pov_start,
             pov_status,
             pov_cancel,

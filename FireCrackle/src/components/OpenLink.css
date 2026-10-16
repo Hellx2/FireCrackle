@@ -1,0 +1,9 @@
+.open-link { width:min(620px,calc(100vw - 40px)); }
+.open-link .modal-body { display:flex;flex-direction:column;gap:12px; }
+.open-link p { margin:0;line-height:1.55; }
+.link-field { display:flex;flex-direction:column;gap:7px; }
+.link-field input { width:100%;box-sizing:border-box;padding:9px 11px; }
+.link-actions { display:flex;gap:8px;flex-wrap:wrap; }
+.link-status { overflow-wrap:anywhere; }
+.tool-download { display:flex;align-items:center;gap:15px; }
+.tool-download progress { width:180px;accent-color:var(--accent,#f08a24); }

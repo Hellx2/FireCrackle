@@ -33,6 +33,14 @@ export const CREDITS: CreditSection[] = [
     title: "Tool development",
     entries: [{ name: "KhiemGOM", note: "built FireCrackle." }],
   },
+  {
+    title: "External tools · downloaded separately",
+    entries: [
+      { name: "yt-dlp contributors", note: "provide online video downloads · github.com/yt-dlp/yt-dlp · source: Unlicense; standalone builds contain separately licensed components." },
+      { name: "Deno contributors", note: "provide the JavaScript runtime for YouTube extraction · deno.com · MIT and third-party licenses." },
+      { name: "FFmpeg contributors and Gyan Doshi", note: "provide video decoding, probing and compression · ffmpeg.org / gyan.dev · Windows essentials build: GPLv3." },
+    ],
+  },
 ];
 
 export function creditNames(sections: CreditSection[] = CREDITS): string[] {

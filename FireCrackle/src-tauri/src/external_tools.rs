@@ -1,0 +1,475 @@
+//! Third-party executables are fetched once, verified, and kept outside the app package.
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::BTreeMap,
+    fs::{self, File},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    process::Command,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+use studio_core::import::Tools;
+
+static ROOT: OnceLock<PathBuf> = OnceLock::new();
+static INSTALL: Mutex<()> = Mutex::new(());
+static STATUS: Mutex<Option<Progress>> = Mutex::new(None);
+static VIDEO: OnceLock<Tools> = OnceLock::new();
+fn check_cancel(cancel: Option<&AtomicBool>) -> Result<(), String> {
+    if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+        Err("Cancelled".into())
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct Progress {
+    pub name: String,
+    pub downloaded: u64,
+    pub total: Option<u64>,
+}
+#[derive(Deserialize)]
+struct Asset {
+    url: String,
+    sha256: String,
+    kind: String,
+    version: String,
+}
+
+pub fn configure(root: PathBuf) {
+    let _ = ROOT.set(root.join("tools"));
+}
+fn root() -> Result<&'static Path, String> {
+    ROOT.get()
+        .map(PathBuf::as_path)
+        .ok_or("Tool cache unavailable".into())
+}
+pub fn status() -> Option<Progress> {
+    STATUS.lock().ok().and_then(|s| s.clone())
+}
+fn progress(name: &str, downloaded: u64, total: Option<u64>) {
+    if let Ok(mut s) = STATUS.lock() {
+        *s = Some(Progress {
+            name: name.into(),
+            downloaded,
+            total,
+        });
+    }
+}
+struct ClearStatus;
+impl Drop for ClearStatus {
+    fn drop(&mut self) {
+        if let Ok(mut s) = STATUS.lock() {
+            *s = None;
+        }
+    }
+}
+
+pub fn command(exe: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut c = Command::new(exe);
+    c.stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x08000000);
+    }
+    c
+}
+fn runs(exe: &std::ffi::OsStr, arg: &str) -> bool {
+    command(exe)
+        .arg(arg)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+fn verify(path: &Path, expected: &str) -> Result<(), String> {
+    let mut input = File::open(path).map_err(|e| e.to_string())?;
+    let mut sha = Sha256::new();
+    let mut buffer = [0; 65536];
+    loop {
+        let n = input.read(&mut buffer).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        sha.update(&buffer[..n]);
+    }
+    if format!("{:x}", sha.finalize()) != expected {
+        return Err("Tool download checksum mismatch; please retry".into());
+    }
+    Ok(())
+}
+fn download(
+    asset: &Asset,
+    dir: &Path,
+    name: &str,
+    cancel: Option<&AtomicBool>,
+) -> Result<PathBuf, String> {
+    check_cancel(cancel)?;
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let archive = dir.join("download");
+    let partial = dir.join("download.part");
+    if archive.is_file() && verify(&archive, &asset.sha256).is_ok() {
+        return Ok(archive);
+    }
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(1800))
+        .user_agent("FireCrackle/0.1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut response = client
+        .get(&asset.url)
+        .send()
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| format!("Could not download {name}: {e}"))?;
+    let total = response.content_length();
+    progress(name, 0, total);
+    let result = (|| {
+        let mut output = File::create(&partial).map_err(|e| e.to_string())?;
+        let mut done = 0;
+        let mut buffer = [0; 65536];
+        loop {
+            check_cancel(cancel)?;
+            let n = response.read(&mut buffer).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            output.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
+            done += n as u64;
+            progress(name, done, total);
+        }
+        output.sync_all().map_err(|e| e.to_string())?;
+        verify(&partial, &asset.sha256)?;
+        if archive.exists() {
+            fs::remove_file(&archive).map_err(|e| e.to_string())?;
+        }
+        fs::rename(&partial, &archive).map_err(|e| e.to_string())?;
+        Ok(archive.clone())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(partial);
+    }
+    result
+}
+fn extract_zip(archive: &Path, dir: &Path, executables: &[&str]) -> Result<(), String> {
+    let mut zip = zip::ZipArchive::new(File::open(archive).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
+        let Some(path) = entry.enclosed_name() else {
+            return Err("Unsafe tool archive path".into());
+        };
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let upper = name.to_ascii_uppercase();
+        if !executables.contains(&name)
+            && !upper.starts_with("LICENSE")
+            && !upper.starts_with("COPYING")
+            && !upper.starts_with("README")
+        {
+            continue;
+        }
+        if entry.is_dir() {
+            continue;
+        }
+        let target = dir.join(name);
+        let mut output = File::create(&target).map_err(|e| e.to_string())?;
+        std::io::copy(&mut entry, &mut output).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        if executables.contains(&name) {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&target, fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+fn install(
+    name: &str,
+    asset: &Asset,
+    executables: &[&str],
+    cancel: Option<&AtomicBool>,
+) -> Result<PathBuf, String> {
+    check_cancel(cancel)?;
+    let dir = root()?.join(format!("{name}-{}", asset.version));
+    if dir.join("ready").is_file() && executables.iter().all(|n| dir.join(n).is_file()) {
+        return Ok(dir);
+    }
+    let _clear = ClearStatus;
+    progress(name, 0, None);
+    let archive = download(asset, &dir, name, cancel)?;
+    check_cancel(cancel)?;
+    if asset.kind == "zip" {
+        extract_zip(&archive, &dir, executables)?;
+    } else {
+        fs::copy(&archive, dir.join(executables[0])).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(dir.join(executables[0]), fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    if !executables.iter().all(|n| dir.join(n).is_file()) {
+        return Err(format!("{name} archive is missing its executable"));
+    }
+    fs::write(
+        dir.join("THIRD_PARTY_NOTICES.txt"),
+        include_str!("../../../THIRD_PARTY_NOTICES.md"),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(
+        dir.join("SOURCE.txt"),
+        format!("{}\nSHA256 {}\n", asset.url, asset.sha256),
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(dir.join("ready"), &asset.sha256).map_err(|e| e.to_string())?;
+    // Keep the installed tools and notices, not a second copy of the archive.
+    let _ = fs::remove_file(archive);
+    Ok(dir)
+}
+pub fn video_tools() -> Result<Tools, String> {
+    video_tools_cancellable(None)
+}
+pub fn video_tools_cancellable(cancel: Option<&AtomicBool>) -> Result<Tools, String> {
+    check_cancel(cancel)?;
+    if let Some(tools) = VIDEO.get() {
+        return Ok(tools.clone());
+    }
+    let _lock = INSTALL.lock().map_err(|_| "Tool setup unavailable")?;
+    if let Some(tools) = VIDEO.get() {
+        return Ok(tools.clone());
+    }
+    let tools = Tools::default();
+    if runs(&tools.ffmpeg, "-version") && runs(&tools.ffprobe, "-version") {
+        let _ = VIDEO.set(tools.clone());
+        return Ok(tools);
+    }
+    #[cfg(windows)]
+    {
+        #[derive(Deserialize)]
+        struct Lock {
+            url: String,
+            sha256: String,
+            version: String,
+        }
+        let lock: Lock = serde_json::from_str(include_str!("../../release/runtime-lock.json"))
+            .map_err(|e| e.to_string())?;
+        let asset = Asset {
+            url: lock.url,
+            sha256: lock.sha256,
+            version: lock.version,
+            kind: "zip".into(),
+        };
+        let dir = install("ffmpeg", &asset, &["ffmpeg.exe", "ffprobe.exe"], cancel)?;
+        let tools = Tools {
+            ffmpeg: dir.join("ffmpeg.exe").into_os_string(),
+            ffprobe: dir.join("ffprobe.exe").into_os_string(),
+        };
+        if !runs(&tools.ffmpeg, "-version") || !runs(&tools.ffprobe, "-version") {
+            let _ = fs::remove_file(dir.join("ready"));
+            return Err("Downloaded FFmpeg could not start".into());
+        }
+        let _ = VIDEO.set(tools.clone());
+        Ok(tools)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Install FFmpeg with your system package manager, then retry (for example: sudo apt install ffmpeg).".into())
+    }
+}
+pub fn link_tools(cancel: Option<&AtomicBool>) -> Result<(PathBuf, PathBuf), String> {
+    if !cfg!(target_arch = "x86_64") {
+        return Err("Online video downloads currently support x64 Windows and Linux.".into());
+    }
+    let _lock = INSTALL.lock().map_err(|_| "Tool setup unavailable")?;
+    let manifest: BTreeMap<String, BTreeMap<String, Asset>> =
+        serde_json::from_str(include_str!("../../release/download-tools.json"))
+            .map_err(|e| e.to_string())?;
+    let platform = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        return Err("Online video downloads support Windows and Linux.".into());
+    };
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let yname = format!("yt-dlp{suffix}");
+    let dname = format!("deno{suffix}");
+    let assets = &manifest[platform];
+    let yt = install("yt-dlp", &assets["yt-dlp"], &[&yname], cancel)?;
+    let deno = install("deno", &assets["deno"], &[&dname], cancel)?;
+    Ok((yt.join(yname), deno.join(dname)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn manifest_has_verified_https_downloads() {
+        let manifest: BTreeMap<String, BTreeMap<String, Asset>> =
+            serde_json::from_str(include_str!("../../release/download-tools.json")).unwrap();
+        for assets in manifest.values() {
+            for a in assets.values() {
+                assert!(a.url.starts_with("https://github.com/"));
+                assert_eq!(a.sha256.len(), 64);
+                assert!(a.sha256.bytes().all(|c| c.is_ascii_hexdigit()));
+            }
+        }
+    }
+    #[test]
+    fn refuses_bad_checksum() {
+        let path = std::env::temp_dir().join(format!("firecrackle-hash-{}", std::process::id()));
+        fs::write(&path, b"abc").unwrap();
+        assert!(
+            verify(
+                &path,
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            )
+            .is_ok()
+        );
+        assert!(verify(&path, &"0".repeat(64)).is_err());
+        fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn cancelled_setup_does_not_download() {
+        let cancelled = AtomicBool::new(true);
+        assert!(check_cancel(Some(&cancelled)).is_err());
+    }
+    #[test]
+    #[ignore = "Downloads official executables; run explicitly with network access"]
+    fn download_and_run_pinned_tools() {
+        configure(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.release-cache/link-tools-smoke"),
+        );
+        let (yt, deno) = link_tools(None).unwrap();
+        assert!(runs(yt.as_os_str(), "--version"));
+        assert!(runs(deno.as_os_str(), "--version"));
+        let again = link_tools(None).unwrap();
+        assert_eq!(again, (yt, deno));
+        #[cfg(windows)]
+        {
+            let asset: serde_json::Value =
+                serde_json::from_str(include_str!("../../release/runtime-lock.json")).unwrap();
+            let asset = Asset {
+                url: asset["url"].as_str().unwrap().into(),
+                sha256: asset["sha256"].as_str().unwrap().into(),
+                version: asset["version"].as_str().unwrap().into(),
+                kind: "zip".into(),
+            };
+            let dir = root().unwrap().join(format!("ffmpeg-{}", asset.version));
+            fs::create_dir_all(&dir).unwrap();
+            let existing = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../.release-cache/ffmpeg-8.1.2.zip");
+            if existing.is_file() && !dir.join("ready").is_file() {
+                fs::copy(existing, dir.join("download")).unwrap();
+            }
+            let dir = install("ffmpeg", &asset, &["ffmpeg.exe", "ffprobe.exe"], None).unwrap();
+            assert!(runs(dir.join("ffmpeg.exe").as_os_str(), "-version"));
+            assert!(runs(dir.join("ffprobe.exe").as_os_str(), "-version"));
+            assert!(dir.join("LICENSE").is_file());
+            assert!(dir.join("SOURCE.txt").is_file());
+        }
+        // Exercise the actual downloader against a small video we own, then open it as a workspace.
+        let video = video_tools().unwrap();
+        let fixture = root().unwrap().join("smoke.mp4");
+        assert!(
+            command(&video.ffmpeg)
+                .args([
+                    "-v",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=orange:s=64x64:r=10",
+                    "-t",
+                    "0.3",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p"
+                ])
+                .arg(&fixture)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let bytes = fs::read(&fixture).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
+        let server = std::thread::spawn(move || {
+            while !stopping.load(Ordering::Relaxed) {
+                if let Ok((mut socket, _)) = listener.accept() {
+                    let _ = socket.set_nonblocking(false);
+                    let _ = socket.set_read_timeout(Some(Duration::from_secs(2)));
+                    let mut req = [0; 8192];
+                    let mut n = 0;
+                    while n < req.len() && !req[..n].windows(4).any(|p| p == b"\r\n\r\n") {
+                        let read = socket.read(&mut req[n..]).unwrap_or(0);
+                        if read == 0 {
+                            break;
+                        }
+                        n += read;
+                    }
+                    let head = req[..n].starts_with(b"HEAD ");
+                    let headers = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        bytes.len()
+                    );
+                    let _ = socket.write_all(headers.as_bytes());
+                    if !head {
+                        let _ = socket.write_all(&bytes);
+                    }
+                } else {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        });
+        let jobs = crate::url_import::Jobs::default();
+        let state = jobs
+            .start(
+                format!("http://{address}/smoke.mp4"),
+                root().unwrap().to_path_buf(),
+            )
+            .unwrap();
+        assert!(
+            jobs.start(
+                format!("http://{address}/smoke.mp4"),
+                root().unwrap().to_path_buf()
+            )
+            .is_err()
+        );
+        let until = std::time::Instant::now() + Duration::from_secs(45);
+        let result = loop {
+            let s = jobs.status().unwrap().unwrap();
+            if s.state != "running" || std::time::Instant::now() > until {
+                break s;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        stop.store(true, Ordering::Relaxed);
+        server.join().unwrap();
+        if result.state == "running" {
+            jobs.cancel(state.id).unwrap();
+        }
+        assert_eq!(result.state, "done", "{:?}", result.error);
+        let mut workspace = studio_core::workspace::Workspace::open(
+            &video,
+            Path::new(result.path.as_ref().unwrap()),
+            &studio_core::config::Settings::default(),
+        )
+        .unwrap();
+        assert_eq!(workspace.view().frame_count, 3);
+        workspace.wait_idle();
+    }
+}

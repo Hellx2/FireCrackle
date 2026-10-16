@@ -74,6 +74,11 @@ export interface Backend {
   pickVideo(): Promise<string | null>;
   /** An optional video passed to the desktop app on launch. */
   startupVideo?(): Promise<string | null>;
+  pickDownloadFolder?(): Promise<string | null>;
+  linkStart?(url: string, folder: string): Promise<LinkStatus>;
+  linkStatus?(): Promise<LinkStatus | null>;
+  linkCancel?(id: number): Promise<void>;
+  toolStatus?(): Promise<ToolProgress | null>;
   openVideo(path: string): Promise<View>;
   view(): Promise<View>;
   act(action: UiAction): Promise<View>;
@@ -98,6 +103,9 @@ export interface Backend {
   povApply?(id:number): Promise<View>;
 }
 
+export interface LinkStatus { id:number; state:"running"|"done"|"cancelled"|"failed"; message:string; path:string|null; error:string|null; }
+export interface ToolProgress { name:string; downloaded:number; total:number|null; }
+
 export interface PovStatus {
   id:number; video_path:string; state:"running"|"done"|"cancelled"|"failed";
   processed:number; total:number; accepted:number; applied:number; error:string|null;
@@ -120,6 +128,14 @@ export async function createBackend(): Promise<Backend> {
   const { open, save } = await import("@tauri-apps/plugin-dialog");
   return {
     mock: false,
+    async pickDownloadFolder() {
+      const folder = await open({ title: "Save downloaded video in…", directory: true, multiple: false });
+      return typeof folder === "string" ? folder : null;
+    },
+    linkStart: (url, folder) => invoke<LinkStatus>("link_start", { url, folder }),
+    linkStatus: () => invoke<LinkStatus | null>("link_status"),
+    linkCancel: (id) => invoke<void>("link_cancel", { id }),
+    toolStatus: () => invoke<ToolProgress | null>("tool_status"),
     povStart: () => invoke<PovStatus>("pov_start"),
     povStatus: () => invoke<PovStatus|null>("pov_status"),
     povCancel: (id) => invoke<void>("pov_cancel",{id}),

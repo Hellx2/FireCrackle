@@ -1,0 +1,314 @@
+use crate::external_tools;
+use serde::Serialize;
+use std::{
+    fs,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
+
+#[derive(Clone, Serialize)]
+pub struct Status {
+    pub id: u64,
+    pub state: String,
+    pub message: String,
+    pub path: Option<String>,
+    pub error: Option<String>,
+}
+#[derive(Clone, Default)]
+pub struct Jobs {
+    inner: Arc<Mutex<Option<Job>>>,
+}
+type Job = (Status, Arc<AtomicBool>);
+static NEXT: AtomicU64 = AtomicU64::new(1);
+
+fn validate_url(url: &str) -> Result<String, String> {
+    let parsed = reqwest::Url::parse(url.trim())
+        .map_err(|_| "Paste a full http:// or https:// video link")?;
+    if !matches!(parsed.scheme(), "https" | "http")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Use an http:// or https:// video link without embedded login details".into());
+    }
+    Ok(parsed.to_string())
+}
+impl Jobs {
+    pub fn status(&self) -> Result<Option<Status>, String> {
+        Ok(self
+            .inner
+            .lock()
+            .map_err(|_| "Download unavailable")?
+            .as_ref()
+            .map(|(s, _)| s.clone()))
+    }
+    fn message(&self, id: u64, message: String) {
+        if let Ok(mut guard) = self.inner.lock()
+            && let Some((s, _)) = guard.as_mut()
+            && s.id == id
+        {
+            s.message = message;
+        }
+    }
+    pub fn cancel(&self, id: u64) -> Result<(), String> {
+        let guard = self.inner.lock().map_err(|_| "Download unavailable")?;
+        if let Some((s, c)) = guard.as_ref()
+            && s.id == id
+        {
+            c.store(true, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+    pub fn start(&self, url: String, folder: PathBuf) -> Result<Status, String> {
+        let url = validate_url(&url)?;
+        let folder = folder
+            .canonicalize()
+            .map_err(|_| "Choose an existing download folder")?;
+        // Python/FFmpeg normalize ordinary Windows paths more reliably than verbatim \\?\ paths.
+        #[cfg(windows)]
+        let folder = PathBuf::from(
+            folder
+                .to_string_lossy()
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&folder.to_string_lossy()),
+        );
+        if !folder.is_dir() {
+            return Err("Choose an existing download folder".into());
+        }
+        let mut guard = self.inner.lock().map_err(|_| "Download unavailable")?;
+        if guard.as_ref().is_some_and(|(s, _)| s.state == "running") {
+            return Err("A video download is already running".into());
+        }
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let status = Status {
+            id,
+            state: "running".into(),
+            message: "Preparing video tools…".into(),
+            path: None,
+            error: None,
+        };
+        *guard = Some((status.clone(), cancel.clone()));
+        drop(guard);
+        let jobs = self.clone();
+        std::thread::spawn(move || {
+            let result = jobs.download(id, &url, &folder, &cancel);
+            if let Ok(mut guard) = jobs.inner.lock()
+                && let Some((s, _)) = guard.as_mut()
+                && s.id == id
+            {
+                match result {
+                    Ok(path) => {
+                        s.state = "done".into();
+                        s.message = "Video downloaded".into();
+                        s.path = Some(path.to_string_lossy().into_owned());
+                    }
+                    Err(e) => {
+                        s.state = if cancel.load(Ordering::Relaxed) {
+                            "cancelled"
+                        } else {
+                            "failed"
+                        }
+                        .into();
+                        s.message = if s.state == "cancelled" {
+                            "Download cancelled"
+                        } else {
+                            "Download failed"
+                        }
+                        .into();
+                        s.error = Some(e);
+                    }
+                }
+            }
+        });
+        Ok(status)
+    }
+    fn download(
+        &self,
+        id: u64,
+        url: &str,
+        folder: &Path,
+        cancel: &AtomicBool,
+    ) -> Result<PathBuf, String> {
+        let tools = external_tools::video_tools_cancellable(Some(cancel))?;
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Cancelled".into());
+        }
+        let (yt, deno) = external_tools::link_tools(Some(cancel))?;
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Cancelled".into());
+        }
+        // A fresh owned directory prevents overwriting or deleting the user's existing downloads.
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis();
+        let dir = folder.join(format!("FireCrackle-{stamp}-{id}"));
+        fs::create_dir(&dir).map_err(|e| e.to_string())?;
+        let result = (|| {
+            let mut command = external_tools::command(yt);
+            command
+                .env("PYTHONIOENCODING", "utf-8")
+                .args(["--encoding", "utf-8"]);
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                command.process_group(0);
+            }
+            command
+                .args([
+                    "--ignore-config",
+                    "--no-playlist",
+                    "--playlist-items",
+                    "1",
+                    "--match-filters",
+                    "!is_live",
+                    "--no-simulate",
+                    "--newline",
+                    "--no-colors",
+                    "--no-js-runtimes",
+                    "--js-runtimes",
+                ])
+                .arg(format!("deno:{}", deno.display()));
+            if Path::new(&tools.ffmpeg).is_file() {
+                command.arg("--ffmpeg-location").arg(&tools.ffmpeg);
+            }
+            command.args(["--format","bv*+ba/b","--merge-output-format","mkv","--restrict-filenames","--no-mtime","--print","after_move:@DONE@%(filepath)j","--progress","--progress-template","download:Downloading %(progress._percent_str)s - %(progress._speed_str)s - ETA %(progress._eta_str)s","--paths"]).arg(&dir)
+                .args(["--output","%(title).120B [%(id)s].%(ext)s","--"]).arg(url).stdout(Stdio::piped()).stderr(Stdio::piped());
+            let mut child = command
+                .spawn()
+                .map_err(|e| format!("Could not start yt-dlp: {e}"))?;
+            let output = child.stdout.take().ok_or("Missing downloader output")?;
+            let errors = child.stderr.take().ok_or("Missing downloader errors")?;
+            let (tx, rx) = std::sync::mpsc::channel();
+            for stream in [
+                Box::new(output) as Box<dyn std::io::Read + Send>,
+                Box::new(errors),
+            ] {
+                let tx = tx.clone();
+                std::thread::spawn(move || {
+                    // Standalone Python may write the Windows code page despite --encoding.
+                    // Invalid UTF-8 in progress text must never close the pipe mid-download.
+                    for line in BufReader::new(stream).split(b'\n').map_while(Result::ok) {
+                        let _ = tx.send(
+                            String::from_utf8_lossy(&line)
+                                .trim_end_matches('\r')
+                                .to_string(),
+                        );
+                    }
+                });
+            }
+            drop(tx);
+            self.message(id, "Connecting to video site…".into());
+            let mut path = None;
+            let mut last = String::new();
+            let mut log = std::collections::VecDeque::new();
+            let code = loop {
+                while let Ok(line) = rx.try_recv() {
+                    if let Some(p) = line.strip_prefix("@DONE@") {
+                        path = serde_json::from_str::<String>(p).ok().map(PathBuf::from);
+                    } else {
+                        last = line.chars().take(1000).collect();
+                        log.push_back(last.clone());
+                        if log.len() > 8 {
+                            log.pop_front();
+                        }
+                        self.message(id, last.clone());
+                    }
+                }
+                if cancel.load(Ordering::Relaxed) {
+                    #[cfg(windows)]
+                    {
+                        let _ = external_tools::command("taskkill.exe")
+                            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                            .output();
+                    }
+                    #[cfg(unix)]
+                    {
+                        let _ = external_tools::command("kill")
+                            .args(["-TERM", "--", &format!("-{}", child.id())])
+                            .output();
+                    }
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("Cancelled".into());
+                }
+                if let Some(code) = child.try_wait().map_err(|e| e.to_string())? {
+                    break code;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            };
+            // Readers can deliver the final path just after the child exits.
+            for line in rx {
+                if let Some(p) = line.strip_prefix("@DONE@") {
+                    path = serde_json::from_str::<String>(p).ok().map(PathBuf::from);
+                } else {
+                    last = line.chars().take(1000).collect();
+                    log.push_back(last.clone());
+                    if log.len() > 8 {
+                        log.pop_front();
+                    }
+                }
+            }
+            if !code.success() {
+                return Err(if last.is_empty() {
+                    format!("yt-dlp exited with {code}")
+                } else {
+                    log.into_iter().collect::<Vec<_>>().join("\n")
+                });
+            }
+            let path = path.ok_or("Downloader did not return a video file")?;
+            let actual = path.canonicalize().map_err(|e| e.to_string())?;
+            let owned = dir.canonicalize().map_err(|e| e.to_string())?;
+            if !actual.starts_with(&owned) || !actual.is_file() {
+                return Err("Downloader returned an unexpected file path".into());
+            }
+            Ok(actual)
+        })();
+        if result.is_err() {
+            // Only remove the directory this job just created inside the chosen folder.
+            if let (Ok(actual), Ok(parent)) = (dir.canonicalize(), folder.canonicalize())
+                && actual.parent() == Some(parent.as_path())
+            {
+                let _ = fs::remove_dir_all(actual);
+            }
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn only_web_urls_are_accepted() {
+        for u in [
+            "file:///etc/passwd",
+            "-o test",
+            "ftp://example.com/x",
+            "https://user:pass@example.com/x",
+            "garbage",
+        ] {
+            assert!(validate_url(u).is_err(), "{u}");
+        }
+        assert!(validate_url(" https://youtu.be/example ").is_ok());
+    }
+    #[test]
+    fn invalid_folder_does_not_start_job() {
+        let jobs = Jobs::default();
+        assert!(
+            jobs.start(
+                "https://example.com/video".into(),
+                PathBuf::from("missing-download-folder")
+            )
+            .is_err()
+        );
+        assert!(jobs.status().unwrap().is_none());
+    }
+}

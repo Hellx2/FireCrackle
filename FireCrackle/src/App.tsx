@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import "./App.css";
 import { FlagsPanel } from "./components/FlagsPanel";
 import { AutomationTools } from "./components/AutomationTools";
+import { OpenLink, ToolSetupNotice } from "./components/OpenLink";
 import { Icon, IconButton } from "./components/Icon";
 import { PhaseTab } from "./components/PhaseTab";
 import { ImagesTab } from "./components/ImagesTab";
@@ -65,6 +66,7 @@ export default function App() {
   const [showCredits, setShowCredits] = useState(false);
   const [showAutomation,setShowAutomation]=useState(false);
   const [path, setPath] = useState("");
+  const [showLink, setShowLink] = useState(false);
   const [tab, setTab] = useState<"label" | "phase" | "images">(readPreferences().tab);
   const { layout, set: setLayout, reset: resetLayout } = useLayout();
   const workareaRef = useRef<HTMLElement | null>(null);
@@ -123,7 +125,7 @@ export default function App() {
 
   // hotkeys
   useEffect(() => {
-    if (!view || tab !== "label" || showAutomation) return;
+    if (!view || tab !== "label" || showAutomation || showLink) return;
     const onKey = (e: KeyboardEvent) => {
       // Reserve navigation/confirmation before focused inputs and buttons handle them.
       if (isGlobalKey(e)) {
@@ -172,7 +174,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite, previewSprite, showAutomation]);
+  }, [view, tab, act, maxSpeed, confirmCandidate, candidatePick, candidate, stageSprite, previewSprite, showAutomation, showLink]);
 
   // playback is a Label-tab thing: it must not keep stepping behind the chart
   useEffect(() => {
@@ -233,6 +235,7 @@ export default function App() {
         </nav>
         <div className="top-actions">
           <IconButton icon="folder" label={ws.opening ? "Opening video…" : "Open video"} onClick={() => void chooseVideo()} disabled={ws.opening} />
+          <button onClick={() => { setPlayback(STOPPED); setShowLink(true); }} disabled={ws.opening}>Open link</button>
           {view && (
             <div className={`video-top-actions${tab === "images" ? " inactive" : ""}`} inert={tab === "images"} aria-hidden={tab === "images"}>
               <IconButton icon="save" label="Save labels" onClick={() => void ws.save()} disabled={backend.mock || ws.opening} title="Save labels · Ctrl+S · autosave is also on" />
@@ -260,6 +263,7 @@ export default function App() {
         </div>
       </header>
 
+      <ToolSetupNotice backend={backend} />
       {tab !== "images" && ws.error && (
         <div className="banner error" onClick={ws.clearError}>
           {ws.error} <span className="dismiss">(click to dismiss)</span>
@@ -288,8 +292,8 @@ export default function App() {
           </button>
           {!backend.mock && (
             <div className="path-entry">
-              <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="or paste a path to a video file" />
-              <button onClick={() => path && void ws.open(path)} disabled={!path || ws.opening}>
+              <input value={path} onChange={(e) => setPath(e.target.value)} placeholder="or paste a video path or link" />
+              <button onClick={() => { if (/^https?:\/\//i.test(path.trim())) setShowLink(true); else if(path) void ws.open(path); }} disabled={!path || ws.opening}>
                 Open
               </button>
             </div>
@@ -409,6 +413,7 @@ export default function App() {
       )}
       {showSettings && <SettingsPanel settings={ws.settings} onSet={ws.setSetting} onClose={() => setShowSettings(false)} />}
       {showCredits && <Credits onClose={() => setShowCredits(false)} />}
+      {showLink && <OpenLink backend={backend} initialUrl={/^https?:\/\//i.test(path.trim()) ? path : ""} onClose={() => setShowLink(false)} onOpen={async downloaded => { setPlayback(STOPPED); setDraft(null); setPreviewSprite(null); setTab("label"); setShowLink(false); await ws.open(downloaded); }} />}
       {showAutomation && view && <AutomationTools key={ws.videoPath} backend={backend} videoPath={ws.videoPath} onApply={ws.applyAutomation} onClose={()=>setShowAutomation(false)} />}
     </div>
   );
