@@ -5,7 +5,6 @@ use crate::index::{build_index, parse_packets, FrameIndex, IndexError};
 use crate::project::{fingerprint, Project, VideoMeta};
 use std::ffi::OsString;
 use std::path::Path;
-use std::process::Command;
 
 /// Ubuntu 22.04's FFmpeg 4.4 predates `-fps_mode`; both spellings preserve every frame.
 pub const PASSTHROUGH_ARGS: [&str; 2] = if cfg!(target_os = "linux") {
@@ -121,7 +120,7 @@ pub fn parse_stream_info(text: &str) -> Result<VideoMeta, ImportError> {
 /// Run an ffprobe query, returning stdout. A tool that cannot start is `ToolMissing`; a non-zero exit is
 /// `ProbeFailed` with ffprobe's own message.
 fn ffprobe(tools: &Tools, args: &[&str], video: &Path) -> Result<String, ImportError> {
-    let out = Command::new(&tools.ffprobe)
+    let out = crate::proc::hidden_command(&tools.ffprobe)
         .args(["-v", "error", "-select_streams", "v:0"])
         .args(args)
         .arg(video)

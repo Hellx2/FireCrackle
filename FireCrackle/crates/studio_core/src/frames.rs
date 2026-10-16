@@ -11,7 +11,7 @@ use crate::index::FrameIndex;
 use std::io::Read;
 use std::ops::Range;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,7 +191,7 @@ pub fn decode_job(
         return Err(DecodeError::Cancelled);
     }
 
-    let mut cmd = Command::new(&tools.ffmpeg);
+    let mut cmd = crate::proc::hidden_command(&tools.ffmpeg);
     cmd.args(["-nostdin", "-hide_banner", "-loglevel", "info", "-nostats"]);
     // ffmpeg reports frame times relative to the seek point (or to the first frame when there is no seek), so the
     // absolute time of decoded frame `k` is `time_base + showinfo time`. `-copyts` would keep absolute times but

@@ -16,6 +16,7 @@ pub mod lane;
 pub mod phase;
 pub mod phase_compare;
 pub mod phase_v2;
+pub mod proc;
 pub mod project;
 pub mod session;
 pub mod thumbs;
