@@ -5,3 +5,5 @@
 .video-rotation-handle:active { cursor: grabbing; }
 .video-rotation-handle circle { fill: #161b24; stroke: #61e9ff; stroke-width: 2; }
 .video-rotation-handle path { fill: none; stroke: #61e9ff; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.video-view-controls { display: flex; align-items: center; gap: 8px; }
+.video-view-controls button.icon-button { pointer-events: auto; min-height: 24px; padding: 2px 6px; font-size: 12px; }

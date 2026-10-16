@@ -232,7 +232,10 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
           {ruler.enabled && url && imageSize.width > 0 && <VideoRuler {...imageSize} zoom={xf.scale} points={ruler.points} locked={ruler.locked} onSelect={setRulerSelected} onChange={points => setRuler(current => ({ ...current, points }))} />}
         </div>
         <VideoRotation frameRef={frameRef} onRotate={(degrees, x, y) => setXf(current => rotateView(current, x, y, degrees))} />
-        {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0 || !!xf.angle) && <div className="zoom-tag">{Number(xf.scale.toPrecision(3))}×{xf.angle ? ` · ${Number(xf.angle.toFixed(1))}°` : ""} · double-click to reset</div>}
+        {(xf.scale !== 1 || xf.x !== 0 || xf.y !== 0 || !!xf.angle) && <div className="zoom-tag video-view-controls">
+          <span>{Number(xf.scale.toPrecision(3))}×{xf.angle ? ` · ${Number(xf.angle.toFixed(1))}°` : ""} · double-click to reset</span>
+          {!!xf.angle && <IconButton icon="reset" label="Reset video rotation" title="Reset video rotation to 0°" onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onClick={() => setXf(current => rotateView(current, boxOf().w / 2, boxOf().h / 2, -(current.angle ?? 0)))}>Unrotate</IconButton>}
+        </div>}
         {shown !== view.current && url && <div className="loading-tag">loading frame {view.current}…</div>}
         <div className={`label-chip ${labelClass(view.label)}`}>{describeLabel(view.label)}</div>
         {view.typed_pending !== null && <div className="typed-chip">row: {view.typed_pending}_</div>}
@@ -245,7 +248,6 @@ export function VideoPane({ backend, view, onError, previewRef, onPreviewChange,
         )}
       </div>
       <div className="hud-controls video-tools" role="group" aria-label="Video tools" onKeyDown={(e) => e.stopPropagation()}>
-        <IconButton icon="reset" label="Reset video rotation" title="Reset video rotation to 0° · hold Shift over video to choose an anchor" disabled={!xf.angle} onClick={() => setXf(current => rotateView(current, boxOf().w / 2, boxOf().h / 2, -(current.angle ?? 0)))}>Unrotate</IconButton>
         <IconButton icon="ruler" label="Toggle calibrated ruler" aria-pressed={ruler.enabled} aria-expanded={ruler.enabled} onClick={() => setRuler(current => ({ ...current, enabled: !current.enabled }))}>Ruler</IconButton>
         <IconButton icon="fire" label="Toggle first-person fire" aria-pressed={hudEnabled} aria-expanded={hudEnabled} onClick={() => {
           setAnimationOpen(false);
